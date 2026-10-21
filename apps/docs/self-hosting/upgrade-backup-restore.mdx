@@ -1,0 +1,136 @@
+---
+title: Upgrade, backup and restore
+description: Upgrade a self-hosted Yulona safely, schedule backups, restore from one, and roll back a bad release.
+icon: database
+---
+
+This page is for operators. Three scripts in `deploy/` cover the routine work: `upgrade.sh`, `backup.sh` and `restore.sh`. All of them read `deploy/.env` and must be run on the host that runs the stack.
+
+## Back up
+
+`deploy/backup.sh` writes a compressed logical dump of the database.
+
+```bash
+deploy/backup.sh
+# backup written: deploy/backups/yulona-20261019-031700.sql.gz (123456 bytes)
+```
+
+It runs `pg_dump` as the owner role inside the `postgres` container, checks the file is not empty, verifies it with `gzip -t`, and keeps the newest 14 files named `yulona-*.sql.gz`. Set `KEEP=30` in the environment to keep more. Pass a path to write somewhere else; custom paths are never pruned.
+
+Schedule it with cron and copy the files off the host:
+
+```bash
+17 3 * * * /opt/yulona/deploy/backup.sh
+```
+
+### What to back up
+
+| Item | How | Why |
+|---|---|---|
+| Database | `deploy/backup.sh` | All workspace data, jobs and settings |
+| `deploy/.env` | Copy to a secret store | `ENCRYPTION_KEY` is required to read stored channel and OAuth credentials, and `JWT_SECRET` signs sessions |
+| Object storage | Snapshot your S3 or MinIO bucket | Uploaded knowledge files and exports are not in the database dump |
+
+<Warning>
+Backups contain customer conversations and encrypted credentials. Encrypt them before they leave the host, restrict access, and delete old copies. The script creates files readable only by the owner (umask 077).
+</Warning>
+
+## Upgrade
+
+<Steps>
+  <Step title="Read the changelog">
+    Check the [changelog](/changelog) for breaking changes.
+  </Step>
+  <Step title="Run the upgrade script">
+    ```bash
+    deploy/upgrade.sh
+    ```
+    Use `deploy/upgrade.sh --no-git` when you deploy registry images (`YULONA_API_IMAGE` and `YULONA_DASHBOARD_IMAGE` in `deploy/.env`) and do not want a `git pull`.
+  </Step>
+  <Step title="Confirm health">
+    ```bash
+    curl https://app.example.com/readyz
+    docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
+    ```
+  </Step>
+</Steps>
+
+The script does these things in order and stops on any error:
+
+1. Writes a pre-upgrade backup to `deploy/backups/pre-upgrade-<timestamp>.sql.gz` and aborts if it is empty. These files are not pruned automatically.
+2. Records the current image ids for rollback.
+3. Runs `git pull --ff-only` (unless `--no-git`, or the directory is not a git checkout).
+4. Builds with `build --pull` and pulls registry images.
+5. Starts Postgres and Redis, then runs the `migrate` one-shot service. If migration fails, it prints how to restore, exits, and leaves the running services untouched.
+6. Restarts `api`, `worker`, `dashboard` and `caddy` one at a time, waiting for each to be healthy.
+
+<Note>
+Migrations only move forward and are applied with the owner role `yulona_owner`. There is no "down" migration. To undo a schema change you restore the pre-upgrade backup.
+</Note>
+
+### Do not set APP_DB_PASSWORD when migrating by hand
+
+The bundled `migrate` service does not receive `APP_DB_PASSWORD`, so it never touches the runtime role. But the migration command (`packages/db/src/cli.ts`) runs `ALTER ROLE yulona_app LOGIN PASSWORD ...` whenever `APP_DB_PASSWORD` is present in its environment. If you run migrations manually with that variable set, the password of `yulona_app` changes, and `api` and `worker` fail to connect unless `deploy/.env` already holds the same value.
+
+To change the runtime password deliberately, do both steps together:
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml exec postgres \
+  psql -U yulona_owner -d yulona -c "ALTER ROLE yulona_app PASSWORD 'NEW_URL_SAFE_PASSWORD'"
+# then put the same value in APP_DB_PASSWORD in deploy/.env and restart api and worker
+```
+
+Editing `APP_DB_PASSWORD` in `deploy/.env` alone does nothing to an existing database, because the role is created only at first start.
+
+## Restore
+
+`deploy/restore.sh` replaces the database contents with a backup. It is destructive.
+
+```bash
+deploy/restore.sh deploy/backups/yulona-20261019-031700.sql.gz
+```
+
+It asks you to type `restore` (skip with `--yes`), then:
+
+1. Verifies the archive with `gzip -t`.
+2. Stops `api` and `worker`.
+3. Drops and recreates the `public` schema as the owner role.
+4. Loads the dump.
+5. Runs `migrate` again, which brings an older dump forward and re-applies role grants.
+6. Starts everything and waits for health.
+
+Restore the object-storage bucket separately if you lost it, and use the same `ENCRYPTION_KEY` that was active when the backup was made. Practise a restore on a scratch host regularly; an untested backup is not a backup.
+
+## Roll back
+
+If a release misbehaves but the schema is fine:
+
+1. Check out the previous commit (`git checkout <previous-commit>`), or set `YULONA_API_IMAGE` and `YULONA_DASHBOARD_IMAGE` in `deploy/.env` to the previous tags.
+2. Run `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build`.
+
+If the new release applied migrations the old code cannot read, also restore the pre-upgrade backup:
+
+```bash
+deploy/restore.sh deploy/backups/pre-upgrade-20261019-040000.sql.gz
+```
+
+You lose everything written after that backup was taken, so prefer fixing forward when you can.
+
+## Common problems
+
+- `error: backup is empty; aborting`: the `postgres` container is not running. Start the stack, then retry.
+- Migration failed during upgrade: read the output of `docker compose ... run --rm migrate`. Services keep running the old version. Fix the cause or restore.
+- Api cannot connect after a restore: check that `APP_DB_PASSWORD` in `deploy/.env` matches the `yulona_app` role. See [Troubleshooting](/self-hosting/troubleshooting#api-cannot-log-in-to-postgres).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Operations and monitoring" icon="activity" href="/self-hosting/operations-and-monitoring">
+    Health checks and the job queue.
+  </Card>
+  <Card title="Security hardening" icon="shield" href="/self-hosting/security-hardening">
+    Encrypt backups and protect secrets.
+  </Card>
+</CardGroup>
+
+{/* source: deploy/upgrade.sh, deploy/backup.sh, deploy/restore.sh, deploy/postgres/init-roles.sh, packages/db/src/cli.ts, docs/self-hosting.md */}

@@ -1,0 +1,25 @@
+{
+  "name": "yulona",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tests"
+  ],
+  "scripts": {
+    "dev:api": "bun run --filter @yulona/api dev",
+    "dev:dashboard": "bun run --filter @yulona/dashboard dev",
+    "migrate": "bun run --filter @yulona/db migrate",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test",
+    "lint": "bun run --filter '*' lint",
+    "build": "bun run --filter '*' build",
+    "docs:sync": "bun scripts/docs-sync.ts",
+    "docs:dev": "bun run --filter @yulona/docs dev",
+    "docs:check": "bun run --filter @yulona/docs check"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  }
+}

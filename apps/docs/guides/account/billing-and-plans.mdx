@@ -1,0 +1,110 @@
+---
+title: Billing and plans
+description: See your current plan and limits, upgrade or cancel as the owner, understand what happens when a payment fails, and what changes on a self-hosted installation.
+icon: credit-card
+---
+
+This page is for owners and admins who manage the subscription. The **Billing** page shows your plan, how close you are to each limit, and lets the owner upgrade, update payment details or cancel.
+
+**Role needed:** admins and owners can view Billing. Only the owner can upgrade, manage payment or cancel.
+
+## Open the Billing page
+
+Open **Settings**, then **Billing**. At the top, the **Current plan** card shows your plan name and a status badge:
+
+| Badge | Meaning |
+|---|---|
+| **Active** | Everything is fine. |
+| **Near limits** | One or more limits are above 80%. |
+| **Payment failed** | The last payment failed. Your plan stays active during a 7-day grace period. |
+| **Restricted** | The grace period ended and the workspace moved to the Free plan. |
+| **Canceled** | The subscription ended. |
+
+The card also shows when the plan **Renews** or **Ends**.
+
+## Your plan limits
+
+Plans limit how much you can create and use. Under **Usage vs limits** each meter shows how much you have used out of the limit, with **Near limit** at 80% and **At limit** when full:
+
+| Meter | What it counts |
+|---|---|
+| **Team seats** | Teammates in your workspace |
+| **AI agents** | Agents in the workspace |
+| **Widgets** | Website widgets |
+| **API keys** | Active API keys |
+| **Conversations this month** | New conversations started this month |
+| **Knowledge storage (MB)** | Size of your knowledge sources |
+| **AI tokens this month** | Tokens the AI used this month |
+| **AI credits this month** | Credit allowance (hosted service) |
+
+The usual defaults are shown below. Your platform operator can change them, so always trust the numbers on your own Billing page.
+
+| Limit | Free | Pro | Enterprise |
+|---|---|---|---|
+| Team seats | 2 | 10 | Unlimited |
+| AI agents | 1 | 5 | Unlimited |
+| Widgets | 1 | 5 | Unlimited |
+| API keys | 2 | 10 | Unlimited |
+| Conversations per month | 100 | 2,000 | Unlimited |
+| Knowledge storage | 50 MB | 2 GB | Unlimited |
+
+When you try to go past a limit, the action is refused with a plan limit message. In some places a **Plan limit reached** dialog appears with a **View plans** button.
+
+The **Account** page under **Settings** shows the same meters plus your workspace name.
+
+Below that, **Last 30 days** charts your daily activity. Use the menu to switch between conversations, messages, AI tokens and new contacts.
+
+## Upgrade, manage payment or cancel
+
+**Role needed:** owner.
+
+<Steps>
+  <Step title="Upgrade">
+    Click **Upgrade to pro** on the Current plan card. You are sent to the payment page. When you return, the plan updates as soon as the payment is confirmed.
+  </Step>
+  <Step title="Update payment details">
+    Click **Manage payment** to open the payment portal, where you change your card and see invoices.
+  </Step>
+  <Step title="Cancel">
+    Click **Cancel plan** and confirm in **Cancel subscription?**. Your plan falls back to Free once the payment provider confirms, and the Free limits may block new items.
+  </Step>
+</Steps>
+
+Admins see the page but the buttons are replaced by "Only owners can change the plan."
+
+## If a payment fails
+
+You see "Your last payment failed." with the date your plan stays active until. Update your payment method with **Manage payment**. If you do not, after 7 days the workspace moves to the Free plan. The Free limits may stop you adding new items.
+
+## AI credits are separate
+
+Buying credit packs (extra AI usage) is separate from your subscription. See [Usage and credits](/guides/account/usage-and-credits).
+
+<Note>
+On a self-hosted installation there is no subscription. The plan is "self hosted" with no limits, and payments are not configured, so the page shows "Payments are not configured on this installation." Credits are never charged.
+</Note>
+
+## What you should see
+
+After upgrading, the plan name and badge change and the meters show the higher limits. After cancelling, the plan card shows **Ends** with a date.
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| No upgrade button | Only owners see it. Ask the owner. |
+| "Payments are not configured on this installation" | Billing is turned off for your installation. |
+| I cannot invite or create more items | You reached a plan limit. Check **Usage vs limits**. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Usage and credits" icon="gauge" href="/guides/account/usage-and-credits">
+    Watch AI usage and buy credits.
+  </Card>
+  <Card title="Team and roles" icon="users" href="/guides/workspace/team-and-roles">
+    Manage the seats you use.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/billing/{BillingPage,UpgradePrompt,api}.tsx; features/settings/AccountPage.tsx; docs/api/billing-admin.md (states, grace 7 days, enforcement); packages/db/migrations/0101_platform_core.sql (default limits; operator-editable); apps/api/src/billing/routes.ts (owner-only checkout/portal/cancel) */}

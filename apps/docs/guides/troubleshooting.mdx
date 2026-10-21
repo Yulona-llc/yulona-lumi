@@ -1,0 +1,97 @@
+---
+title: Troubleshooting
+description: Match what you are seeing to its cause and fix, for handoffs, missing replies, WhatsApp errors, the website widget, credits, calendars and tools.
+icon: wrench
+---
+
+This page is for owners, admins and support leads who hit a problem. Find your symptom in the tables, read the likely cause, and follow the fix. If you still cannot solve it, note the time, the conversation, and any message you saw, and contact your administrator or Yulona support.
+
+## The AI hands off too often, or always
+
+Open [Needs attention](/guides/workspace/needs-attention) and read the **reason** on the item. It tells you which row below applies.
+
+| What you see | Cause | Fix |
+|---|---|---|
+| Reason mentions "the agent has no knowledge to answer from" | No skills are available to this agent | Add a skill on **Knowledge** and make sure **Available to** is **All agents** or this agent. Wait until it finishes reading. |
+| Sandbox shows **Not found in knowledge** | The answer is not in your sources | Add the missing information, or improve the skill descriptions. Test again in the **Sandbox** tab. |
+| Reason "customer asked for a person" | The customer asked for a human, or their message contained an escalation keyword | On the agent's **Escalation** tab, review **Escalation keywords**. A keyword matches anywhere in a message, so very short or common words trigger handoffs. |
+| Handoffs after one or two unclear questions | **Hand off after unanswered questions** is set too low | Raise it on the **Escalation** tab. The agent asks the customer to rephrase first, then hands off after that many misses in a row. |
+| Reason "lead qualified" | **Hand off qualified leads** is on | Switch it off on the **Escalation** tab if you want the AI to continue. |
+| Type **System failure**, reason starts "tool ... failed" | A tool or your system returned an error | See the tools table below. |
+| Type **System failure**, reason "LLM unavailable" | The AI provider did not answer | Retry later. Self-hosted: check the AI provider settings. |
+| Type **System failure**, reason "ai_credits_exhausted" | Your AI credits are used up (hosted service) | See "Credits ran out" below. |
+
+## The AI does not reply
+
+| What you see | Cause | Fix |
+|---|---|---|
+| Badge shows **Human** | A teammate took over | Click **Return to AI** in the [Inbox](/guides/workspace/inbox). |
+| Badge shows **Needs attention** | The AI is paused until a person acts | Claim and resolve the item, with **Hand the conversation back to the AI** switched on. |
+| Status is **Resolved** | The AI does not reply to resolved conversations | Click **Reopen**. |
+| Nothing happens on any conversation | Credits used up, or the AI provider is not set up | Check the red banner and **Settings**, **Usage**. On self-hosted installations ask your administrator to check the AI provider and the worker. |
+| A messaging channel gets no replies | The connection is paused or in error | Open **Channels**, check the connection status and use its test action. |
+
+## WhatsApp: error 131030, "recipient not allowed"
+
+In the Inbox thread you see a line starting "Message not delivered on whatsapp" and mentioning error 131030, "Recipient phone number not in allowed list".
+
+| Cause | Fix |
+|---|---|
+| Your WhatsApp app at Meta is still in development or test mode, and Meta only lets it message numbers on an allowed list | In the Meta developer console, add the customer's number to the allowed recipients and verify it, or move the app to live mode with a verified business. This is a Meta restriction, not a Yulona one. |
+
+Other WhatsApp delivery lines:
+
+| Message | Cause | Fix |
+|---|---|---|
+| "24h window closed and no fallback template configured" | The customer last wrote more than 24 hours ago | Ask them to write again, or have your administrator configure an approved message template on the connection. |
+| A connection shows an error status after sending | Credentials are wrong or expired | Update the credentials on **Channels** and test the connection. |
+
+## The website widget does not appear
+
+| Cause | Fix |
+|---|---|
+| No widget exists yet | **Settings**, **Widget**, click **Create widget**. |
+| **Widget enabled** is off | Switch it on and click **Save changes**. |
+| **Allowed domains** is empty or does not match your site | Add your domain. An empty list blocks every site. `*.example.com` covers subdomains only, so add `example.com` as well. A port or `https://` can be included if needed. |
+| The snippet is not on the page, or is an old one | Copy it again from **Embed code** and paste it before the closing body tag. |
+| You clicked **Rotate key** | The old key stopped working. Paste the new snippet on every site. |
+
+## Credits ran out
+
+| What you see | Cause | Fix |
+|---|---|---|
+| Red banner "AI replies are paused until you add credits" | Allowance and top-ups are used up | An admin clicks **Buy credits** under **Settings**, **Usage**. Chats waiting in **Needs attention** can be handled by your team meanwhile. |
+
+See [Usage and credits](/guides/account/usage-and-credits).
+
+## Calendar and booking errors
+
+| What you see | Cause | Fix |
+|---|---|---|
+| The AI never offers times | No calendar connected, or the calendar tools are switched off | Connect a calendar under **Settings**, **Calendar**, and enable **Check calendar availability** and **Book appointments** on the agent's **Tools** tab. |
+| Calendar badge shows **Needs attention** | The connection broke or the sign-in expired | Disconnect and connect again. For Calendly the message "reconnect Calendly" means the same. |
+| "Google Calendar is not configured on this server" | The operator has not set up Google access | Self-hosted: see [Channels and integrations setup](/self-hosting/channels-and-integrations-setup). |
+| Booking status **Failed** | The calendar did not respond after three tries | Check the connection, then create the booking again. |
+| Booking status **Offered** | Calendly could not book directly (for example on its free plan) so the customer got a link | Check Calendly for the booking, or upgrade the Calendly plan. |
+
+See [Bookings](/guides/workspace/bookings).
+
+## Tool failures
+
+| What you see | Cause | Fix |
+|---|---|---|
+| **System failure** handoff with "tool ... failed" and a reason | Your system answered with an error, timed out, or the connection secret is wrong | Open the agent's **Tools** tab, test the tool, and check its **Connection**. |
+| The AI does not use a tool | The tool is switched off for the agent, or the conversation stage does not allow it | Check the **Tools** tab and the **Stage rules** on the **Escalation** tab. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="FAQ" icon="circle-question" href="/guides/faq">
+    Quick answers to common questions.
+  </Card>
+  <Card title="Needs attention" icon="triangle-exclamation" href="/guides/workspace/needs-attention">
+    Work the handoffs behind many of these symptoms.
+  </Card>
+</CardGroup>
+
+{/* source: packages/ai-runtime/src/{turn,runtime,agent-loader,intent}.ts (handoff reasons, keyword substring match, resume, credits gate); packages/channels/src/{send-job,whatsapp,meta}.ts (delivery_failed message, 24h window); docs/api/{channels,ops,credits,conversations}.md; features/bookings/{CalendarSettings,CalendarCard}.tsx; widget allowed-domains rules from docs/api/conversations.md. WhatsApp 131030 text comes from Meta's Cloud API error reference, not from this repo: unverified in code. */}

@@ -1,0 +1,13 @@
+{
+  "name": "@yulona/docs",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Mintlify documentation site (docs.json + MDX). Not a runtime package.",
+  "scripts": {
+    "sync": "bun ../../scripts/docs-sync.ts",
+    "dev": "bun run sync && bunx mint dev",
+    "validate": "bun run sync && bunx mint validate",
+    "broken-links": "bunx mint broken-links",
+    "check": "bun run sync && bunx mint validate && bunx mint broken-links"
+  }
+}

@@ -1,0 +1,53 @@
+---
+title: Changelog
+description: See what changed in Yulona, newest first, with links to the pages that explain each change.
+icon: clock-rotate-left
+---
+
+Newest first. Each entry lists what customers, operators and platform admins can now do.
+
+## 2026-10-19
+
+Fixes.
+
+- **Tool redirects no longer leak credentials.** When a tool's backend redirects to another origin, the API key, bearer token, signature headers and cookies are removed. See [Custom tools backend](/developers/custom-tools-backend).
+- **ClamAV works with the bundled profile.** `CLAMAV_URL` accepts `http://clamav:3000` or `tcp://host:3310`. See [Configuration](/self-hosting/configuration).
+- **Sandbox tests your saved draft** even when another version is published. See [Test in the sandbox](/guides/agents/test-in-sandbox).
+- **Agent greeting is used by the website widget** when the widget has no Welcome message. See [Configure your agent](/guides/agents/configure-your-agent).
+- **Slack setup text** now asks only for `message.im`, and the connection delete dialog explains that a connection in use cannot be deleted.
+
+Credits and usage, provider settings, a chat-based agent builder, no-code tools and Calendly.
+
+- **AI credits and usage.** Every model call is metered. The Usage page shows tokens and credits by day, agent, model and conversation, with a CSV export. See [Usage and credits](/guides/account/usage-and-credits).
+- **Credit rules on the hosted product.** Plans include a monthly credit allowance, with warnings at 80% and when credits run out, and credit packs customers can buy. Self-hosted installs record usage but are never charged. See [Plans, credits and rates](/platform-admin/plans-credits-and-rates).
+- **Provider settings.** Platform admins manage AI provider profiles (any OpenAI-compatible service, write-only keys, enabled models, Test connection). See [Providers](/platform-admin/providers).
+- **Your own AI provider when self-hosting.** New settings `AI_AUTH_HEADER`, `AI_AUTH_SCHEME`, `AI_EXTRA_HEADERS`, `AI_QUERY` and `AI_CHAT_PATH` support Azure OpenAI, OpenRouter and local servers. See [AI providers](/self-hosting/ai-providers).
+- **Agent builder chat.** Describe your business and Yulona drafts an agent for you to review in the sandbox. Drafts are never published automatically. See [Create with AI](/guides/agents/create-with-ai).
+- **Tool connections and no-code tools.** Save an API once as a connection, then build tools that call it, with a test run and click-to-map responses. See [Build a tool](/guides/tools/build-a-tool) and [Connections](/guides/tools/connections).
+- **Calendly.** Connect Calendly with OAuth so agents can check availability and book. See [Calendar and booking](/guides/tools/calendar-booking) and [Channels and integrations setup](/self-hosting/channels-and-integrations-setup#calendly).
+- **Credit adjustments.** Platform admins can grant or deduct credits for a workspace with an audited reason. See [Tenants and impersonation](/platform-admin/tenants-and-impersonation).
+- **Fixes.** Dashboard-saved custom tools now run correctly, and several layout problems on small screens were corrected.
+
+## 2026-10-18
+
+AI that reads skills instead of embeddings, smoother handoffs and a redesigned dashboard.
+
+- **Knowledge as skills.** Each source becomes a skill with a description and titled sections that the agent reads and searches. No embedding model or extra API key is needed. See [Knowledge and skills](/guides/agents/knowledge-skills).
+- **Better handoffs.** Agents can set a handoff message and hand over as soon as a lead is qualified. Customers can resume the AI with a resume keyword. Conversations that need a person appear in Needs attention. See [Handoffs and human takeover](/guides/agents/handoffs-and-human-takeover).
+- **Dashboard redesign.** New look and navigation, responsive layouts for phones, a dialog that becomes a bottom sheet on small screens, and clearer empty and error states.
+- **Self-hosting hardening.** Hardened containers, an egress guidance for the worker, offline licence verification, and the `upgrade.sh`, `backup.sh` and `restore.sh` scripts. See [Security hardening](/self-hosting/security-hardening) and [Upgrade, backup and restore](/self-hosting/upgrade-backup-restore).
+
+## 2026-10-17
+
+The first release of the platform.
+
+- **Workspaces and teams.** Sign up, invite teammates, and use roles (owner, admin, agent, viewer). API keys and an audit log are included. See [Team and roles](/guides/workspace/team-and-roles).
+- **Agents.** Create agents, test them in the sandbox, publish immutable versions and roll back. See [Publish and versions](/guides/agents/publish-and-versions).
+- **Website widget and inbox.** Embed the chat widget and answer in a realtime inbox. See [Website widget](/guides/channels/website-widget) and [Inbox](/guides/workspace/inbox).
+- **Channels.** WhatsApp, Messenger, Instagram, Telegram and Slack. See [WhatsApp](/guides/channels/whatsapp).
+- **Operations.** Contacts, tickets with SLA tracking, transactions, bookings with Google Calendar, canned responses, tags, business hours and notifications.
+- **Plans and billing.** Plan limits, Stripe checkout on the hosted product, and a platform admin console with tenants, impersonation and feature flags. See [Platform admin overview](/platform-admin/overview).
+- **Self-hosting.** A one-command Docker Compose install with Caddy, Postgres, Redis and a worker. See [Self-hosting overview](/self-hosting/overview).
+- **Developer tools.** A public API, outgoing webhooks and an OpenAPI reference. See [Developers overview](/developers/overview).
+
+{/* source: docs/phases/*.md, docs/adr/0002-defaults.md, docs/api/credits.md, docs/api/agent-builder.md, docs/api/tools.md, docs/api/ops.md (Calendly), apps/docs/guides/* */}

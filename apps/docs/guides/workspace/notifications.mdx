@@ -1,0 +1,74 @@
+---
+title: Notifications
+description: Learn what the bell in the top bar tells you, who is notified about handoffs, tickets, bookings and credits, and which events are also sent by email.
+icon: bell
+---
+
+This page is for everyone on the team. Notifications tell you when something needs you: a handoff, a ticket assigned to you, a missed deadline, a failed booking, or low credits. They appear in the bell at the top of the dashboard and, for most events, by email.
+
+**Role needed:** every role has notifications. What you receive depends on your role and on what is assigned to you.
+
+## The notification bell
+
+The bell sits at the top right of every page. A badge shows how many notifications you have not read (it shows 99+ when there are more). The list refreshes by itself about every 30 seconds.
+
+<Steps>
+  <Step title="Open the bell">
+    Click the bell. You see **Notifications** with your latest items, unread ones highlighted with a dot.
+  </Step>
+  <Step title="Open an item">
+    Click a notification. It is marked as read and takes you to the right place: handoffs open **Needs attention**, tickets open **Tickets**, bookings open **Bookings**, and items tied to a conversation open it in the **Inbox**.
+  </Step>
+  <Step title="Mark everything read">
+    Click **Mark all read** to clear the badge. When nothing is left, the list says "You are all caught up."
+  </Step>
+</Steps>
+
+## What you are notified about
+
+| Event | Who is notified | Also emailed |
+|---|---|---|
+| A handoff is requested | Every active owner, admin and agent (when assignment is **Manual claim**, or nobody is online) | Yes |
+| A handoff is assigned to you | The teammate chosen by **Least busy online agent**, or assigned by an admin | Yes |
+| A ticket is assigned to you | The new assignee | Yes |
+| A ticket misses its SLA deadline | The assignee, or every owner and admin when unassigned | Yes |
+| A booking is created | The teammate who created it, or every owner and admin when the AI booked | No |
+| A booking fails | Every owner and admin | Yes |
+| AI credits reach 80% | Every owner and admin (hosted service) | Yes |
+| AI credits are used up | Every owner and admin (hosted service) | Yes |
+
+The credit warnings are sent once each per month. See [Usage and credits](/guides/account/usage-and-credits).
+
+<Note>
+The two credit notifications only exist on the hosted service. Self-hosted installations do not meter credits, so you never receive them.
+</Note>
+
+## Email notifications
+
+Emails are sent shortly after the notification is created, to the address you sign in with. Yulona retries a few times if sending fails. Every account has email notifications switched on by default.
+
+<Warning>
+Email delivery depends on the email provider configured for your installation. On the hosted service this is managed for you. On a self-hosted installation, if no email provider is configured, notifications still appear in the bell but emails are not delivered. Ask your administrator.
+</Warning>
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| I get no handoff notifications | Viewers do not receive them. With **Least busy online agent**, only the assigned person is notified, so set your status to **online** under **Settings**, **Hours and routing**. |
+| A notification opens nothing | Credit and some system notices have no page to open; read the text in the list. |
+| No emails | Check spam, then ask your administrator whether email sending is set up. |
+| Too many handoff emails | Assign handoffs with **Least busy online agent** so only one person is notified each time. See [Business hours](/guides/workspace/business-hours). |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Needs attention" icon="triangle-exclamation" href="/guides/workspace/needs-attention">
+    Act on handoff notifications.
+  </Card>
+  <Card title="Business hours" icon="clock" href="/guides/workspace/business-hours">
+    Control who gets handoffs.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/ops-settings/NotificationsBell.tsx; docs/api/ops.md (notifications, email dispatch); packages/db/migrations/0400_ops.sql, 0910_credits_metering.sql (recipients); packages/ops/src/booking.ts. The per-user email on/off preference exists only in the API (PUT /notifications/preferences), not in the dashboard. */}

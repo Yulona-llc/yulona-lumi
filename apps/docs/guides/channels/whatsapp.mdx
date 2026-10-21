@@ -1,0 +1,114 @@
+---
+title: WhatsApp
+description: Connect a WhatsApp Business number so your agent answers customers there, and understand test numbers, the 24-hour window and templates.
+icon: phone
+---
+
+Connect WhatsApp and customers who message your business number are answered by your agent in the same inbox as every other channel. This page is for admins and owners. You will work in two places: your Meta (Facebook) developer account and the Yulona dashboard. Meta changes its screens from time to time, so treat the Meta steps as a guide and follow Meta's own help where they differ.
+
+<Note>
+Only **admins and owners** can connect or change channels. Everyone else sees the page read-only.
+</Note>
+
+## Before you start
+
+- A Meta developer account and an app with the **WhatsApp** product added.
+- A [published agent](/guides/agents/publish-and-versions) to answer. Only published agents appear in the **Answering agent** list.
+- Three values from Meta: the **Phone number ID**, an **access token**, and your app's **App secret**.
+- **Self-hosted:** your administrator must have set the server's public address and encryption key. Without the encryption key saving a channel fails. See [Channels and integrations setup](/self-hosting/channels-and-integrations-setup).
+
+## Connect WhatsApp
+
+<Steps>
+  <Step title="Gather your Meta values">
+    In Meta for Developers, open your app, then **WhatsApp**, then **API setup**. Copy the **Phone number ID** and an access token. The **App secret** is under the app's basic settings.
+  </Step>
+  <Step title="Open Channels">
+    In the dashboard go to **Channels** and click the **WhatsApp** tile. A panel opens with the steps.
+  </Step>
+  <Step title="Fill in the form">
+    Enter a **Connection name**, choose the **Answering agent** (or leave **Default agent**), then paste the **Access token**, **Phone number ID** and **App secret**. Leave **Webhook verify token** empty and Yulona generates one for you. The two fallback template fields are optional; see "Templates" below. Click **Connect**.
+  </Step>
+  <Step title="Copy the webhook values">
+    The panel now says "Shown only once" and displays the **Webhook URL** and the **Webhook verify token**. Copy both now and keep them until the next step. After you close the panel the secrets stay masked.
+  </Step>
+  <Step title="Paste them into Meta">
+    In Meta, under **WhatsApp**, then **Configuration**, paste the **Callback URL** (the Webhook URL) and the **Verify token**, and verify. Then subscribe to the **messages** field.
+  </Step>
+  <Step title="Test the connection">
+    Back in Yulona click **Test connection**. "Connection OK" with your number means the credentials are accepted. Then click **I have saved these**.
+  </Step>
+  <Step title="Send a message to your number">
+    The message should arrive in the [Inbox](/guides/workspace/inbox) and your agent should reply.
+  </Step>
+</Steps>
+
+## Test numbers and their limits
+
+Meta gives new apps a **test number** so you can try things before going live. A test number can only message the recipients you have added to the allowed list in Meta's WhatsApp setup. Other people cannot message it, and replies to anyone who is not on the list fail. If your first message from a phone gets no answer, check that your phone number is on the allowed list in Meta.
+
+Meta test access tokens also expire after a short time, so a test setup that worked yesterday may fail today. The connection then shows **Error** or **Needs attention**; replace the token as described under "Edit credentials" below.
+
+## Going to production
+
+To serve real customers you need, in Meta:
+
+1. A **verified business**. Meta asks you to verify your business before your own number can message the public.
+2. Your **own phone number** added to WhatsApp Business, with a display name approved.
+3. A **permanent token**. Create a system user in Meta Business settings, give it access to the app and the WhatsApp account, and generate a token that does not expire. Paste it into your Yulona connection.
+
+Then create a new connection (or edit the existing one) with the production Phone number ID and token, and update the webhook in Meta to the new connection's address.
+
+## The 24-hour window and templates
+
+WhatsApp only lets a business send free-form messages within **24 hours of the customer's last message**. After that, only a pre-approved **template** can start the conversation again.
+
+- Your agent normally replies within seconds, well inside the window.
+- The window matters when a teammate replies after a long wait, or an automated message is sent later.
+- If you enter a **Fallback template name** (and optionally a **Fallback template language**, default `en_US`), Yulona sends that template when the window has closed. The template must be approved in Meta and contain one text variable, which Yulona fills with the message.
+- With no template set, a message after the window fails, and your team sees a notice in the conversation that it was not delivered ("delivery failed").
+
+<Tip>
+Create a simple template in Meta whose body is something like `Hello, we have an update for you: {{1}}`, and give its name to Yulona, so late replies still reach customers.
+</Tip>
+
+## Manage the connection
+
+Each connection appears under **Connected** with a health badge: **Connected**, **Needs attention**, **Error**, **Paused** or **Not tested yet**, the time of the last check, masked credentials and the Webhook URL (which you can copy again).
+
+- **Test connection** runs a live check.
+- **Edit** lets you rename it, change the answering agent and **Rotate credentials**. Only fields you fill in are replaced.
+- **Disable** pauses the connection; **Enable** turns it back on.
+- **Delete** removes it. Conversations keep their history, but replies on it can no longer be sent.
+
+Photos and files customers send arrive as a text placeholder such as `[image]`, because files are not stored yet.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="Meta cannot verify the callback URL">
+    Check that you pasted the exact Webhook URL and verify token, and that your server is reachable from the internet over https.
+  </Accordion>
+  <Accordion title="Messages arrive but the agent does not reply">
+    Confirm the connection is not **Paused**, the answering agent is published, and the conversation was not handed to a person. See [Handoffs](/guides/agents/handoffs-and-human-takeover). On the hosted version also check your AI credits.
+  </Accordion>
+  <Accordion title="Test connection fails">
+    The token or Phone number ID is wrong or expired. Use **Edit**, enter a fresh token and test again.
+  </Accordion>
+  <Accordion title="Replies stopped after a day or so">
+    Your test token expired, or the 24-hour window closed with no fallback template set.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Telegram" icon="send" href="/guides/channels/telegram">
+    A free channel that needs no business verification.
+  </Card>
+  <Card title="Messenger and Instagram" icon="messages-square" href="/guides/channels/messenger-instagram">
+    Also uses a Meta app.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/channels/{ChannelsPage.tsx,guides.ts,api.ts}, packages/channels/src/whatsapp.ts, docs/api/channels.md */}

@@ -1,0 +1,110 @@
+---
+title: Licensing
+description: Install and verify an offline Yulona licence, understand its claims, and know what the product does with it today.
+icon: key
+---
+
+This page is for operators of a self-hosted install. A licence is an optional, signed token that identifies your organisation. Yulona checks it on your own server and never contacts any other server to do so.
+
+## How the licence works
+
+The licence is a compact JWT signed with Ed25519 (algorithm `EdDSA`) by the vendor. You receive two things:
+
+- `LICENSE_KEY`: the signed token.
+- A vendor public key in PEM format, which goes in `LICENSE_PUBLIC_KEY`.
+
+Verification is local. The public key checks the signature, and the token must be inside its validity window (a 60-second clock allowance applies on both ends). Tokens with any other signing algorithm, including `none` or `HS256`, are rejected.
+
+### Claims
+
+| Claim | Meaning |
+|---|---|
+| `customer` | The licensed organisation's name. |
+| `seats` | A whole number, zero or more. |
+| `features` | A list of feature names. `*` matches every feature. |
+| `iat` | Issued at (Unix seconds). |
+| `exp` | Expiry (Unix seconds). |
+| `sub`, `iss` | Optional customer id and issuer (`yulona`). |
+
+## Install a licence
+
+<Steps>
+  <Step title="Add both values to deploy/.env">
+    ```bash
+    LICENSE_KEY=eyJhbGciOiJFZERTQSIs...
+    LICENSE_PUBLIC_KEY=-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----
+    ```
+    Write the PEM on one line with `\n` for line breaks.
+  </Step>
+  <Step title="Restart the API">
+    ```bash
+    docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d api
+    ```
+  </Step>
+  <Step title="Read the result in the log">
+    ```bash
+    docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs api | grep "self-hosted license"
+    ```
+    A valid licence logs `state: valid` with the customer, seats and days left. A missing one logs `state: none`. A bad one logs `state: invalid` with a reason.
+  </Step>
+</Steps>
+
+The code can also read the token and key from files through `LICENSE_KEY_FILE` and `LICENSE_PUBLIC_KEY_FILE`. The bundled compose file does not forward these two variables, so use them only if you extend it.
+
+## Verify a licence from the command line
+
+The check runs on any machine that has the repository and Bun. It needs no network.
+
+```bash
+bun packages/license/src/cli.ts verify <token-or-file> --pub vendor.pem
+```
+
+Success prints, and exits 0:
+
+```text
+VALID  customer=Acme seats=25 features=* expires=2027-10-19T00:00:00.000Z
+```
+
+Failure prints `INVALID: <reason>` and exits 1. Reasons are `malformed`, `bad_algorithm`, `bad_signature`, `expired`, `not_yet_valid` and `invalid_claims`. Exit code 2 means a usage error such as a missing key.
+
+Signed update manifests, which list release versions and image references, are checked the same way:
+
+```bash
+bun packages/license/src/cli.ts manifest manifest.json --pub vendor.pem
+```
+
+## What is enforced today
+
+<Note>
+The licence is verified at API boot and the outcome is written to the log. Nothing in the product currently changes behaviour based on it: seats, features and expiry are not enforced, and a missing, invalid or expired licence never blocks access to your data.
+</Note>
+
+The licensing package defines the intended policy so enforcement can be added without changing the format:
+
+- No licence: community defaults.
+- Valid licence: its `seats` and `features` apply.
+- Expired or invalid licence: treated as no licence, never as a lock-out.
+
+Self-hosted workspaces use the `self_hosted` plan, which has no limits. Check the [changelog](/changelog) for when enforcement ships.
+
+## Common problems
+
+| Log state | Cause | Fix |
+|---|---|---|
+| `invalid`, reason `no_public_key` | `LICENSE_KEY` is set but `LICENSE_PUBLIC_KEY` is empty | Add the vendor public key |
+| `invalid`, reason `bad_signature` | Wrong public key, or the token was altered | Use the key that came with the licence; check for line breaks inside the token |
+| `invalid`, reason `expired` | Past `exp` plus the allowance | Request a renewal |
+| `invalid`, reason `malformed` | The token was truncated or pasted with extra characters | Paste it again on a single line |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration reference" icon="sliders" href="/self-hosting/configuration#licence">
+    Licence variables and defaults.
+  </Card>
+  <Card title="Self-hosting overview" icon="server" href="/self-hosting/overview">
+    How self-hosted differs from hosted.
+  </Card>
+</CardGroup>
+
+{/* source: packages/license/src/index.ts, packages/license/src/cli.ts, apps/api/src/index.ts */}

@@ -1,0 +1,113 @@
+---
+title: Publish and versions
+description: Make an agent live, keep a history of every release and roll back if a change goes wrong.
+icon: rocket
+---
+
+Editing an agent never changes what customers see until you publish. This page is for admins and owners who release changes, and for anyone who needs to know which version of an agent is live.
+
+<Note>
+Only **admins and owners** can publish, roll back and archive agents.
+</Note>
+
+## Draft, live and archived
+
+An agent is always in one of three states, shown as a badge on the **Agents** page and at the top of the agent:
+
+| Badge | Meaning |
+|---|---|
+| **Draft** | Never published. "Customers see nothing until you publish." |
+| **Live · v3** (shown as "published" in the list) | A version is live. The text beneath says "Live on version 3. Edits below are a draft until you publish." |
+| **archived** | Switched off. The agent does not answer visitors. |
+
+Once an agent is live, your edits are a draft **on top of** the live version. Customers keep talking to the live version until you publish again.
+
+## Publish an agent
+
+<Steps>
+  <Step title="Save your changes">
+    Click **Save draft** in the bottom bar. **Publish** stays disabled while you have unsaved changes ("Save your draft before publishing").
+  </Step>
+  <Step title="Test it">
+    Open the **Sandbox** tab and try your key questions. See [Test in the sandbox](/guides/agents/test-in-sandbox).
+  </Step>
+  <Step title="Click Publish">
+    A window asks "Publish this draft?" and explains that publishing snapshots the saved draft as a new version and that customers will talk to it immediately.
+  </Step>
+  <Step title="Add a note (optional)">
+    Write a short note such as "Added delivery fees" (up to 200 characters). It helps you recognise the version later.
+  </Step>
+  <Step title="Confirm">
+    Click **Publish**. You see "Published", the badge changes to **Live · v1** (or the next number) and the bottom bar reads "All changes saved. Live: v1".
+  </Step>
+</Steps>
+
+## What is and is not part of a version
+
+A version is a snapshot of the agent's settings: persona, greeting, the clarifying, handoff and fallback messages, escalation rules, model, temperature, enabled tools and your custom tools.
+
+Some things are **not** versioned and take effect straight away:
+
+- **Knowledge.** Adding, editing or deleting a skill changes the agent's answers immediately, published or not. Test new knowledge before customers hit it.
+- **Connections** for your tools, **channels**, the **widget** settings, business hours and calendars. These are workspace settings, not agent settings.
+
+<Warning>
+Deleting a skill or a tool connection affects the live agent right away, even though you have not published anything.
+</Warning>
+
+## See the version history
+
+Open the **Versions** tab. Each publish is listed newest first as a timeline: the version number, a **live** badge on the current one, the note you wrote ("No note" if you left it empty) and the date. Versions are never edited or deleted, so you always have a record.
+
+## Roll back
+
+If a release goes wrong, go back to an earlier one.
+
+<Steps>
+  <Step title="Open the Versions tab">
+    Find the version you want to return to.
+  </Step>
+  <Step title="Click Roll back">
+    The button appears next to every version except the live one.
+  </Step>
+  <Step title="Confirm">
+    The window "Roll back to version N?" explains that this republishes that configuration as a new version. Add an optional note and click **Roll back**.
+  </Step>
+</Steps>
+
+You see "Rolled back to version N". Rolling back does not erase history: it creates a **new** version with the old settings. If you do not add a note it is recorded as "Rollback to vN". Your unpublished draft is replaced by those settings too.
+
+## Archive and unarchive
+
+At the bottom of the agent page, **Archive agent** stops it answering visitors, and **Unarchive agent** brings it back. Archived agents cannot be published or rolled back. Archiving frees a place under your plan's agent limit, and unarchiving needs a free place. See [Billing and plans](/guides/account/billing-and-plans).
+
+## Where a published agent is used
+
+Channels and the website widget have an **Answering agent** setting. When it says **Default agent**, the workspace's oldest agent answers. Channels list only published agents. Set these up in [Website widget](/guides/channels/website-widget) and the [channel guides](/guides/channels/whatsapp).
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="Publish is disabled">
+    You have unsaved changes, or the agent is archived, or your role is not admin or owner.
+  </Accordion>
+  <Accordion title="I published by mistake">
+    Open **Versions** and roll back to the previous version. It takes effect immediately for new messages.
+  </Accordion>
+  <Accordion title="I cannot unarchive">
+    Your plan's agent limit is full. Archive another agent or upgrade.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Connect a channel" icon="radio" href="/guides/channels/website-widget">
+    Put the live agent in front of customers.
+  </Card>
+  <Card title="Handoffs and takeover" icon="hand" href="/guides/agents/handoffs-and-human-takeover">
+    Know what your team sees when the agent steps back.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/agents/{AgentEditor.tsx,AgentsPage.tsx}, apps/api/src/routes/agents.ts, packages/ai-runtime/src/agent-loader.ts, apps/api/src/platform/limits.ts, apps/dashboard/src/features/channels/ChannelsPage.tsx */}

@@ -1,0 +1,124 @@
+---
+title: Agent builder API
+description: Drive the conversational agent builder from code, including sessions, messages, the validated draft model, structured replies and creating the draft agent.
+icon: wand-magic-sparkles
+---
+
+The agent builder is the chat that interviews an owner and produces a draft agent. This page documents the API behind it for developers who build their own front end for it or automate agent setup. The dashboard experience is described in [Create an agent with AI](/guides/agents/create-with-ai).
+
+All routes are under `/api/v1`, need a dashboard access token with role `owner` or `admin`, and use strict bodies. A session belongs to the user who started it: other users and other workspaces get `404 not_found`.
+
+## Flow
+
+<Steps>
+  <Step title="Start a session">
+    `POST /api/v1/agent-builder/sessions` with `{}` (limit: 10 per minute per user).
+
+    <CodeGroup>
+    ```bash curl
+    curl -X POST https://YOUR_HOST/api/v1/agent-builder/sessions \
+      -H "Authorization: Bearer YOUR_ACCESS_TOKEN" -H "Content-Type: application/json" -d '{}'
+    ```
+
+    ```javascript fetch
+    const res = await fetch("https://YOUR_HOST/api/v1/agent-builder/sessions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const session = await res.json();
+    ```
+    </CodeGroup>
+
+    `201 Created`:
+
+    ```json
+    {
+      "id": "d3b8...", "status": "open", "agentId": null,
+      "draft": { "config": {}, "knowledge": [], "ready": false },
+      "limits": { "maxUserMessages": 60, "userMessages": 0 },
+      "messages": [
+        { "id": "m1...", "role": "assistant", "content": "Hi! I'll help you set up an AI agent for your business. To start, what does your business do, and who are your customers?", "payload": null, "createdAt": "2026-10-19T10:00:00.000Z" }
+      ],
+      "createdAt": "2026-10-19T10:00:00.000Z", "updatedAt": "2026-10-19T10:00:00.000Z"
+    }
+    ```
+  </Step>
+  <Step title="Send answers">
+    `POST /api/v1/agent-builder/sessions/:id/messages` with exactly one of `text` (1 to 4000 characters) or `choice` (1 to 200 characters, a tapped quick reply). Limit: 20 per minute per user.
+
+    ```bash
+    curl -X POST https://YOUR_HOST/api/v1/agent-builder/sessions/SESSION_ID/messages \
+      -H "Authorization: Bearer YOUR_ACCESS_TOKEN" -H "Content-Type: application/json" \
+      -d '{"text":"We run a dental clinic in Addis Ababa. Patients ask about prices and appointments."}'
+    ```
+
+    ```json
+    {
+      "messages": [ { "id": "m2...", "role": "user", "content": "We run a dental clinic...", "payload": null, "createdAt": "..." }, { "id": "m3...", "role": "tool", "content": "...", "payload": { "name": "update_draft", "ok": true, "reply": {} }, "createdAt": "..." } ],
+      "assistant": { "id": "m4...", "role": "assistant", "content": "Which languages should the agent speak?", "payload": { "ask": { "question": "Which languages should the agent speak?", "options": ["English", "Amharic", "Both"] } }, "createdAt": "..." },
+      "draft": { "name": "Dental Clinic Assistant", "config": { "systemPrompt": "..." }, "knowledge": [], "ready": false },
+      "ready": false
+    }
+    ```
+
+    Repeat until `ready` is `true`. The response includes the new messages (including `tool` messages), the final `assistant` message, the current `draft` and the `ready` flag.
+  </Step>
+  <Step title="Create the draft agent">
+    `POST /api/v1/agent-builder/sessions/:id/create` with `{}`.
+
+    ```json
+    {
+      "agentId": "9f1e...", "name": "Dental Clinic Assistant", "status": "draft",
+      "sandboxHint": { "path": "/agents/9f1e...", "tab": "sandbox", "message": "Draft created. Try it in the sandbox tab, then publish when you are happy." }
+    }
+    ```
+
+    The agent is created as a **draft**, never published, through the same repository, plan limit (`402 plan_limit_exceeded`) and audit path as `POST /agents`. Publish it after testing with `POST /api/v1/agents/:id/publish`.
+  </Step>
+</Steps>
+
+`GET /api/v1/agent-builder/sessions/:id` returns the same session shape at any time (use it to resume after a reload).
+
+## The draft model
+
+```json
+{ "name": "...", "description": "...", "config": { }, "knowledge": [ { "id": "...", "name": "...", "type": "url" } ], "ready": false }
+```
+
+The assistant edits the draft through internal tools; every patch is merged into `config` and the whole result is validated with the agent config schema (`agentConfigSchema`). Validation errors go back to the model so it repairs itself; you never see a half-valid draft. Constraints on what the builder may set:
+
+| Rule | Detail |
+|---|---|
+| Not settable | `model`, `customTools`, `similarityThreshold`, `topK`. Add custom tools later in the agent's Tools tab or via the agent API ([Tool manifest](/developers/tool-manifest)). |
+| `enabledTools` | Only `qualify_lead`, `collect_contact`, `escalate_to_human`, `check_availability`, `book_appointment` |
+| Required to finish | `name`, `config.systemPrompt` (at least 40 characters) and `config.greeting` |
+| Knowledge | The assistant can add up to 3 sources per session (URL or pasted text, up to 100,000 characters), created tenant-wide through the normal ingest path with the same storage limit, SSRF check and audit entries |
+
+`create` re-checks these rules. It answers `400 validation_error` when name, system prompt or greeting are still missing (`details[].path` names them), and `409 conflict` when the session already created an agent or is closed.
+
+## Structured replies
+
+Assistant messages carry a `payload` that tells your UI how to render them:
+
+| Message | `payload` | Render as |
+|---|---|---|
+| Assistant | `{ "ask": { "question": string, "options": string[] } }` (up to 6 options of 80 characters) | The question with the options as quick-reply chips. Send a tapped chip back as `choice`. |
+| Assistant | `{ "ready": true }` | "Your draft is ready": show the review sheet and a Create button. |
+| User | `{ "choice": true }` | A normal user bubble (the text was a chip). |
+| Tool | `{ "name": string, "ok": boolean, "reply": object }` | Hide it. It is an audit trail of draft changes. |
+| Assistant | `null` | Plain text. |
+
+## Limits and errors
+
+| Status | Code | Cause |
+|---|---|---|
+| 402 | `credits_exhausted` | SaaS and the credit pool is empty. Nothing is persisted. See [Credits API](/developers/credits-api). |
+| 402 | `plan_limit_exceeded` | On `create`, the plan's `agents` limit is reached. |
+| 409 | `conflict` | The session is closed or already created an agent, or the previous message is still being answered (one in flight per session). |
+| 429 | `rate_limited` | Per-minute limits above, or a session cap: 60 user messages or 150,000 tokens. Start a new session or create the draft. |
+| 503 | `service_unavailable` | The AI provider is unavailable. |
+
+Every model call is recorded as AI usage with `source: "builder"` and no agent. SaaS gates before the call; self-hosted only records. The prompts contain only static rules and the draft, and the assistant is instructed never to accept secrets, so do not collect keys or passwords in this chat. See [Errors](/developers/errors) for the full envelope.
+
+{/* source: apps/api/src/agent-builder/{routes,engine,schemas,prompt}.ts, packages/shared/src/agent.ts, docs/api/agent-builder.md */}

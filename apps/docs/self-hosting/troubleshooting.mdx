@@ -1,0 +1,154 @@
+---
+title: Troubleshooting
+description: Find the cause and the fix for the most common problems when installing, running and upgrading a self-hosted Yulona.
+icon: wrench
+---
+
+This page is for operators. Each entry is a symptom, the usual cause, and the fix. Start by looking at the logs of the service involved:
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs --tail 100 api worker
+```
+
+## Install and start
+
+### The setup script refuses to run
+
+**Symptom:** `deploy/.env already exists; refusing to overwrite secrets`.
+
+**Cause:** `setup.sh` never replaces an existing secrets file.
+
+**Fix:** For an existing install use `deploy/upgrade.sh`. To start over from nothing, delete `deploy/.env` and the Docker volumes (this destroys the database).
+
+### `variable is missing a value`
+
+**Cause:** Compose could not find `deploy/.env`, so required secrets were empty.
+
+**Fix:** Run Compose with `--env-file deploy/.env` from the repository root, or run `deploy/setup.sh` first.
+
+### The API exits at boot
+
+**Symptom:** The `api` container restarts and logs `Refusing to start in production` or `Invalid environment`.
+
+**Cause:** The API validates its configuration. It rejects a weak `JWT_SECRET`, a `DATABASE_URL` without a password, `*` in `CORS_ORIGINS`, and `OPENAPI_ENABLED=true` without `DOCS_PASSWORD`.
+
+**Fix:** Read the message, correct `deploy/.env`, and run `up -d` again.
+
+### Migrate fails
+
+**Symptom:** The `migrate` service exits non-zero, so `api` and `worker` never start. During an upgrade the script prints `Migration FAILED` and leaves the old version running.
+
+**Cause:** Usually Postgres is not healthy yet, the owner password in `deploy/.env` does not match the volume, or a migration hit a data problem.
+
+**Fix:**
+
+1. Run `docker compose --env-file deploy/.env -f deploy/docker-compose.yml run --rm migrate` and read the error.
+2. If it says authentication failed, the `POSTGRES_PASSWORD` in `deploy/.env` differs from the one the data volume was created with. Restore the original `deploy/.env`.
+3. If the data is damaged, restore the pre-upgrade backup. See [Upgrade, backup and restore](/self-hosting/upgrade-backup-restore#restore).
+
+### API cannot log in to Postgres
+
+**Symptom:** `password authentication failed for user "yulona_app"` in the `api` or `worker` log, and `/readyz` shows `db: fail`.
+
+**Cause:** The `yulona_app` role password is set once, when the database is first created. Changing `APP_DB_PASSWORD` in `deploy/.env` afterwards does not change the role. A manual migration run with `APP_DB_PASSWORD` set does change it.
+
+**Fix:** Make them match. Either restore the old value in `deploy/.env`, or change the role:
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml exec postgres \
+  psql -U yulona_owner -d yulona -c "ALTER ROLE yulona_app PASSWORD 'THE_VALUE_IN_ENV'"
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml restart api worker
+```
+
+### Postgres image or extension errors
+
+**Symptom:** Errors mentioning the `vector` extension, for example `extension "vector" is not available`.
+
+**Cause:** The earlier migrations still create the `vector` extension even though agent knowledge no longer uses embeddings. A plain `postgres` image does not include it.
+
+**Fix:** Keep the `pgvector/pgvector:pg16` image from `deploy/docker-compose.yml`. If you use an external Postgres, install the pgvector extension there.
+
+## Using the app
+
+### Browser errors: CORS or cookies
+
+**Symptom:** The dashboard loads but requests fail with CORS errors, or you are logged out on every refresh.
+
+**Cause:** Split deployments need the API to allow the dashboard origin. With the bundled Caddy setup (one domain) neither setting is needed.
+
+**Fix:** Set `CORS_ORIGINS` to the exact dashboard origin (scheme and host, no trailing path), for example `https://app.example.com`. Set `CROSS_SITE_COOKIES=true` only if the two hosts are different sites rather than subdomains of one domain. Set `DASHBOARD_API_URL` to the API URL. Restart `api` and `dashboard`.
+
+### Customers get no reply or generic canned replies
+
+**Cause:** No AI key, so the `mock` provider answers; or the provider call is failing; or the worker is down.
+
+**Fix:** Set `AI_API_KEY` and a real provider (see [AI providers](/self-hosting/ai-providers)). Look in the `worker` log for `openai 401`, `404` or `429`. If jobs sit in `queued`, restart the worker.
+
+### Empty replies from the model
+
+**Symptom:** The agent responds with nothing, or never calls tools.
+
+**Cause:** The model does not support tool calling, or the agent's `model` setting names a model your provider does not have.
+
+**Fix:** Choose a model with tool support. Clear the agent's model field to use `AI_MODEL`.
+
+### `503` when connecting a channel, calendar or webhook
+
+**Symptom:** The dashboard shows `ENCRYPTION_KEY is not configured` or a `503 service_unavailable` message when you connect a channel, create a webhook, save a tool connection, or connect Google or Calendly.
+
+**Cause:** `ENCRYPTION_KEY` is empty in the running containers. The API logs `ENCRYPTION_KEY is not set` at start.
+
+**Fix:** Set a base64 32-byte key in `deploy/.env` (`openssl rand -base64 32`), then restart `api` and `worker`. Use the original key if you have stored credentials, otherwise they stay unreadable.
+
+For Google and Calendly, a `503` can also mean the client id or secret is missing. See [Channels and integrations setup](/self-hosting/channels-and-integrations-setup).
+
+### Channel webhooks never arrive
+
+**Symptom:** Messages sent on WhatsApp, Telegram or Slack do not appear in the inbox.
+
+**Cause and fix:**
+
+| Check | Fix |
+|---|---|
+| The URL is not public HTTPS | Use a real domain with a valid certificate. Providers reject `localhost` and self-signed certificates |
+| Meta verification fails | The verify token in Meta must equal the one shown in Yulona |
+| Requests answer `401` | The app secret, signing secret or webhook secret is wrong. Update the connection's credentials |
+| Requests answer `404` | The connection is disabled, deleted, or the URL names the wrong channel |
+| Telegram does nothing | You did not run `setWebhook` with the same secret token |
+
+Use Test connection on the channel in the dashboard to check stored credentials.
+
+### Knowledge file uploads fail after enabling ClamAV
+
+**Cause:** The scanner is unreachable or `CLAMAV_URL` is wrong. Scanning fails closed, so uploads are rejected. See [Channels and integrations setup](/self-hosting/channels-and-integrations-setup#clamav).
+
+**Fix:** Check that the `clamav` and `clamd` containers are healthy (`clamd` needs a few minutes to load signatures after start) and that `CLAMAV_URL` is `http://clamav:3000` or `tcp://host:3310`. Unset it to disable scanning while you investigate.
+
+### Uploaded files disappear after a restart
+
+**Cause:** No S3 settings, so files are held in memory.
+
+**Fix:** Configure S3 or enable the MinIO profile. See [Requirements and install](/self-hosting/requirements-and-install#optional-services).
+
+### Emails never arrive
+
+**Cause:** `SMTP_HOST` is empty, so emails are only logged.
+
+**Fix:** Configure SMTP. Check `docker compose logs api worker` for the logged message and the SMTP error.
+
+## Still stuck
+
+Gather the output of `docker compose ps`, the last 100 log lines of `api`, `worker` and `migrate`, and your `deploy/.env` with all secrets removed, and contact support.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Operations and monitoring" icon="activity" href="/self-hosting/operations-and-monitoring">
+    Health checks and the job queue.
+  </Card>
+  <Card title="Configuration reference" icon="sliders" href="/self-hosting/configuration">
+    Verify a setting's default.
+  </Card>
+</CardGroup>
+
+{/* source: docs/self-hosting.md, apps/api/src/config.ts, apps/api/src/index.ts, deploy/upgrade.sh, packages/db/src/cli.ts, packages/providers/src/factory.ts, docs/api/channels.md */}

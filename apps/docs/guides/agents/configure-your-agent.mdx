@@ -1,0 +1,103 @@
+---
+title: Configure your agent
+description: Set your agent's persona, the messages it sends when it cannot help, and the rules for passing a conversation to your team.
+icon: sliders
+---
+
+An agent is the AI that answers your customers. This page is for admins and owners who want to shape how an agent sounds and when it steps back for a person. You edit everything on the agent's page: go to **Agents**, then click the agent.
+
+<Note>
+Only **admins and owners** can edit agents. Viewers and agents (support staff) can read the settings but the fields are locked.
+</Note>
+
+## How editing works
+
+The agent page has six tabs: **Persona**, **Knowledge**, **Escalation**, **Tools**, **Versions** and **Sandbox**. Everything you change is a **draft**. A bar at the bottom shows whether you have unsaved changes.
+
+- **Save draft** stores your changes. Customers do not see them yet.
+- **Publish** makes the saved draft live as a new version. You must save before you can publish. See [Publish and versions](/guides/agents/publish-and-versions).
+- The small undo button next to **Save draft** discards unsaved changes.
+
+If you try to close the page with unsaved changes, your browser asks you to confirm.
+
+<Steps>
+  <Step title="Create or open an agent">
+    Click **New agent**, enter a **Name** and an optional **Description** (only your team sees it), then click **Create**. Or use [Create with AI](/guides/agents/create-with-ai).
+  </Step>
+  <Step title="Write the persona">
+    On **Persona**, fill in the fields described below.
+  </Step>
+  <Step title="Set the handoff rules">
+    On **Escalation**, decide when the agent passes a conversation to your team.
+  </Step>
+  <Step title="Save and test">
+    Click **Save draft**, then open **Sandbox** to [test](/guides/agents/test-in-sandbox).
+  </Step>
+</Steps>
+
+## The Persona tab
+
+| Field | What it does |
+|---|---|
+| **Name** and **Description** | How your team recognises the agent. The AI also introduces itself by this name when a customer greets it. |
+| **Persona and instructions (system prompt)** | Role, tone, languages, goals and what to avoid. Up to 8,000 characters. The AI follows it for every answer, but it still answers facts only from your knowledge. |
+| **Greeting** | An optional first message, up to 1,000 characters. The website widget shows it as the first message of a new chat when the widget has no **Welcome message**. It is not sent on WhatsApp, Telegram or other channels. |
+| **Clarifying reply** | Sent when the agent cannot find an answer yet. It asks the customer to rephrase before handing off. |
+| **Handoff message** | Sent when the agent passes the conversation to a person. The way back to the AI is added automatically. |
+| **Fallback message** | Sent when the agent hands off after it still cannot answer from your knowledge. |
+
+The **Prompt helper** on the right adds a short block to the end of your persona. Enter a **Tone**, the **Languages** to reply in and your **Goals**, then click **Append to prompt**.
+
+<Note>
+The website widget's own **Welcome message** (set in [Website widget](/guides/channels/website-widget)) wins over the agent's **Greeting**. The greeting comes from the published version when the agent is published, otherwise from the saved draft.
+</Note>
+
+<Tip>
+Good personas say who the agent is, who it talks to, what it should achieve, what tone to use, and what it must never do ("never quote prices that are not in the knowledge", "never give legal advice"). Keep it to what you would tell a new employee on day one.
+</Tip>
+
+## The Escalation tab
+
+Escalation decides when the AI stops and a person takes over.
+
+- **Escalation keywords**: one per line. If a customer's message contains one of these words or phrases, the agent hands off immediately. Up to 50.
+- **Hand off after unanswered questions**: a number from 1 to 20 (default 3). When the agent cannot answer a question from your knowledge it first sends the clarifying reply and asks the customer to rephrase. It hands off after this many questions in a row it cannot answer. Set it to 1 to hand off on the first miss. A question it does answer resets the count.
+- **Resume keyword**: while a customer waits for a person, replying with this word (default `AI`) sends them back to the AI. Leave it empty to turn this off. See [Handoffs and human takeover](/guides/agents/handoffs-and-human-takeover).
+- **Hand off qualified leads**: when a lead has shared what they need and a budget or timeline, the agent passes the conversation to a person with a lead card.
+
+Customers who plainly ask for a person ("I want to talk to a human", "real person please") are handed off straight away, without going through the clarifying steps. Greetings and thank-yous are answered normally and never count as unanswered.
+
+### Stage rules
+
+The lower half of the tab shows the **Stage rules**. The funnel is fixed: **visitor**, **engaged**, **qualified**, **booking offered**, **booked** and **handoff requested**. You cannot change it, but you can see which actions the agent may take at each stage and which stage it can move to next. For example, **Qualify lead** is only available once the customer is engaged, and the AI is paused at **handoff requested**.
+
+## Model and temperature
+
+On the **Knowledge** tab you can optionally set a **Model** (leave empty for your workspace default) and a **Temperature** between 0 and 2. Lower values give steadier answers. The same tab lists the skills the agent can read; add and edit them in [Knowledge](/guides/agents/knowledge-skills).
+
+## Tools
+
+The **Tools** tab switches built-in tools on and off and holds your own custom tools. See [Tools overview](/guides/tools/overview).
+
+## Archiving
+
+At the bottom of the page, **Archive agent** stops the agent answering visitors. You can **Unarchive agent** later. Archived agents do not count towards your plan's agent limit.
+
+## Common problems
+
+- **Publish is greyed out.** You have unsaved changes. Click **Save draft** first.
+- **Fields are locked.** Your role is not admin or owner, or the agent is archived.
+- **The agent hands off too quickly.** Raise **Hand off after unanswered questions**, remove broad keywords, and add more [knowledge](/guides/agents/knowledge-skills).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Add knowledge" icon="book-open" href="/guides/agents/knowledge-skills">
+    What the agent answers from.
+  </Card>
+  <Card title="Handoffs and takeover" icon="hand" href="/guides/agents/handoffs-and-human-takeover">
+    What happens when it steps back.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/agents/{AgentEditor.tsx,AgentsPage.tsx}, packages/shared/src/agent.ts, packages/ai-runtime/src/{turn.ts,intent.ts,smalltalk.ts,agent-loader.ts,prompt.ts}, apps/api/src/routes/agents.ts, apps/api/src/conversations/*, apps/api/src/routes/public-widget.ts, apps/api/src/platform/limits.ts */}

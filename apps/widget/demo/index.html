@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Yulona widget demo</title>
+  <style>
+    body{font:16px/1.5 system-ui,sans-serif;max-width:640px;margin:48px auto;padding:0 16px;color:#14161f}
+    code{background:#f1f2f8;padding:2px 6px;border-radius:4px}
+    label{display:block;margin:8px 0}
+  </style>
+</head>
+<body>
+  <h1>Yulona widget demo</h1>
+  <p>This host page uses a fake backend (<code>src/mock.ts</code>). Open the launcher at the bottom right and try
+     "book a demo", "contact form", "pricing card" or "unknown".</p>
+  <label><input type="checkbox" id="pre"> Require pre-chat form (reload to apply)</label>
+  <label><input type="checkbox" id="off"> Simulate offline</label>
+  <p>Production embed (async loader snippet):</p>
+  <pre><code>&lt;script&gt;
+  window.YulonaConfig = { widgetKey: "wk_xxx", apiBase: "https://app.example.com/api" };
+  (function(){var s=document.createElement("script");s.async=true;
+  s.src="https://cdn.example.com/widget.js";document.head.appendChild(s)})();
+&lt;/script&gt;</code></pre>
+  <script type="module">
+    import { mount } from "/src/mount.tsx";
+    import { createMockFetch } from "/src/mock.ts";
+    const pre = new URLSearchParams(location.search).has("prechat");
+    const offline = { value: false };
+    document.getElementById("pre").checked = pre;
+    document.getElementById("pre").onchange = (e) => { location.search = e.target.checked ? "?prechat" : ""; };
+    document.getElementById("off").onchange = (e) => { offline.value = e.target.checked; window.dispatchEvent(new Event(e.target.checked ? "offline" : "online")); };
+    localStorage.removeItem("yulona:wk_demo"); // fresh mock backend each load
+    mount({ widgetKey: "wk_demo", open: true, apiBase: "http://mock.yulona.local/api/v1" }, createMockFetch({ preChat: pre, offline }));
+  </script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+---
+title: AI providers
+description: Connect Yulona to OpenAI, DeepSeek, Azure OpenAI, OpenRouter or a local model server, and verify that agents can answer.
+icon: sparkles
+---
+
+This page is for operators of a self-hosted install. Yulona calls one AI provider that you configure in `deploy/.env`. Any service that speaks the OpenAI chat completions API works. If you run the hosted product, provider profiles are managed in the console instead: see [Providers](/platform-admin/providers).
+
+## How it works
+
+The `api` and `worker` containers read the `AI_*` variables at start. When `AI_PROVIDER` is empty, Yulona uses `openai` if `AI_API_KEY` is set and the offline `mock` provider if it is not. The mock provider returns canned answers so the product can be explored without a key. Do not use it for customers.
+
+Each request is a `POST` to `AI_BASE_URL` plus `AI_CHAT_PATH` (default `/chat/completions`) with a JSON body in the OpenAI format. Failed calls to a provider are retried up to two times for timeouts, `429` and `5xx` responses, and each attempt times out after 30 seconds.
+
+<Note>
+No embedding provider is needed. Agent knowledge is organised as skills that the agent reads and searches with Postgres full-text search, so there is no second model, no second key and no vector dimension to match.
+</Note>
+
+## The settings
+
+| Variable | What it controls |
+|---|---|
+| `AI_PROVIDER` | `openai` (any OpenAI-compatible endpoint), `deepseek`, or `mock`. |
+| `AI_API_KEY` | The key. Required unless `AI_AUTH_SCHEME=none`. |
+| `AI_BASE_URL` | Server base URL. Empty means `https://api.openai.com/v1`. |
+| `AI_MODEL` | Default model name. Empty means `gpt-4o-mini` (`deepseek-chat` for `deepseek`). |
+| `AI_AUTH_HEADER` | Header that carries the key. Default `Authorization`. |
+| `AI_AUTH_SCHEME` | `bearer` (`Bearer <key>`, the default), `raw` (key as is), `none` (no header). |
+| `AI_EXTRA_HEADERS` | JSON object of additional headers. |
+| `AI_QUERY` | JSON object added to the query string of every request. |
+| `AI_CHAT_PATH` | Chat path. Default `/chat/completions`. |
+
+`AI_EXTRA_HEADERS` and `AI_QUERY` must be JSON objects whose values are all strings. Anything else stops the service at start with a message naming the variable. An unknown `AI_AUTH_SCHEME` or `AI_PROVIDER` also stops the start.
+
+## Worked examples
+
+Add the lines to `deploy/.env`, then run `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d`.
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```bash
+    AI_PROVIDER=openai
+    AI_API_KEY=sk-...
+    AI_MODEL=gpt-4o-mini
+    ```
+  </Tab>
+  <Tab title="DeepSeek">
+    ```bash
+    AI_PROVIDER=deepseek
+    AI_API_KEY=sk-...
+    # AI_BASE_URL defaults to https://api.deepseek.com
+    # AI_MODEL defaults to deepseek-chat
+    ```
+  </Tab>
+  <Tab title="Azure OpenAI">
+    Azure sends the key in an `api-key` header, takes the deployment name in the URL, and needs an `api-version` query parameter.
+
+    ```bash
+    AI_PROVIDER=openai
+    AI_API_KEY=<your Azure key>
+    AI_BASE_URL=https://my-resource.openai.azure.com
+    AI_CHAT_PATH=/openai/deployments/my-gpt4o/chat/completions
+    AI_AUTH_HEADER=api-key
+    AI_AUTH_SCHEME=raw
+    AI_QUERY={"api-version":"2024-06-01"}
+    AI_MODEL=my-gpt4o
+    ```
+    Use the deployment name as `AI_MODEL`.
+  </Tab>
+  <Tab title="OpenRouter">
+    ```bash
+    AI_PROVIDER=openai
+    AI_API_KEY=sk-or-...
+    AI_BASE_URL=https://openrouter.ai/api/v1
+    AI_MODEL=openai/gpt-4o-mini
+    AI_EXTRA_HEADERS={"HTTP-Referer":"https://app.example.com","X-Title":"Acme support"}
+    ```
+  </Tab>
+  <Tab title="Ollama or vLLM">
+    Run the model server where the containers can reach it. These servers do not need a key.
+
+    ```bash
+    AI_PROVIDER=openai
+    AI_AUTH_SCHEME=none
+    AI_BASE_URL=http://host.docker.internal:11434/v1   # Ollama
+    # AI_BASE_URL=http://vllm:8000/v1                  # vLLM on the same Docker network
+    AI_MODEL=llama3.1
+    ```
+    On Linux, `host.docker.internal` is not defined by default. Use the host's LAN address or run the model server as a Compose service on the `edge` network.
+  </Tab>
+</Tabs>
+
+<Warning>
+Models must support tool (function) calling. Yulona sends tool definitions with every agent turn for lead capture, handoff, calendar and your custom tools. A model that ignores or mishandles tool calls will answer but will not escalate, book or look anything up.
+</Warning>
+
+## Choose a model
+
+- **Tool calling is mandatory.** Check your provider's documentation for the model you pick.
+- **Start small.** `gpt-4o-mini` or a comparable model answers support questions well at low cost. Move up only if answers are weak.
+- **Keep latency low.** Customers wait in a live chat. A slow reasoning model makes the widget feel stuck.
+- **Context size matters for knowledge.** Small knowledge bases (under about 9,000 characters) are placed in the prompt whole; larger ones are searched by section. Models with short context windows work but see less at once.
+- **Local models** need enough GPU memory and a build that supports tools. Test with real conversations before going live.
+
+An agent can set its own `model` in its configuration. On a self-hosted install that name is sent to your provider exactly as written, with no fallback, so it must exist there. Leave the agent model empty to use `AI_MODEL`.
+
+## Test the connection
+
+<Steps>
+  <Step title="Confirm the settings loaded">
+    ```bash
+    docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs worker | head -30
+    ```
+    A bad `AI_QUERY`, `AI_EXTRA_HEADERS` or `AI_AUTH_SCHEME` shows as an error here and the worker restarts.
+  </Step>
+  <Step title="Try the provider from the host">
+    ```bash
+    curl -s "$AI_BASE_URL/chat/completions" \
+      -H "Authorization: Bearer $AI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Say hello"}]}'
+    ```
+    Adjust the header, path and query to match your settings. A JSON answer with `choices` means the provider is reachable.
+  </Step>
+  <Step title="Ask the agent">
+    In the dashboard open an agent and use the sandbox to send a message. A real answer, not a canned one, confirms the worker reached your provider. Token usage appears on the Usage page.
+  </Step>
+</Steps>
+
+## Common problems
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Replies look scripted and generic | `AI_API_KEY` empty, so the `mock` provider is active | Set `AI_API_KEY`, or `AI_AUTH_SCHEME=none` with `AI_PROVIDER=openai` for keyless servers |
+| `openai 401` in worker logs | Wrong key, or wrong header for the provider | Check `AI_AUTH_HEADER` and `AI_AUTH_SCHEME` (Azure needs `api-key` and `raw`) |
+| `openai 404` | Wrong base URL, path or model name | Check `AI_BASE_URL`, `AI_CHAT_PATH` and `AI_MODEL` |
+| `openai 429` | Provider rate limit | Raise your provider quota, or lower `WORKER_CONCURRENCY` |
+| Customers get no reply | Provider unreachable from the worker | Check egress rules and DNS from the `worker` container |
+
+More fixes are in [Troubleshooting](/self-hosting/troubleshooting).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration reference" icon="sliders" href="/self-hosting/configuration">
+    All variables in one place.
+  </Card>
+  <Card title="Operations and monitoring" icon="activity" href="/self-hosting/operations-and-monitoring">
+    Watch the worker and the job queue.
+  </Card>
+</CardGroup>
+
+{/* source: packages/providers/src/factory.ts, packages/providers/src/openai.ts, packages/ai-runtime/src/llm-resolver.ts, deploy/.env.example, docs/adr/0002-defaults.md */}

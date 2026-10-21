@@ -1,0 +1,30 @@
+# Local development dependencies only. Ports bind to 127.0.0.1. DEV CREDENTIALS - never use in production.
+#   docker compose -f deploy/docker-compose.dev.yml up -d postgres redis
+name: yulona-dev
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: yulona
+      POSTGRES_USER: yulona_owner
+      POSTGRES_PASSWORD: yulona_owner
+      APP_DB_PASSWORD: yulona_app
+    ports: ["127.0.0.1:5433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yulona_owner -d yulona"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:6380:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+volumes:
+  pgdata:

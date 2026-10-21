@@ -1,0 +1,113 @@
+---
+title: Calendar and booking
+description: Connect Google Calendar or Calendly so your agent can offer open times and book appointments, with a scheduling-link fallback.
+icon: calendar-days
+---
+
+With a calendar connected, your agent can check when you are free, offer a few times and book the one the customer picks. This page is for admins and owners who set up the calendar and switch the booking tools on.
+
+<Note>
+Connect calendars under **Settings, then Calendar**. Only **admins and owners** can connect, change or disconnect a calendar. Everyone with access can see the resulting appointments under [Bookings](/guides/workspace/bookings).
+</Note>
+
+## Before you start
+
+- A Google account whose calendar should receive appointments, or a Calendly account with an event type for the meetings you want booked.
+- **Self-hosted:** your administrator must first set up the Google and/or Calendly apps on the server. If it is not set up, the card shows "Google Calendar is not configured on this server" (or Calendly) and the Connect button is disabled. See [Channels and integrations setup](/self-hosting/channels-and-integrations-setup). On the hosted version this is already done.
+
+## Connect Google Calendar
+
+<Steps>
+  <Step title="Open Calendar settings">
+    Go to **Settings**, then **Calendar**. You see a card for **Google Calendar** and one for **Calendly**.
+  </Step>
+  <Step title="Click Connect Google Calendar">
+    You are sent to Google to choose an account and allow Yulona to read free and busy times and create events.
+  </Step>
+  <Step title="Come back to the dashboard">
+    A green message says "Google Calendar connected" and the card shows **Connected**, the account and when it was connected.
+  </Step>
+  <Step title="Check the Calendar ID">
+    The **Calendar ID** field defaults to `primary`, your main calendar. To book on a different calendar, enter its ID and click **Save**.
+  </Step>
+</Steps>
+
+With Google, the agent offers times that are free on the calendar and, if you have set [business hours](/guides/workspace/business-hours), within them.
+
+## Connect Calendly
+
+<Steps>
+  <Step title="Click Connect Calendly">
+    On the **Calendly** card, click **Connect Calendly** and allow access.
+  </Step>
+  <Step title="Choose the event type">
+    Under **Event type the AI books**, select the Calendly event type, for example "30 minute consultation". It shows the length in minutes. Meeting length and open times come from this event type, so the agent follows what you already set in Calendly. Until you choose one the hint says "Choose one so the AI can book."
+  </Step>
+</Steps>
+
+With Calendly, Calendly's own availability is the source of truth. Your Yulona business hours are not applied on top of it.
+
+## Use both: choose the default
+
+If both calendars are connected, a **Calendar used by the AI** card appears. Click **Google Calendar** or **Calendly** to choose where the agent checks availability and books. The last calendar you connected becomes the default; the chosen one shows the badge **Used by the AI**. Existing bookings stay on the calendar they were made on.
+
+## Switch the tools on
+
+Connecting a calendar does nothing until your agent has the tools on. Open the agent, go to the **Tools** tab and switch on **Check calendar availability** and **Book appointments**, then save and publish. See [Tools overview](/guides/tools/overview).
+
+## How the AI books
+
+1. When the customer wants an appointment, the agent uses **Check calendar availability** and offers two to four open times. This works while chatting, once qualified, and when offering a booking.
+2. When the customer confirms one, the agent uses **Book appointments** (available once the customer is qualified). It needs their name and, for Calendly, an email address, so it may ask for them.
+3. The booking appears under **Bookings** and the conversation moves to the booked stage.
+
+## Booking or scheduling link?
+
+Calendly only lets Yulona book on someone's behalf on its paid plans (Standard and above). On the Free plan, or when Yulona does not have an email address for the customer, the agent cannot book directly. Instead it creates a **single-use scheduling link** and gives it to the customer to pick their time.
+
+- The booking is recorded with the status **offered**, not **booked**.
+- An offered booking does not block the slot and does not move the conversation to booked. The customer completes the booking on Calendly.
+- On a paid plan with the customer's email known, Calendly books directly and the customer gets Calendly's usual confirmation.
+
+<Warning>
+Google Calendar has no such limit; it always books directly. If direct booking on Calendly matters to you, check your Calendly plan. If you are not sure whether your account supports it, book a test appointment in a real conversation and look at the status in **Bookings**.
+</Warning>
+
+## If the calendar breaks
+
+If the connection stops working the card shows **Needs attention** with the reason in red, for example that the token could not be refreshed. Click **Reconnect** and sign in again. If the calendar fails while a customer is booking, Yulona retries a few times and then hands the conversation to a person (a **System failure** handoff), records the booking as **failed** and notifies your admins. See [Handoffs](/guides/agents/handoffs-and-human-takeover).
+
+**Disconnect** deletes the stored tokens, so the AI can no longer book; existing bookings are kept.
+
+## Limits to know
+
+- Calendly availability looks up to 31 days ahead; Google up to 14 days at a time.
+- Two bookings cannot overlap on the same calendar.
+- The sandbox does not book. Test with a real conversation.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="The agent never offers times">
+    Check the tool is on and published, a calendar is connected and (Calendly) an event type is chosen.
+  </Accordion>
+  <Accordion title="I connected the wrong account">
+    Click **Disconnect** on the card, then connect again with the right account.
+  </Accordion>
+  <Accordion title="Customers get a link instead of a booking">
+    This is the Calendly fallback described above. It is expected on the Free plan.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Bookings" icon="calendar-check" href="/guides/workspace/bookings">
+    See and manage appointments.
+  </Card>
+  <Card title="Business hours" icon="clock" href="/guides/workspace/business-hours">
+    Limit when times are offered.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/bookings/{CalendarSettings.tsx,CalendarCard.tsx,BookingsPage.tsx}, packages/ops/src/{tools.ts,booking.ts,calendly.ts,calendar.ts}, docs/api/ops.md, apps/dashboard/src/pages/Shell.tsx */}

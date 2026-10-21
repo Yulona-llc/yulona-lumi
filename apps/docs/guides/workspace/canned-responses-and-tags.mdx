@@ -1,0 +1,87 @@
+---
+title: Canned responses and tags
+description: Save the replies your team types most often and insert them with a slash shortcut, and create color-coded tags to label conversations, contacts and tickets.
+icon: tags
+---
+
+This page is for agents and admins who want to answer faster and keep work organized. **Canned responses** are saved replies you insert in the Inbox. **Tags** are short colored labels.
+
+Both live under **Settings**. Open **Settings** from the left menu, then choose **Canned responses** or **Tags** (under **Customer chat**).
+
+## Canned responses
+
+**Role needed:** anyone can see the list. Agents, admins and owners can create and edit responses. Agents can edit the responses they created; admins and owners can edit any response. Only admins and owners see the delete button.
+
+### Create a canned response
+
+<Steps>
+  <Step title="Click New response">
+    Open **Settings**, **Canned responses**, then click **New response**.
+  </Step>
+  <Step title="Fill in the form">
+    Enter a **Shortcut** (lowercase letters, numbers, `-` and `_`, up to 32 characters, and it must start with a letter or number), a **Title** (up to 100 characters) and the **Content** (up to 4,000 characters). The form reminds you the shortcut is "Typed as /shortcut".
+  </Step>
+  <Step title="Save">
+    Click **Save**. Each shortcut must be unique in your workspace; a duplicate is refused.
+  </Step>
+</Steps>
+
+To change a response click the pencil next to it. To remove one, an admin clicks the bin and confirms with **Delete**, or **Keep** to cancel.
+
+### Use a canned response in the Inbox
+
+In a conversation, choose **Reply to customer**, then either:
+
+- type `/` followed by part of the shortcut or title. A list of up to six matches appears; click one; or
+- click **Canned responses** under the message box and pick from **Insert a saved reply**.
+
+The saved text replaces what is in the message box so you can edit it before sending. The slash list opens only while you have typed a slash and no spaces yet.
+
+<Tip>
+Write responses as complete, friendly replies with a placeholder you will fill in by hand, such as "Hi, thanks for reaching out. Your order is on its way, tracking: ". Edit the end before you send.
+</Tip>
+
+## Tags
+
+**Role needed:** anyone can see tags. Agents, admins and owners can create them. Only admins and owners can rename or delete them.
+
+### Create a tag
+
+Open **Settings**, **Tags** and click **New tag**. Enter a **Name** (up to 40 characters; names are unique regardless of capitals) and choose a **Color**. Click **Save**. Each tag shows how many items use it.
+
+### Rename or delete a tag
+
+Admins and owners see a pencil and a bin on each tag. Deleting asks "Remove *name* from everything?" and removes the tag from every conversation, contact and ticket it was on.
+
+### Where tags show up
+
+Tags can label conversations, contacts and tickets. Tags attached to a ticket appear next to its status in the ticket's detail panel. Attaching tags to items is currently done through the API (see [Public API](/developers/public-api)); the dashboard lets you manage the tag list itself.
+
+<Note>
+Canned responses and tags work the same on the hosted service and on self-hosted installations.
+</Note>
+
+## What you should see
+
+After saving a canned response, it appears in the list as its title with a `/shortcut` chip. After saving a tag, it appears as a colored dot and name.
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| Typing `/hello` shows nothing | No response matches. Check the shortcut spelling, and that you have not typed a space after the slash text. |
+| "Lowercase letters, numbers, - and _ only" | Remove capitals, spaces and other symbols from the shortcut. |
+| I cannot delete a response or rename a tag | Those actions need the admin role. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Inbox" icon="inbox" href="/guides/workspace/inbox">
+    Use canned responses while answering.
+  </Card>
+  <Card title="Team and roles" icon="users" href="/guides/workspace/team-and-roles">
+    See who can manage what.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/ops-settings/{CannedPage,TagsPage}.tsx; features/inbox/Composer.tsx; features/settings/SettingsLayout.tsx; docs/api/ops.md (canned responses, tags); apps/api/src/ops/{canned,tags}.ts (role checks). Gap: no dashboard UI to attach tags (only PUT /{conversations|contacts|tickets}/:id/tags) */}

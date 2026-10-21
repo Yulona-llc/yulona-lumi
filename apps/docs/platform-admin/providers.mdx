@@ -1,0 +1,107 @@
+---
+title: Providers
+description: Add and test the AI provider profiles that answer customers, choose a default, and understand the environment fallback.
+icon: plug
+---
+
+This page is for platform admins of the hosted product. A provider profile tells Yulona which OpenAI-compatible AI service to call, how to authenticate, and which models agents may use. Workspaces never see or enter provider keys: on the hosted product the provider is platform-managed. Open Credits, Providers in the console.
+
+<Note>
+Profiles apply only in `saas` mode. A self-hosted install reads its provider from environment variables only. See [AI providers](/self-hosting/ai-providers).
+</Note>
+
+## How a provider is chosen
+
+On every AI call the platform uses the default, enabled profile. If no profile exists it falls back to the server's `AI_*` environment settings. The choice is cached for 30 seconds, so a change can take up to 30 seconds to reach the worker after you click Save.
+
+If an agent asks for a model that is not in the profile's enabled models, the call uses the profile's default model instead, and the sandbox says so.
+
+## Add a provider
+
+<Steps>
+  <Step title="Click Add provider">
+    The page lists existing profiles with badges for Default, Disabled and whether a key is saved.
+  </Step>
+  <Step title="Fill the form">
+    See the field table below. Name, Default model and Base URL are required.
+  </Step>
+  <Step title="Click Create provider">
+    The key is encrypted on save. Save before testing; the test uses the saved settings.
+  </Step>
+  <Step title="Click Test connection">
+    The platform sends a tiny prompt with the saved settings and reports the model and latency, or the error.
+  </Step>
+  <Step title="Turn on Use as default provider">
+    Edit the profile and switch it on. The previous default is switched off in the same step.
+  </Step>
+</Steps>
+
+## Fields
+
+| Field | Meaning |
+|---|---|
+| Name | 1 to 80 characters, unique |
+| Default model | Model used when the agent has none, or asks for one that is not enabled |
+| Base URL | Must be `https` on the hosted product. Private and loopback addresses are refused |
+| API key | Write-only. Encrypted, never shown again. Tick Remove the saved key to clear it |
+| Auth header | Header that carries the key. Default `Authorization` |
+| Auth scheme | Bearer token, Raw key (for example `api-key`), or None |
+| Chat path | Starts with `/`. Default `/chat/completions` |
+| Enabled models | One per line (up to 100). Agents may choose only these |
+| Extra headers | Not secret: stored and shown in the clear. `host`, `content-length`, `connection`, `transfer-encoding` and `cookie` are refused |
+| Query parameters | Added to every request, for example `api-version` on Azure |
+| Enabled | A disabled profile is never used and cannot be the default |
+| Use as default provider | Exactly one profile is the default |
+
+The provider's response to the test never includes the key; it is scrubbed from error text.
+
+<Warning>
+Saving a provider with an API key answers `503` when the server has no `ENCRYPTION_KEY`, because it cannot store the credentials. See [Configuration reference](/self-hosting/configuration#secrets).
+</Warning>
+
+## Examples
+
+<Tabs>
+  <Tab title="OpenAI">
+    Base URL `https://api.openai.com/v1`, Auth scheme Bearer token, Default model `gpt-4o-mini`, Enabled models `gpt-4o-mini` and `gpt-4o`.
+  </Tab>
+  <Tab title="Azure OpenAI">
+    Base URL `https://my-resource.openai.azure.com`, Chat path `/openai/deployments/my-gpt4o/chat/completions`, Auth header `api-key`, Auth scheme Raw key, a Query parameter `api-version` = `2024-06-01`, Default model `my-gpt4o`.
+  </Tab>
+  <Tab title="OpenRouter">
+    Base URL `https://openrouter.ai/api/v1`, Auth scheme Bearer token, Default model `openai/gpt-4o-mini`.
+  </Tab>
+</Tabs>
+
+Every model you enable should have a matching row in [Model rates](/platform-admin/plans-credits-and-rates#model-rates), or it is charged at the default rate.
+
+## Edit and delete
+
+Edit changes any field; leaving API key empty keeps the saved key. Deleting a profile makes workspaces fall back to the next default profile, or to the environment settings. Every change is recorded in the platform audit log.
+
+## Test connection from the list
+
+The list also has a Test connection button per profile, so you can check one without opening it. The result shows "Connected" with model and latency, or "Connection failed" with the provider's error.
+
+## Common problems
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Connection failed, 401 | Wrong key or wrong header and scheme | Re-enter the key; match the provider's header requirements |
+| Connection failed, 404 | Wrong Base URL, Chat path or model | Compare with the provider's reference |
+| Base URL rejected | Not https, or a private address | Use a public https endpoint |
+| Changes not visible yet | 30 second cache | Wait half a minute and retry |
+| Agents ignore their chosen model | Not in Enabled models | Add it to the list |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Plans, credits and rates" icon="coins" href="/platform-admin/plans-credits-and-rates">
+    Price the models you enabled.
+  </Card>
+  <Card title="Platform admin overview" icon="shield-check" href="/platform-admin/overview">
+    Back to the console map.
+  </Card>
+</CardGroup>
+
+{/* source: docs/api/credits.md, apps/dashboard/src/features/admin/ProvidersTab.tsx, packages/ai-runtime/src/llm-resolver.ts */}

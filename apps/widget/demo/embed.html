@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Northwind Studio</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 17px/1.5 "Iowan Old Style", Palatino, Georgia, serif; color: #1c1915; background: #f6f1e8; }
+    header, main, footer { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    header { padding-top: 28px; display: flex; justify-content: space-between; align-items: baseline; }
+    .mark { font: 600 14px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; }
+    nav { font: 14px/1 ui-sans-serif, system-ui, sans-serif; }
+    nav a { color: inherit; margin-left: 16px; }
+    h1 { font-weight: 500; font-size: 48px; line-height: 1.1; letter-spacing: -0.02em; margin: 64px 0 16px; }
+    .lede { font-size: 20px; max-width: 38em; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 40px 0 72px; }
+    article { background: #fff; border: 1px solid #e4dccf; padding: 20px; }
+    article h2 { font: 600 15px/1.3 ui-sans-serif, system-ui, sans-serif; margin: 0 0 8px; }
+    article p { margin: 0; color: #4a433b; }
+    footer { padding-bottom: 48px; font: 13px/1.4 ui-sans-serif, system-ui, sans-serif; color: #6d645b; }
+    @media (max-width: 640px) { h1 { font-size: 36px; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="mark">Northwind Studio</div>
+    <nav><a href="#work">Work</a><a href="#visit">Visit</a></nav>
+  </header>
+  <main>
+    <h1>A small studio for rooms, objects, and the conversations in between.</h1>
+    <p class="lede">Ask about a project, a visit, or a timeline. The chat in the corner is the live Yulona widget.</p>
+    <div class="grid" id="work">
+      <article><h2>Harbor house</h2><p>A timber addition on a narrow lot, finished last spring.</p></article>
+      <article><h2>Reading room</h2><p>Shelves, a single table, and light from the west.</p></article>
+      <article id="visit"><h2>Studio hours</h2><p>Tuesday to Friday, by appointment.</p></article>
+      <article><h2>Start a note</h2><p>Use the chat button to talk with the assistant.</p></article>
+    </div>
+  </main>
+  <footer>Sample host page for the website widget.</footer>
+  <script>
+    window.YulonaConfig = { widgetKey: "wk_RZkEmpAFtyNVQ5popQkVbeHC", apiUrl: "http://localhost:3000" };
+    (function (d, s) {
+      var e = d.createElement("script");
+      e.src = "/widget.js"; e.async = true;
+      d.head.appendChild(e);
+    })(document);
+  </script>
+</body>
+</html>

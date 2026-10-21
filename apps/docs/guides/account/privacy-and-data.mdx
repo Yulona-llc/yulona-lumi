@@ -1,0 +1,115 @@
+---
+title: Privacy and data
+description: Export or erase a contact's data on request, set how long records are kept, review the audit log, and understand what Yulona stores and how API keys are handled.
+icon: shield
+---
+
+This page is for owners and admins who answer privacy requests from customers and who are accountable for the data in the workspace. It covers GDPR-style export and erasure requests, retention, the audit log and API keys.
+
+**Role needed:** admin or owner. These pages are hidden from agents and viewers.
+
+## What Yulona stores
+
+| Data | Where you see it |
+|---|---|
+| Contacts: name, email, phone, channel identities, custom attributes | **Contacts** |
+| Conversations and every message, including internal notes | **Inbox**, contact **Timeline** |
+| What the AI learned: stage and lead card | Inbox side panel, **Needs attention** |
+| Website chat sessions: the visitor's IP address and browser details | Included in privacy exports |
+| Tickets, bookings and transactions | Their own pages |
+| Knowledge you upload | **Knowledge** |
+| Tool and webhook delivery logs | Retained per your retention settings |
+| Who changed what | **Audit log** |
+
+Secrets are protected: passwords are stored hashed, API keys are stored hashed, and channel credentials, calendar tokens and webhook secrets are stored encrypted. You can never read them back in the dashboard.
+
+## Export a contact's data
+
+<Steps>
+  <Step title="Find the contact's ID">
+    Open the contact in **Contacts**. The ID is the 36-character code at the end of the page address.
+  </Step>
+  <Step title="Request the export">
+    Go to **Settings**, **Data and privacy**. In **Privacy requests (GDPR)** paste the ID into **Contact ID (optional for export)** and click **Export contact**. Leave it empty and click **Export workspace** to export everything.
+  </Step>
+  <Step title="Download it">
+    The request appears in the list with a progress state: **Waiting to start**, **Preparing**, **Ready** or **Failed**. When it is **Ready**, click **Download**.
+  </Step>
+</Steps>
+
+A contact export contains the contact, channel identities, all conversations with every message including internal notes, handoffs, the AI's lead data, chat sessions, and any tickets, bookings and transactions that reference them. A workspace export adds users, agents, widgets, knowledge source details, webhooks, API key details and the audit log, but never passwords or secrets.
+
+Exports expire after 7 days. Up to five requests can be in progress at once.
+
+## Erase a contact
+
+<Steps>
+  <Step title="Enter the contact ID">
+    In **Privacy requests (GDPR)** paste the **Contact ID** and click **Erase contact**.
+  </Step>
+  <Step title="Confirm">
+    The **Erase this contact?** window asks you to type `erase`. Confirm to start.
+  </Step>
+</Steps>
+
+<Warning>
+Erasure is permanent. The contact is anonymised, their channel identities are deleted, and every message in their conversations is replaced with "[erased]", including internal notes. Earlier exports of that contact are deleted. Conversation structure and timestamps stay so your reports remain consistent.
+</Warning>
+
+Tickets, bookings and transactions that mention the contact are kept, because you may need them for legal or accounting reasons. The request result lists them so you can follow up. Workspace-wide exports taken before the erasure are not changed; they expire after 7 days.
+
+## Set how long data is kept
+
+Under **Data retention** on the same page, set the number of days to keep each kind of record. Older records are deleted automatically. Leave a field empty to keep it forever.
+
+| Record | Allowed range |
+|---|---|
+| Messages | 7 to 3650 days |
+| Audit logs | 30 to 3650 days |
+| Webhook delivery logs | 1 to 365 days (30 days when you set nothing) |
+| AI tool logs | 7 to 3650 days |
+
+Click **Save retention**. Messages are only deleted from conversations whose last message is older than the limit, so live conversations keep their full history.
+
+## Review the audit log
+
+Open **Settings**, **Audit log**. It lists sensitive actions, newest first, with **When**, **Action**, **Resource**, **Actor** and **IP**. The actor shows "system" for automatic actions. Filter by **Action** (for example `agent.published`), **Resource type**, and **From** and **To** dates, then click **Apply**. **Clear** resets the filters.
+
+Click **Export CSV** or **Export JSON** to download up to 50,000 of the matching entries. Exporting is itself recorded in the log. Examples of what is logged: role changes, invitations, agent publishes, API key creation and revocation, exports and erasures, contact merges and calendar connections.
+
+## API keys
+
+API keys let your own systems talk to Yulona. Manage them under **Settings**, **API keys**.
+
+- Click **Create key**, give it a **Name** that says what will use it, choose its **Scopes** (conversations, contacts, bookings or knowledge, each read or write) and the **Requests per minute** limit.
+- The full key is shown only once, in **Copy your new key**. Copy it into a secret manager before clicking **Done**. After that only the prefix is visible.
+- To retire a key, click **Revoke**. Anything still using it stops working immediately.
+
+<Note>
+Privacy tools work the same on self-hosted installations. Operators who host exports in cloud storage should follow the [self-hosting configuration](/self-hosting/configuration) so export files are readable by both the API and the worker.
+</Note>
+
+## What you should see
+
+After a contact erasure completes, the contact's name is cleared, all their messages read "[erased]", and the request shows **Ready**. Both the request and its completion appear in the audit log.
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| "Enter the full 36-character contact ID." | Copy the whole ID from the contact page address. |
+| The request shows **Failed** | Try again. If it keeps failing, ask your platform operator to check the worker. |
+| An export has no Download button | It is not **Ready** yet, or it expired after 7 days. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Contacts" icon="address-book" href="/guides/workspace/contacts">
+    Find the contact you need.
+  </Card>
+  <Card title="Team and roles" icon="users" href="/guides/workspace/team-and-roles">
+    Limit who can reach these pages.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/integrations-ui/{DataPage,AuditExport}.tsx; features/audit/AuditPage.tsx; features/settings/ApiKeysPage.tsx; docs/api/integrations.md (GDPR, retention); docs/api/platform.md (api keys, audit); docs/api/billing-admin.md (audit export 50k rows) */}

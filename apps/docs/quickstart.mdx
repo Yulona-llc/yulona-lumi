@@ -1,0 +1,106 @@
+---
+title: Quickstart
+description: Go from a new workspace to your first real customer conversation in the Inbox, with an agent that answers from your own knowledge.
+icon: rocket
+---
+
+This guide is for the person setting Yulona up for the first time, usually a business owner or admin. In about 20 minutes you will create an agent, give it knowledge, test it, publish it, put the chat widget on your website, and watch the first conversation arrive in the Inbox.
+
+## Before you start
+
+- A work email address and a password of at least 12 characters.
+- One help page, FAQ page or PDF that describes your business. The agent can only answer from what you give it.
+- Access to edit your website, or a teammate who can paste one snippet of code into it.
+
+<Note>
+On a self-hosted installation your administrator may have turned off public sign-up. In that case you will see **Sign-up is closed**: ask your administrator to invite you instead (see [Team and roles](/guides/workspace/team-and-roles)).
+</Note>
+
+<Steps>
+  <Step title="Create your workspace">
+    Open the dashboard and click **Create a workspace** on the sign-in screen. Fill in **Your name**, **Workspace name**, **Work email** and **Password**, then click **Create workspace**. You land on the **Overview** page, which shows a **Set up your workspace** checklist with three items: create an agent, add knowledge and connect a channel.
+
+    You are the workspace **owner**, the highest role. See [Concepts](/concepts) for what roles can do.
+  </Step>
+
+  <Step title="Create your agent">
+    Go to **Agents**. You have two ways to start:
+
+    <Tabs>
+      <Tab title="With AI">
+        Click **Create with AI**. An assistant interviews you in a chat and fills in an **Agent sheet** on the side as you answer. When the sheet has a name, a persona and a greeting, **Create draft** becomes available. Click **Create draft**, or **Try it in the sandbox** to create it and open the sandbox straight away.
+      </Tab>
+      <Tab title="With the form">
+        Click **New agent**, enter a **Name** (and optionally a **Description** only your team sees), then click **Create**. Open the agent from the list and write its **Persona and instructions (system prompt)** and **Greeting** on the **Persona** tab. Click **Save draft**.
+      </Tab>
+    </Tabs>
+
+    Either way the agent is a draft. Nothing is final until you publish. If your credits are used up, the AI builder shows **AI credits are used up** and the form still works.
+  </Step>
+
+  <Step title="Add knowledge">
+    Go to **Knowledge** and click **Upload file** (PDF, DOCX, TXT, MD or HTML, up to 10 MB), **Add URL** (one page, or up to 25 pages of the same site) or **Add text**. Leave **Available to** on **All agents** for your first source.
+
+    Each source becomes a *skill* that is read and split into titled sections. Wait until the skill stops showing **Reading and splitting into sections** and shows a description. Click **Sections** to check that it was read properly.
+
+    <Warning>
+    Without knowledge the agent cannot answer and hands every question to your team. Do not skip this step.
+    </Warning>
+  </Step>
+
+  <Step title="Test in the sandbox">
+    Open your agent and go to the **Sandbox** tab. If you see a warning to save your draft first, click **Save draft**. Type a question a customer would ask in **Type a customer message**. The panel on the right, **What the agent read**, shows which sections it opened and whether the answer was **Grounded** or **Not found in knowledge**. Nothing in the sandbox is saved or sent to customers.
+
+    If the answer is wrong, improve the persona or the knowledge, save, and test again. Use the reset button to start a new test conversation.
+  </Step>
+
+  <Step title="Publish">
+    Click **Publish** at the bottom of the agent editor, optionally add a **Note**, and confirm with **Publish**. This snapshots your saved draft as version 1. The header now reads **Live · v1**. Later edits stay a draft until you publish again, and you can roll back from the **Versions** tab.
+  </Step>
+
+  <Step title="Add the website widget">
+    Go to **Settings**, then **Widget**. Click **Create widget**. Then:
+
+    1. Under **Allowed domains**, enter your website, for example `example.com` (one per line). An empty list blocks every site.
+    2. Under **Behaviour**, pick your agent in **Answering agent**. If you leave **Default agent**, the oldest agent answers.
+    3. Adjust **Branding** if you like, then click **Save changes**.
+    4. Under **Embed code**, click **Copy snippet** and paste it before the closing body tag of your site. Your web developer can do this in a minute.
+  </Step>
+
+  <Step title="See your first conversation">
+    Open your website and send a message in the chat bubble. In the dashboard open **Inbox**. The new conversation appears at the top with the badge **AI** and the channel **Website chat**. Click it to see the thread, with your message labeled **Customer** and the reply labeled **AI assistant**.
+  </Step>
+</Steps>
+
+## What you should see
+
+- The **Overview** checklist shows all three items done.
+- The Inbox shows your test conversation, and the right-hand panel shows its **Stage**, moving from **Visitor** to **Engaged** as you chat.
+- If you asked something outside your knowledge, the conversation shows **Needs attention** and appears in the **Needs attention** queue.
+
+## Common problems
+
+| Symptom | What to do |
+|---|---|
+| The chat bubble does not appear on your site | Check **Allowed domains** includes your exact site, and that **Widget enabled** is on. See [Troubleshooting](/guides/troubleshooting). |
+| Every question hands off to your team | The agent has no knowledge or the answer is not in it. Add a skill and test again. |
+| No reply at all | Your AI credits may be used up. Open **Settings**, **Usage**. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Learn the concepts" icon="lightbulb" href="/concepts">
+    Roles, stages, handoffs and drafts explained in plain words.
+  </Card>
+  <Card title="Work the Inbox" icon="inbox" href="/guides/workspace/inbox">
+    Reply, take over, assign and resolve conversations.
+  </Card>
+  <Card title="Invite your team" icon="users" href="/guides/workspace/team-and-roles">
+    Add teammates with the right role.
+  </Card>
+  <Card title="Set business hours" icon="clock" href="/guides/workspace/business-hours">
+    Decide what happens when nobody is online.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/pages/Register.tsx, features/overview/OverviewPage.tsx (checklist), features/agents/AgentsPage.tsx, features/agent-builder/AgentBuilderPage.tsx, features/agents/AgentEditor.tsx, features/agents/SandboxConsole.tsx, features/knowledge/KnowledgePage.tsx, features/widget-config/WidgetConfigPage.tsx, features/inbox/*; packages/ai-runtime/src/agent-loader.ts, runtime.ts */}

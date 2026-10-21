@@ -1,0 +1,222 @@
+---
+title: Public API
+description: Read and write contacts, conversations, messages and bookings from your own server with a scoped API key.
+icon: plug
+---
+
+The public API lets your backend sync contacts with a CRM, start conversations, post messages and manage bookings. It is for developers building server-to-server integrations. Authenticate with an API key; dashboard tokens are rejected here, and API keys are rejected on dashboard routes.
+
+## Before you start
+
+1. A workspace admin creates a key in the dashboard or with `POST /api/v1/api-keys`, choosing scopes and a per-minute rate limit. The full key is shown once. See [Authentication](/developers/authentication).
+2. Send it as `Authorization: Bearer YOUR_API_KEY` on every request.
+3. All paths below are under `https://YOUR_HOST/api/v1/public-api`.
+
+Every request is tenant-scoped by the key. Another workspace's ids return `404 not_found`. Writes are audit-logged with `actorUserId: null` and `metadata.via = "public_api"` plus the `apiKeyId`.
+
+## Scopes
+
+| Scope | Allows |
+|---|---|
+| `contacts:read` | `GET /contacts`, `GET /contacts/:id` |
+| `contacts:write` | `POST /contacts`, `PATCH /contacts/:id` |
+| `conversations:read` | `GET /conversations`, `GET /conversations/:id`, `GET /conversations/:id/messages` |
+| `conversations:write` | `POST /conversations`, `POST /conversations/:id/messages` |
+| `bookings:read` | `GET /bookings`, `GET /bookings/:id` |
+| `bookings:write` | `POST /bookings`, `POST /bookings/:id/cancel` |
+
+The `knowledge:read` and `knowledge:write` scopes can be granted but no public endpoint uses them yet. A missing scope returns `403 forbidden` ("API key lacks scope ..."). A key over its per-minute limit gets `429 rate_limited` with `Retry-After`.
+
+## Contacts
+
+### Create a contact
+
+<ParamField body="name" type="string">1 to 200 characters.</ParamField>
+<ParamField body="email" type="string">Valid email, lowercased on save.</ParamField>
+<ParamField body="phone" type="string">3 to 40 characters.</ParamField>
+<ParamField body="customAttributes" type="object">Up to 50 keys matching `[a-zA-Z][a-zA-Z0-9_]{0,39}`; values are strings (up to 500 characters), numbers, booleans or `null`.</ParamField>
+
+<CodeGroup>
+```bash curl
+curl -X POST https://YOUR_HOST/api/v1/public-api/contacts \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ada Lovelace","email":"ada@example.com","customAttributes":{"plan":"pro"}}'
+```
+
+```javascript fetch
+const res = await fetch("https://YOUR_HOST/api/v1/public-api/contacts", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${process.env.YULONA_API_KEY}`, "Content-Type": "application/json" },
+  body: JSON.stringify({ name: "Ada Lovelace", email: "ada@example.com", customAttributes: { plan: "pro" } }),
+});
+const contact = await res.json();
+```
+</CodeGroup>
+
+`201 Created`:
+
+```json
+{
+  "id": "8a1c7f52-0b43-4d0e-9a8e-2f6d3c1b7a90",
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "phone": null,
+  "customAttributes": { "plan": "pro" },
+  "identities": [],
+  "firstSeenAt": "2026-10-19T09:30:00.000Z",
+  "lastSeenAt": "2026-10-19T09:30:00.000Z",
+  "createdAt": "2026-10-19T09:30:00.000Z",
+  "updatedAt": "2026-10-19T09:30:00.000Z"
+}
+```
+
+Common error (`403`, key without `contacts:write`):
+
+```json
+{ "error": { "code": "forbidden", "message": "API key lacks scope contacts:write", "requestId": "b1f3c0de-6a1c-4a53-9d24-0a7a1d2f4e11" } }
+```
+
+### List, get and update
+
+- `GET /contacts?q=ada&limit=30&cursor=...` returns `{ items, nextCursor }`. `q` matches name, email and phone. Contacts merged into another contact are hidden.
+- `GET /contacts/:id` returns one contact, or `404`.
+- `PATCH /contacts/:id` accepts any of `name`, `email`, `phone` (`null` clears) and `customAttributes`. Attributes **merge per key**; a key set to `null` is removed. At least one field is required.
+
+```bash
+curl -X PATCH https://YOUR_HOST/api/v1/public-api/contacts/8a1c7f52-0b43-4d0e-9a8e-2f6d3c1b7a90 \
+  -H "Authorization: Bearer YOUR_API_KEY" -H "Content-Type: application/json" \
+  -d '{"phone":"+251911000000","customAttributes":{"plan":null,"tier":"gold"}}'
+```
+
+## Conversations
+
+### Create a conversation
+
+`POST /conversations` with `{ "contactId": "<uuid>", "metadata": { "orderId": "A-1001" } }`. The conversation is created on channel `widget` with `metadata.source = "api"`. `metadata` allows up to 20 keys with scalar values. Creating a conversation counts against the plan's `monthly_conversations` limit and returns `402 plan_limit_exceeded` when you are over.
+
+```bash
+curl -X POST https://YOUR_HOST/api/v1/public-api/conversations \
+  -H "Authorization: Bearer YOUR_API_KEY" -H "Content-Type: application/json" \
+  -d '{"contactId":"8a1c7f52-0b43-4d0e-9a8e-2f6d3c1b7a90"}'
+```
+
+`201 Created`:
+
+```json
+{
+  "id": "e5d9a0c4-3a77-4c7b-b1e0-5a2f9c8d1b36",
+  "channel": "widget",
+  "status": "open",
+  "handler": "ai",
+  "assignedUserId": null,
+  "agentId": null,
+  "widgetId": null,
+  "contact": { "id": "8a1c7f52-0b43-4d0e-9a8e-2f6d3c1b7a90", "name": "Ada Lovelace", "email": "ada@example.com", "phone": null },
+  "lastMessageAt": "2026-10-19T09:31:00.000Z",
+  "lastMessagePreview": null,
+  "lastCustomerMessageAt": null,
+  "createdAt": "2026-10-19T09:31:00.000Z",
+  "resolvedAt": null
+}
+```
+
+`status` is `open`, `pending_human` (needs attention) or `resolved`; `handler` is `ai` or `human`.
+
+### List and get
+
+`GET /conversations?status=open&handler=ai&contactId=<uuid>&limit=30&cursor=...` returns `{ items, nextCursor }` newest message first. `GET /conversations/:id` returns one summary.
+
+### Messages
+
+`GET /conversations/:id/messages?limit=50&before=<messageId>` returns customer-visible messages only (`contact`, `ai`, `human`; internal notes and system lines are excluded), oldest to newest within the page, plus `nextCursor` (pass it as `before` for older messages).
+
+`POST /conversations/:id/messages`:
+
+<ParamField body="text" type="string" required>1 to 4000 characters.</ParamField>
+<ParamField body="sender" type="string" default="agent">`agent` shows as a human reply (it does not take over the conversation). `contact` records a message from the customer: a resolved conversation reopens and, if the AI handles it, a reply is queued. `note` is internal and never sent to the customer.</ParamField>
+<ParamField body="clientMessageId" type="string">Optional idempotency key, 1 to 64 characters.</ParamField>
+
+<CodeGroup>
+```bash curl
+curl -X POST https://YOUR_HOST/api/v1/public-api/conversations/e5d9a0c4-3a77-4c7b-b1e0-5a2f9c8d1b36/messages \
+  -H "Authorization: Bearer YOUR_API_KEY" -H "Content-Type: application/json" \
+  -d '{"text":"Your order shipped today.","sender":"agent","clientMessageId":"order-A1001-shipped"}'
+```
+
+```javascript fetch
+const res = await fetch(
+  "https://YOUR_HOST/api/v1/public-api/conversations/e5d9a0c4-3a77-4c7b-b1e0-5a2f9c8d1b36/messages",
+  {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.YULONA_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "Your order shipped today.", sender: "agent", clientMessageId: "order-A1001-shipped" }),
+  },
+);
+// 201 on first send, 200 with the original message when clientMessageId was already used
+```
+</CodeGroup>
+
+```json
+{
+  "id": "2b6c8e11-9a0d-4f2a-8c55-7e1d0f3a9b42",
+  "conversationId": "e5d9a0c4-3a77-4c7b-b1e0-5a2f9c8d1b36",
+  "senderType": "human",
+  "senderUserId": null,
+  "senderName": null,
+  "content": "Your order shipped today.",
+  "ui": null,
+  "metadata": { "via": "public_api" },
+  "createdAt": "2026-10-19T09:32:00.000Z"
+}
+```
+
+<Note>
+A message sent with `sender: "agent"` is delivered to the customer on their channel like any human reply. Use it for transactional notices, not bulk messaging, and respect each channel's reply window (24 hours on WhatsApp, Messenger and Instagram).
+</Note>
+
+## Bookings
+
+`Booking` fields: `id`, `status` (`booked`, `cancelled`, `failed`), `title`, `startAt`, `endAt`, `timezone`, `contactId`, `conversationId`, `attendeeEmail`, `notes`, `provider` (`google`, `calendly` or `null` for a manual booking), `eventUrl`, `cancelledAt`, `createdAt`.
+
+### Create a booking
+
+<ParamField body="startAt" type="string" required>ISO 8601 datetime.</ParamField>
+<ParamField body="endAt" type="string">ISO 8601 datetime after `startAt`. Provide `endAt` or `durationMinutes`, not both. Maximum length 24 hours.</ParamField>
+<ParamField body="durationMinutes" type="integer" default="30">5 to 480.</ParamField>
+<ParamField body="title" type="string" default="Appointment">Up to 200 characters.</ParamField>
+<ParamField body="contactId" type="string">Existing contact id.</ParamField>
+<ParamField body="conversationId" type="string">Existing conversation id.</ParamField>
+<ParamField body="attendeeEmail" type="string">Used for the calendar invite.</ParamField>
+<ParamField body="timezone" type="string">IANA name, up to 64 characters.</ParamField>
+<ParamField body="notes" type="string">Up to 2000 characters.</ParamField>
+
+```bash
+curl -X POST https://YOUR_HOST/api/v1/public-api/bookings \
+  -H "Authorization: Bearer YOUR_API_KEY" -H "Content-Type: application/json" \
+  -d '{"startAt":"2026-10-22T13:00:00Z","durationMinutes":30,"title":"Demo call","contactId":"8a1c7f52-0b43-4d0e-9a8e-2f6d3c1b7a90","attendeeEmail":"ada@example.com","timezone":"Africa/Addis_Ababa"}'
+```
+
+`201 Created`:
+
+```json
+{
+  "id": "c0a8d7b1-62f4-4b9e-a3c9-1d5e7f902b14", "status": "booked", "title": "Demo call",
+  "startAt": "2026-10-22T13:00:00.000Z", "endAt": "2026-10-22T13:30:00.000Z", "timezone": "Africa/Addis_Ababa",
+  "contactId": "8a1c7f52-0b43-4d0e-9a8e-2f6d3c1b7a90", "conversationId": null, "attendeeEmail": "ada@example.com",
+  "notes": null, "provider": "google", "eventUrl": "https://calendar.google.com/calendar/event?eid=...",
+  "cancelledAt": null, "createdAt": "2026-10-19T09:33:00.000Z"
+}
+```
+
+The booking uses the workspace's connected calendar when there is one; otherwise it is stored as a manual booking. Errors: `409 conflict` when the time overlaps an existing booking, `503 service_unavailable` when the calendar is down (the booking is not created), `400 validation_error` for unknown `contactId` or `conversationId`.
+
+### List, get, cancel
+
+- `GET /bookings?status=booked&contactId=...&conversationId=...&from=<datetime>&to=<datetime>&limit=30&cursor=...` filters on `startAt` (`from` inclusive, `to` exclusive).
+- `GET /bookings/:id`.
+- `POST /bookings/:id/cancel` with optional `{ "reason": "..." }` returns the updated booking, or `409` if it is already cancelled.
+
+For limits, pagination and error handling shared by all endpoints, see [API conventions](/developers/api-conventions) and [Errors](/developers/errors). To react to new data instead of polling, subscribe to [webhooks](/developers/webhooks).
+
+{/* source: apps/api/src/integrations/public-api.ts, apps/api/src/routes/api-keys.ts, packages/shared/src/conversations.ts, packages/shared/src/ops.ts, docs/api/integrations.md */}

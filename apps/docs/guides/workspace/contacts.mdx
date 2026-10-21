@@ -1,0 +1,103 @@
+---
+title: Contacts
+description: See everyone who has chatted with you in one list, edit their details, add attributes, read their full timeline and merge duplicates.
+icon: address-book
+---
+
+The **Contacts** page is for support leads and agents who want one place to see a customer across every channel. Each contact has a single profile with their details, custom attributes and a combined timeline of every conversation.
+
+**Role needed:** anyone can view contacts. Agents, admins and owners can create, edit and merge them.
+
+## Where contacts come from
+
+You rarely add contacts by hand. A contact is created automatically when:
+
+- a visitor starts a chat on your website widget (the name, email or phone from the pre-chat form are saved on the contact);
+- a customer writes to you on WhatsApp, Messenger, Instagram, Telegram or Slack;
+- the AI captures contact details during a conversation.
+
+When the same person returns on the same channel, their conversations join the same contact. If you reuse the browser's chat, the widget links new conversations to the same contact too.
+
+## Browse and search
+
+Open **Contacts** in the left menu. The table shows **Name**, **Email**, **Phone**, **Channels** and **Last seen**. People without details appear as **Anonymous visitor**. Type in **Search name, email or phone** to filter, and click **Load more** for further results. Click a row to open the profile.
+
+To add someone yourself, click **New contact**, fill in **Name**, **Email** or **Phone** (at least one is required) and click **Create contact**.
+
+## The contact profile
+
+A profile has a header with the person's name, when they were **First seen**, and the channels they used. Three tabs sit below it.
+
+### Details
+
+Edit **Name**, **Email** and **Phone**, then click **Save changes**. Clearing a field removes it.
+
+### Attributes
+
+**Custom attributes** store things your team wants to remember, such as plan or company.
+
+<Steps>
+  <Step title="Add">
+    Type an **Attribute name** and a **Value**, then click **Add attribute**. The name must start with a letter and use only letters, digits and underscores, up to 40 characters. Values can be up to 500 characters. A contact can have up to 50 attributes.
+  </Step>
+  <Step title="Remove">
+    Click the bin next to an attribute to remove it.
+  </Step>
+</Steps>
+
+### Timeline
+
+The **Timeline** lists everything that happened with this person, newest first, across all channels: "Conversation started" entries with an **Open** link to the Inbox thread, and messages labeled **Customer**, **AI assistant**, **Teammate**, **Internal note** or **System**. Click **Load more** for older activity. Timelines include conversations of contacts that were merged into this one.
+
+## Merge duplicates
+
+If the same person appears twice, for example once from WhatsApp and once from the website, merge them.
+
+<Steps>
+  <Step title="Open the contact you want to keep">
+    Open the profile of the contact that should remain, then click **Merge duplicate**.
+  </Step>
+  <Step title="Find the duplicate">
+    In **Find the duplicate**, type at least 2 characters of its name, email or phone and pick the right person.
+  </Step>
+  <Step title="Confirm">
+    Read the summary and click **Confirm merge**. All conversations and channel identities of the duplicate move into the contact you kept, empty fields are filled in from the duplicate, and attributes are combined (the kept contact wins when both have the same attribute). The duplicate is hidden afterwards.
+  </Step>
+</Steps>
+
+<Warning>
+A merge cannot be undone.
+</Warning>
+
+### Merge suggestions
+
+Yulona watches for likely duplicates. When a new contact arrives on a channel with the same email, the same phone number (at least 7 digits) or the same name as an existing contact, it records a suggestion. Admins and owners see these at the bottom of the **Channels** page under **Possible duplicate contacts**, with the reason (same email, same phone or same name). Click **Merge** to combine them, or **Dismiss** to hide the suggestion. Agents can dismiss suggestions through the API but cannot open the Channels page.
+
+## What you should see
+
+After a merge you land on the kept contact with a "Contacts merged" message, and the duplicate no longer appears in the list.
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| I cannot find a contact | Search by email or phone as well as name. Merged-away contacts are hidden. |
+| The same customer appears twice | Merge them as shown above. |
+| Save changes is greyed out | You have not changed anything yet. |
+
+<Note>
+There is no delete button for contacts in the dashboard. To remove a person's data completely, use an erasure request in [Privacy and data](/guides/account/privacy-and-data).
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Inbox" icon="inbox" href="/guides/workspace/inbox">
+    Open any conversation from the timeline.
+  </Card>
+  <Card title="Privacy and data" icon="shield" href="/guides/account/privacy-and-data">
+    Export or erase a contact's data.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/contacts/*; features/channels/ChannelsPage.tsx (Possible duplicate contacts); apps/api/src/channels/ingest.ts (suggestMerges); apps/api/src/routes/contacts.ts (viewer read-only, merge); docs/api/conversations.md (merge semantics, attribute rules) */}

@@ -1,0 +1,58 @@
+---
+title: API reference
+description: Learn how to read the generated Yulona endpoint reference, pick the right authentication scheme and find the matching guide.
+icon: book-open
+---
+
+The pages in the **Endpoints** group are generated from Yulona's OpenAPI 3.0 spec, so every route, parameter and response shape shown there comes from the running code. This page is for developers who use that reference. Read the guides first for concepts, then use the reference to look up exact fields.
+
+## Authentication schemes
+
+Each operation lists the security scheme it needs. They map to the credentials explained in [Authentication](/developers/authentication).
+
+| Scheme | Used by | Value |
+|---|---|---|
+| `bearerAuth` | Dashboard endpoints such as `/api/v1/agents`, `/api/v1/webhooks`, `/api/v1/conversations` | The access token returned by `POST /api/v1/auth/login` |
+| `apiKeyAuth` | `/api/v1/public-api/*` and `/api/v1/key-info` | An API key (`yl_<prefix>_<secret>`) |
+| `widgetSession` | `/api/v1/public/widget/*` | The widget `sessionToken`, together with the `X-Widget-Key` header |
+| `platformAdminAuth` | `/api/v1/admin/*` | The token returned by `POST /api/v1/admin/auth/login` |
+
+To call an endpoint from the interactive playground, paste the credential into the authorization field for that scheme. Use a test workspace: the playground sends real requests, and write calls change real data.
+
+Two things the playground cannot do for you. Refresh and logout use an `HttpOnly` cookie and a CSRF header, so call them from a browser client or with a cookie jar as shown in [Authentication](/developers/authentication). The widget endpoints also check the `Origin` header against the widget's allowed domains, which a browser playground cannot set, so test them with `curl` as shown in [Widget embed](/developers/widget-embed).
+
+## Servers
+
+The spec's `servers` entry points at a local development server (`http://localhost:3000`). Replace it with your own API origin when you import the spec into Postman, Insomnia or a code generator. Every path in the spec already includes the `/api/v1` prefix.
+
+Your own deployment also serves the spec and an interactive viewer, protected by HTTP basic auth, when the operator sets `DOCS_PASSWORD`:
+
+```bash
+curl -u "docs:YOUR_DOCS_PASSWORD" https://YOUR_HOST/api/v1/openapi.json
+```
+
+The viewer is at `https://YOUR_HOST/docs`. The username is `DOCS_USERNAME` (default `docs`).
+
+## Conventions that apply everywhere
+
+The reference shows each route's own fields. These rules are shared and are not repeated on every page:
+
+- Request bodies are strict JSON: unknown fields are rejected. See [API conventions](/developers/api-conventions).
+- Failures use one error envelope with stable codes. See [Errors](/developers/errors).
+- Lists paginate with `limit` and an opaque `cursor`, and rate-limited calls return `429` with `Retry-After`.
+- The tenant always comes from your credential, never from the request.
+
+## Find the matching guide
+
+| If you are using | Read |
+|---|---|
+| `/public-api/*` | [Public API](/developers/public-api) |
+| `/webhooks`, `/webhook-deliveries` | [Webhooks](/developers/webhooks) |
+| `/public/widget/*`, `/widgets` | [Widget embed](/developers/widget-embed) |
+| Realtime sockets | [Realtime](/developers/realtime) |
+| `/tool-connections`, `/tools/test` | [Custom tools backend](/developers/custom-tools-backend) and [Tool manifest](/developers/tool-manifest) |
+| `/knowledge/*`, `/agents` | [AI runtime](/developers/ai-runtime) |
+| `/usage/*`, `/billing/*` | [Credits and usage API](/developers/credits-api) |
+| `/agent-builder/*` | [Agent builder API](/developers/agent-builder-api) |
+
+{/* source: docs/openapi.json, apps/api/src/app.ts, apps/api/src/middleware.ts, apps/api/src/config.ts */}

@@ -1,0 +1,120 @@
+---
+title: Concepts
+description: Understand the words you meet in the Yulona dashboard, from workspaces and roles to stages, handoffs, credits and drafts.
+icon: lightbulb
+---
+
+This page is for everyone who uses the Yulona dashboard: owners, admins, support leads and agents. It explains each idea in plain words and tells you where to find it on screen. A short glossary closes the page.
+
+## Workspace
+
+A **workspace** is your company's private space in Yulona. Everything lives inside it: agents, knowledge, conversations, contacts, tickets and settings. Nobody outside your workspace can see any of it. You choose its name when you sign up and can rename it under **Settings**, **Account**.
+
+## Roles
+
+Every person in a workspace has one role.
+
+| Role | In one line |
+|---|---|
+| **Owner** | Everything, including changing the plan and billing |
+| **Admin** | Manages settings, agents, channels and the team |
+| **Agent** | Works the Inbox, tickets, bookings and the Needs attention queue |
+| **Viewer** | Read only |
+
+The full table is in [Team and roles](/guides/workspace/team-and-roles).
+
+## Agents
+
+An **agent** is an AI assistant with a persona (instructions, tone, greeting), the knowledge it may use, the tools it may run, and rules for when to hand off. A workspace can have more than one agent; each website widget or channel connection picks which agent answers.
+
+## Skills and sections
+
+Knowledge is organized as **skills**. Every file, web page or block of text you add on the **Knowledge** page becomes one skill. Yulona reads it, splits it into **sections** with titles, and writes a one-line description telling the agent when to open it. At answer time the agent sees the list of skills, opens only the sections it needs, and answers from them. Clear titles and a good description help it choose well. You can edit a skill's name and description, and view its sections.
+
+## Conversations and stages
+
+A **conversation** is one thread between a customer and your agent or team, on one channel. Each conversation has a **status**: **Open**, **Needs attention** or **Resolved**. It also shows who is answering: **AI** or **Human**.
+
+For leads, each conversation moves through six **stages**, shown in the Inbox next to the contact:
+
+| Stage | Meaning |
+|---|---|
+| **Visitor** | Someone has just arrived. |
+| **Engaged** | They are chatting with the agent. |
+| **Qualified** | The agent has learned what they need (and often a budget or timeline). |
+| **Booking offered** | The agent has offered appointment times. |
+| **Booked** | An appointment is booked. |
+| **Handoff requested** | The AI stopped and a person should take over. |
+
+The moves between stages follow fixed rules, so a conversation cannot jump to just any stage. From any stage it can move to **Handoff requested**. When a teammate returns a conversation to the AI, it resumes at **Engaged**.
+
+## Handoffs and Needs attention
+
+A **handoff** is the moment the AI passes a conversation to a person. The conversation status becomes **Needs attention** and an item appears in the **Needs attention** queue. There are three kinds:
+
+- **Uncertain**: the AI could not answer from your knowledge, the customer asked for a person, or an escalation keyword was used.
+- **Lead ready**: a qualified lead is ready for a person (when **Hand off qualified leads** is on).
+- **System failure**: something broke, such as a tool or calendar call, or your AI credits ran out.
+
+While waiting for a person, customers can reply with the agent's **resume keyword** (for example "AI") to go back to the AI. See [Needs attention](/guides/workspace/needs-attention).
+
+## Channels
+
+A **channel** is where customers reach you: the website widget, WhatsApp, Messenger, Instagram, Telegram or Slack. Messaging channels are connected under **Channels** (admin role). All channels feed the same Inbox. WhatsApp, Messenger and Instagram only allow replies within 24 hours of the customer's last message.
+
+## Widget
+
+The **widget** is the chat bubble you add to your website with one snippet. You set its look, welcome message, pre-chat form and **Allowed domains** under **Settings**, **Widget**. The widget is not a "channel" in the Channels list because it needs no setup beyond this.
+
+## Tools
+
+**Tools** are actions the agent can take: qualify a lead, collect contact details, hand off to a person, check calendar availability and book appointments. You switch built-in tools on or off per agent, and you can add your own tools that call your systems through **Connections**.
+
+## Credits
+
+On the hosted service, AI usage is metered in **credits**. Your plan includes a monthly allowance that resets each month, and you can buy top-ups that never expire. At 80% used you get a warning; at 100% the AI pauses and conversations wait in Needs attention. See [Usage and credits](/guides/account/usage-and-credits).
+
+<Note>
+Self-hosted installations use their own AI provider account. Credits are never charged there, and the **Usage** page shows tokens and requests only.
+</Note>
+
+## Drafts and published
+
+Every agent has a **draft** you edit and a **published** version customers talk to. **Save draft** keeps your edits. **Publish** snapshots the draft as a new numbered version, such as **Live · v3**. Every publish is kept, and you can roll back to any earlier version from the **Versions** tab. The **Sandbox** always runs your last saved draft, so you can test before publishing.
+
+<Warning>
+Publish before you share your widget link or snippet. If an agent has never been published, the system falls back to its draft settings when it answers a live conversation, so unfinished edits can reach customers.
+</Warning>
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| Workspace | Your company's private space |
+| Agent | The AI assistant, with persona, knowledge and tools |
+| Skill | One knowledge source (file, page or text) |
+| Section | A titled piece of a skill the agent can read |
+| Conversation | One thread with a customer on one channel |
+| Handoff | The AI passing a conversation to a person |
+| Needs attention | The queue and status for conversations waiting for a person |
+| Resume keyword | A word customers send to return to the AI |
+| Channel | Where customers reach you (widget, WhatsApp, and so on) |
+| Widget | The website chat bubble |
+| Tool | An action an agent can take |
+| Connection | Saved access to one of your systems, used by tools |
+| Credits | The unit of AI usage on the hosted service |
+| Sandbox | A safe place to test your draft agent |
+| Draft / published | The version you edit / the version customers see |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Set up your first agent end to end.
+  </Card>
+  <Card title="Inbox" icon="inbox" href="/guides/workspace/inbox">
+    See how conversations look and how to act on them.
+  </Card>
+</CardGroup>
+
+{/* source: packages/shared/src/stage.ts, packages/shared/src/roles.ts, apps/dashboard/src/features/inbox/*, attention/AttentionPage.tsx, agents/AgentEditor.tsx, knowledge/KnowledgePage.tsx, widget-config/WidgetConfigPage.tsx, usage/*, channels/api.ts; packages/ai-runtime/src/{turn,runtime,agent-loader}.ts; docs/api/{conversations,ops,credits,channels}.md */}

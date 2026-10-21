@@ -1,0 +1,105 @@
+---
+title: Plans, credits and rates
+description: Set plan allowances, model rates and credit packs, grant credits to a workspace, and understand what happens when credits run out.
+icon: coins
+---
+
+This page is for platform admins of the hosted product. Credits are how Yulona meters AI usage: every model call costs credits based on its tokens, each plan includes a monthly allowance, and customers can buy more. Open the Credits section of the console to manage it all.
+
+<Note>
+Credits apply only when `DEPLOYMENT_MODE=saas`. On a self-hosted install usage is still recorded for the Usage page, but nothing is charged or blocked. See [Self-hosting overview](/self-hosting/overview).
+</Note>
+
+## How credits work
+
+- **Micro-credits.** The API and database store credits as whole numbers of micro-credits: 1 credit = 1,000,000 micro-credits. The console shows credits.
+- **Monthly period.** Periods are UTC calendar months. On the first of the month each workspace's allowance resets.
+- **Two pools.** A workspace has the plan's monthly allowance plus a top-up balance. Each call spends the allowance first, then the top-up balance. Unused allowance does not carry over. Top-up balance carries over.
+- **Upgrades are immediate.** The allowance is read from the workspace's current plan on every call.
+
+## Plan allowances
+
+Credits, Plan allowances. Each plan has a Credits per month field and an Unlimited checkbox. Click Save for that plan. The value is a whole number of credits.
+
+The seeded placeholder values are 50 for `free`, 1,500 for `pro`, and unlimited for `enterprise` and `self_hosted`. Change them to match your pricing.
+
+Plans also carry other limits, such as seats, agents, widgets, API keys, monthly conversations, storage and monthly tokens. The console edits only the credit allowance; the other limits are set through the platform admin API with `PUT /api/v1/admin/plans/:key/limits/:metric` and a body of `{ "limit": 25 }` (`null` means unlimited).
+
+## Model rates
+
+Credits, Model rates. A rate says how many credits one thousand tokens cost, separately for input (the prompt) and output (the model's answer).
+
+| Field | Meaning |
+|---|---|
+| Model | The model name sent to the provider |
+| Input per 1k | Credits per 1,000 prompt tokens |
+| Output per 1k | Credits per 1,000 completion tokens |
+| Enabled | Switch a row on or off |
+
+The Default (*) row applies to any model without its own row. It cannot be deleted, and ships as 0.25 credits input and 1 credit output per 1,000 tokens. Click Edit to change a row, Add rate to create a model-specific row, and the bin to delete one (the model then falls back to the default).
+
+### Worked cost example
+
+One conversation turn sends 3,000 prompt tokens and receives 500 completion tokens, on a model using the default row.
+
+| Part | Calculation | Micro-credits |
+|---|---|---|
+| Input | 3,000 tokens / 1,000 x 250,000 | 750,000 |
+| Output | 500 tokens / 1,000 x 1,000,000 | 500,000 |
+| Total | rounded up to a whole micro-credit | 1,250,000 |
+
+That turn costs 1.25 credits. On the seeded Free plan allowance of 50 credits, a workspace gets about 40 turns of that size in a month. The formula is `ceil((promptTokens x inputMicroPer1k + completionTokens x outputMicroPer1k) / 1000)`.
+
+## Credit packs
+
+Credits, Credit packs. Packs are what customers can buy on the Usage page when they need more. Each has a Name, Credits (whole credits, 1 to 10,000,000), Price (USD), a Sort order and an Active switch.
+
+Seeded placeholder packs are Starter (500 credits, 9.00 USD), Growth (2,500 credits, 39.00 USD) and Scale (10,000 credits, 129.00 USD). Replace them with your real prices. Deactivate removes a pack from sale but keeps it for purchase history; a pack that was never bought is removed entirely. Customers cannot top up until at least one pack is active.
+
+Payment runs through Stripe Checkout. When Stripe confirms the payment, the pack's credits are added to the workspace's top-up balance exactly once, even if the event is delivered twice.
+
+## Grant or deduct credits
+
+<Steps>
+  <Step title="Open the tenant">
+    Go to Tenants and open the workspace. The AI credits card shows Remaining, Used this month, Top-up balance and Status.
+  </Step>
+  <Step title="Click Adjust credits">
+    Enter a number of credits. Use a negative number to deduct. Up to 6 decimals are allowed and zero is not.
+  </Step>
+  <Step title="Give a reason">
+    Write 3 to 300 characters. The reason is saved in the platform audit log. Owners and admins of the workspace receive a notification when credits are granted.
+  </Step>
+</Steps>
+
+Adjustments change the top-up balance, so they carry over across months.
+
+## When credits run out
+
+| Used share of the pool | What happens |
+|---|---|
+| 80% or more | One `credits.warning_80` notification per period to the workspace's owners and admins |
+| 100% (nothing remaining) | One `credits.exhausted` notification per period. The AI stops calling the model |
+
+When a workspace is exhausted, each new customer message skips the model and creates a needs-attention handoff with the reason `ai_credits_exhausted`. The customer sees a notice, which is your `CREDITS_EXHAUSTED_MESSAGE` setting or, when empty, "Our assistant is temporarily unavailable. A member of our team will get back to you shortly." In the dashboard sandbox the same condition returns `402 credits_exhausted`. Buying a pack or receiving a grant restores service immediately.
+
+A call already in flight can finish and push the balance slightly below zero. The next top-up pays that off.
+
+## Common problems
+
+- A customer says the assistant stopped: check the workspace's AI credits card. Status `exhausted` explains it.
+- A model costs more than expected: add a Model rate row for its exact name, since a typo falls back to the default row.
+- Packs do not appear for customers: they must be Active, and Stripe must be configured for one-time payments.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Providers" icon="plug" href="/platform-admin/providers">
+    Choose which provider answers customers.
+  </Card>
+  <Card title="Usage and credits (customer view)" icon="chart-line" href="/guides/account/usage-and-credits">
+    What workspace owners see.
+  </Card>
+</CardGroup>
+
+{/* source: docs/api/credits.md, apps/dashboard/src/features/admin/{CreditsAdmin,RatesTab,PlansTab,PacksTab,GrantCredits}.tsx, packages/ai-runtime/src/runtime.ts, packages/ai-runtime/src/turn.ts, apps/worker/src/jobs/index.ts */}

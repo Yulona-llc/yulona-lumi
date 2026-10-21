@@ -1,0 +1,189 @@
+---
+title: Authentication
+description: Authenticate dashboard sessions, API keys, widget sessions and platform-admin tokens, and know which credential works where.
+icon: key
+---
+
+Yulona has four separate credential types. This page is for developers building a custom dashboard client, a server integration, or a widget client. Pick the credential for your use case; each one is rejected by the other surfaces.
+
+| Credential | Used for | Lifetime | Sent as |
+|---|---|---|---|
+| Dashboard session | `/api/v1/*` dashboard endpoints | Access token 15 minutes; refresh cookie 30 days by default | `Authorization: Bearer <accessToken>` |
+| API key | `/api/v1/public-api/*` and `/api/v1/key-info` | Until revoked or `expiresAt` | `Authorization: Bearer yl_...` |
+| Widget session token | `/api/v1/public/widget/*` | 24 hours by default | `X-Widget-Key` plus `Authorization: Bearer <sessionToken>` |
+| Platform-admin token | `/api/v1/admin/*` | 15 minutes, no refresh | `Authorization: Bearer <accessToken>` |
+
+The tenant is always derived from the credential. Never send a `tenantId` in a body, path or query.
+
+## Dashboard sessions
+
+### Sign in
+
+<CodeGroup>
+```bash curl
+curl -i -c cookies.txt -X POST https://YOUR_HOST/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"owner@example.com","password":"YOUR_PASSWORD"}'
+```
+
+```javascript fetch
+const res = await fetch("https://YOUR_HOST/api/v1/auth/login", {
+  method: "POST",
+  credentials: "include", // lets the browser store the yl_rt and yl_csrf cookies
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: "owner@example.com", password: "YOUR_PASSWORD" }),
+});
+const session = await res.json();
+```
+</CodeGroup>
+
+Success (`200`):
+
+```json
+{
+  "accessToken": "eyJhbGciOi...",
+  "expiresIn": 900,
+  "user": { "id": "0b6e...", "email": "owner@example.com", "name": "Owner", "role": "owner" },
+  "tenant": { "id": "7c1d...", "name": "Acme" }
+}
+```
+
+Every failure (unknown email, wrong password, disabled user, suspended workspace, locked account) returns the same `401 invalid_credentials`, so responses do not reveal which accounts exist. Passwords are 12 to 128 characters.
+
+The access token is an HS256 JWT with claims `sub` (user id), `tid` (tenant id), `role`, `iat`, `exp`, `jti`. Keep it in memory, not in storage.
+
+### Refresh cookie, rotation and reuse detection
+
+Login also sets two cookies and echoes the CSRF value in an `X-CSRF-Token` response header:
+
+| Cookie | Flags | Purpose |
+|---|---|---|
+| `yl_rt` | `HttpOnly`, path `/api/v1/auth`, `Secure` in production, `SameSite=Strict` | Opaque 256-bit refresh token. Only a SHA-256 hash is stored. |
+| `yl_csrf` | Readable by JavaScript, path `/` | CSRF token for the double-submit check. |
+
+When the dashboard is served from a different site than the API, set `CROSS_SITE_COOKIES=true` on the server. Cookies become `SameSite=None; Secure`, and a cross-site client reads the CSRF value from the `X-CSRF-Token` response header or from `GET /api/v1/auth/csrf`, because it cannot read the API's cookie.
+
+Refresh when the access token expires (or on a `401`):
+
+<CodeGroup>
+```bash curl
+CSRF=$(awk '$6=="yl_csrf"{print $7}' cookies.txt)
+curl -b cookies.txt -c cookies.txt -X POST https://YOUR_HOST/api/v1/auth/refresh \
+  -H "X-CSRF-Token: $CSRF"
+```
+
+```javascript fetch
+const csrf = document.cookie.match(/(?:^|; )yl_csrf=([^;]+)/)?.[1];
+const res = await fetch("https://YOUR_HOST/api/v1/auth/refresh", {
+  method: "POST",
+  credentials: "include",
+  headers: { "X-CSRF-Token": csrf },
+});
+```
+</CodeGroup>
+
+The response has the same shape as login. Each refresh **rotates** the token: the old value is retired and a new `yl_rt` is set. If a retired token is presented again, the server treats it as theft: it revokes the whole token family, records `auth.refresh_reuse_detected` in the audit log, clears the cookies and returns `401 invalid_refresh_token`. The user must sign in again.
+
+`POST /api/v1/auth/logout` (also CSRF-protected) revokes the family and clears the cookies.
+
+<Warning>
+Do not let two tabs refresh concurrently with the same cookie. The second request carries a retired token and looks like reuse. Serialize refreshes in one place, for example a shared promise or a `BroadcastChannel` leader.
+</Warning>
+
+### CSRF double submit
+
+`POST /auth/refresh` and `POST /auth/logout` require the `X-CSRF-Token` header to equal the `yl_csrf` cookie (constant-time compare). A mismatch returns `403 csrf_failed`. Endpoints authenticated with a Bearer token are not cookie-based and do not need the header. `GET /api/v1/auth/csrf` returns `{ "csrfToken": "..." }` and sets the cookie if you have none.
+
+### Rate limits on auth endpoints
+
+| Endpoint | Limit |
+|---|---|
+| `POST /auth/login` | 40 per 15 minutes per IP, and 8 per 15 minutes per IP and email |
+| `POST /auth/refresh` | 60 per minute per IP |
+| `POST /auth/register` | 10 per hour per IP (and only when `ALLOW_PUBLIC_SIGNUP=true`; otherwise `403 signup_disabled`) |
+
+### Roles
+
+`owner > admin > agent > viewer`. Endpoints state the minimum role; a lower role gets `403 forbidden`. A suspended or deleted workspace invalidates access tokens immediately (`401 unauthorized`, "Workspace is not active"), not after the 15-minute expiry.
+
+## API keys
+
+Workspace admins create keys with `POST /api/v1/api-keys` (minimum role `admin`, plan limit `api_keys`).
+
+<CodeGroup>
+```bash curl
+curl -X POST https://YOUR_HOST/api/v1/api-keys \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"CRM sync","scopes":["contacts:read","contacts:write"],"rateLimitPerMinute":120}'
+```
+
+```javascript fetch
+const res = await fetch("https://YOUR_HOST/api/v1/api-keys", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+  body: JSON.stringify({ name: "CRM sync", scopes: ["contacts:read", "contacts:write"], rateLimitPerMinute: 120 }),
+});
+const created = await res.json();
+```
+</CodeGroup>
+
+```json
+{
+  "id": "5f0c...", "name": "CRM sync", "prefix": "yl_3fa91c2e",
+  "scopes": ["contacts:read", "contacts:write"], "rateLimitPerMinute": 120,
+  "expiresAt": null, "revokedAt": null, "lastUsedAt": null,
+  "createdAt": "2026-10-19T09:00:00.000Z", "createdBy": "0b6e...",
+  "key": "yl_3fa91c2e_Zk2m...43-char-secret"
+}
+```
+
+<ParamField body="name" type="string" required>1 to 100 characters.</ParamField>
+<ParamField body="scopes" type="string[]" default="[]">Any of `conversations:read`, `conversations:write`, `contacts:read`, `contacts:write`, `bookings:read`, `bookings:write`, `knowledge:read`, `knowledge:write`. The `knowledge:*` scopes exist but no public endpoint uses them yet.</ParamField>
+<ParamField body="rateLimitPerMinute" type="integer" default="60">1 to 100000. Enforced per key over a sliding 60-second window.</ParamField>
+<ParamField body="expiresAt" type="string">ISO 8601 timestamp in the future.</ParamField>
+
+<Warning>
+`key` is returned only in this response. Afterwards only the `prefix` is shown (in the dashboard and in `GET /api/v1/api-keys`); the server stores a SHA-256 hash. Store the key in a secrets manager. If it leaks, revoke it with `DELETE /api/v1/api-keys/:id` and create a new one.
+</Warning>
+
+Use the key as a Bearer token on `/api/v1/public-api/*`. API keys are rejected on dashboard routes, and dashboard JWTs are rejected on the public API.
+
+```bash
+curl https://YOUR_HOST/api/v1/key-info -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```json
+{ "id": "5f0c...", "name": "CRM sync", "scopes": ["contacts:read", "contacts:write"], "tenantId": "7c1d..." }
+```
+
+| Status | Code | Cause |
+|---|---|---|
+| 401 | `unauthorized` | Missing, malformed, unknown, revoked or expired key |
+| 403 | `forbidden` | The key lacks the endpoint's scope (message: `API key lacks scope contacts:write`) |
+| 429 | `rate_limited` | Over the key's per-minute limit; honor `Retry-After` |
+
+## Widget session tokens
+
+Browsers talking to the public widget API send the widget's public key plus a session token. The flow is described in [Widget embed](/developers/widget-embed). In short:
+
+- `X-Widget-Key: wk_...` and an `Origin` that matches the widget's allowed domains are required on every request.
+- `POST /api/v1/public/widget/conversations` returns `sessionToken` (HS256 JWT, `aud` `yulona:widget`, claims `sub`, `tid`, `wid`, `cid`, `ctid`) valid for `WIDGET_SESSION_TTL_HOURS` (default 24).
+- `POST /api/v1/public/widget/session/refresh` issues a new token and extends the session. Sessions are revocable server-side.
+- Widget tokens are not accepted by dashboard endpoints, and dashboard tokens are not accepted by widget endpoints.
+
+## Platform-admin realm
+
+Platform operators sign in at `POST /api/v1/admin/auth/login` with `{ "email", "password" }` and receive `{ accessToken, expiresIn: 900, admin }`. There is no refresh token; sign in again. The token is signed with a different key than tenant tokens, so neither realm validates the other, and platform admins have no route into tenant data. The admin routes exist only when `SUPER_ADMIN_ENABLED` is true (on by default in `saas`, off in `selfhosted`).
+
+## Impersonation tokens
+
+A platform admin can open a support session with `POST /api/v1/admin/tenants/:id/impersonate` and a `reason` of 5 to 500 characters. The result is a normal 15-minute access token with two extra claims, `imp` (admin id) and `ims` (session id), and its role capped at `admin`. As an integrator, you will see these effects:
+
+- The session is checked on every request. Ending it (`POST /api/v1/admin/impersonation/:sessionId/end`) invalidates the token at once.
+- It cannot be exchanged for a refresh token, cannot change roles or ownership, and cannot manage billing.
+- `GET /api/v1/me` returns `impersonation: { active: true, impersonatorId, sessionId }`, and every write made during the session is recorded in your audit log with `metadata.impersonatorId`.
+
+Next, see [Multi-tenancy and security](/developers/multi-tenancy-and-security) and [Errors](/developers/errors).
+
+{/* source: apps/api/src/routes/auth.ts, apps/api/src/routes/api-keys.ts, apps/api/src/routes/tenants.ts, apps/api/src/middleware.ts, apps/api/src/security.ts, apps/api/src/config.ts, apps/api/src/impersonation-guard.ts, apps/api/src/conversations/widget-session.ts, packages/shared/src/auth.ts, docs/api/platform.md, docs/api/billing-admin.md */}

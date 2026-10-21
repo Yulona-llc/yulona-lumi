@@ -1,0 +1,87 @@
+---
+title: Self-hosting overview
+description: Understand what you run when you self-host Yulona, and how it differs from the hosted product, before you install.
+icon: server
+---
+
+This section is for operators who run Yulona on their own server. You get the same workspace, agents, inbox, channels and widget as the hosted product, running on your infrastructure with your data in your own database. If you are a platform admin of the hosted product, see [Platform admin overview](/platform-admin/overview) instead.
+
+## What you get
+
+A self-hosted install is one Docker Compose stack, started with one script. It contains:
+
+| Component | Image | What it does |
+|---|---|---|
+| `caddy` | `caddy:2-alpine` | The only service that publishes ports (80, 443). Terminates TLS (automatic Let's Encrypt for a real domain) and routes traffic. |
+| `dashboard` | `yulona/dashboard:local` (built from this repo) | Static single-page app served by nginx. It also serves the embeddable widget bundle (`/widget.js`). |
+| `api` | `yulona/api:local` | The HTTP and WebSocket API. It starts only after the `migrate` service has finished successfully. |
+| `worker` | same image as `api` | Runs background jobs: AI replies, channel delivery, webhooks, usage rollups, retention and maintenance. |
+| `postgres` | `pgvector/pgvector:pg16` | The only database. It also holds the job queue. |
+| `redis` | `redis:7-alpine` | Rate limiting and realtime fan-out. Requires a password. |
+| `migrate` | same image as `api` | One-shot service that applies SQL migrations with the database owner role. |
+| `create-tenant` | same image as `api` | One-shot admin command (profile `tools`) that creates a workspace and its first admin. |
+
+Two optional services are off by default: `minio` (S3-compatible object storage) and `clamav` (virus scanning of uploads). See [Requirements and install](/self-hosting/requirements-and-install#optional-services).
+
+<Note>
+Postgres and Redis sit on an internal Docker network with no internet access and no published ports. Only `caddy` is reachable from outside.
+</Note>
+
+## Hosted versus self-hosted
+
+Behaviour is switched by the `DEPLOYMENT_MODE` variable. The bundled compose file defaults it to `selfhosted`. The API itself defaults to `saas` when the variable is missing, so always run the stack through `deploy/docker-compose.yml`.
+
+| | Self-hosted (`selfhosted`) | Hosted product (`saas`) |
+|---|---|---|
+| Workspaces | Exactly one, created by `deploy/setup.sh` | Many |
+| Public signup (`/auth/register`) | Always closed, even if `ALLOW_PUBLIC_SIGNUP=true` | Open only when `ALLOW_PUBLIC_SIGNUP=true` |
+| Billing routes and Stripe webhook | Not mounted | Mounted |
+| Plan | `self_hosted`, no limits | `free`, `pro`, and others |
+| AI credits | Usage is recorded but never charged and never blocks replies | Charged, with 80% and 100% warnings and a gate at zero |
+| Platform admin console (`/admin`) | Off, unless `SUPER_ADMIN_ENABLED=true` | On, unless `SUPER_ADMIN_ENABLED=false` |
+| AI provider | Your own provider and key, set in `deploy/.env` | Platform-managed provider profiles, with the environment as fallback |
+| Licence | Optional offline licence, verified locally | Not used |
+
+<Warning>
+Do not set `DEPLOYMENT_MODE=saas` on a self-hosted install to "unlock" features. It turns on credit charging against a platform provider you have not configured, and mounts billing routes that expect Stripe.
+</Warning>
+
+### Your AI provider
+
+Self-hosted installs call an AI provider with the key you set in `deploy/.env`. Any OpenAI-compatible service works: OpenAI, DeepSeek, Azure OpenAI, OpenRouter, or a local server such as vLLM or Ollama. With no key, the offline `mock` provider answers with canned text so you can explore the product, but it is for demos only. Details are in [AI providers](/self-hosting/ai-providers).
+
+Agent knowledge needs no embedding model and no second API key. Each source becomes a skill (a description plus titled sections) that the agent reads and searches in Postgres.
+
+### The platform admin console
+
+Self-hosted mode is single-tenant, so the console is off by default. If you want it, for example to inspect usage or change feature flags, set `SUPER_ADMIN_ENABLED=true`, restart the `api` service, and create an admin as described in [Platform admin overview](/platform-admin/overview). Billing-related sections stay unavailable because billing routes are not mounted.
+
+### The licence
+
+A licence is optional. It is an Ed25519-signed token that Yulona verifies offline. Nothing is sent to any server. Today the API verifies it at boot and logs the result; an invalid or missing licence never blocks access to your data. See [Licensing](/self-hosting/licensing).
+
+## Your responsibilities
+
+- Keep `deploy/.env` private and backed up. Losing `ENCRYPTION_KEY` makes stored channel and calendar credentials unreadable.
+- Run [backups](/self-hosting/upgrade-backup-restore) on a schedule and copy them off the host.
+- Apply [upgrades](/self-hosting/upgrade-backup-restore#upgrade) and review [security hardening](/self-hosting/security-hardening).
+- Provide a domain name, open ports 80 and 443, and a public HTTPS URL if you connect webhook-based channels such as WhatsApp.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Requirements and install" icon="terminal" href="/self-hosting/requirements-and-install">
+    Hardware, Docker, and the one-command setup.
+  </Card>
+  <Card title="Configuration reference" icon="sliders" href="/self-hosting/configuration">
+    Every environment variable, with defaults.
+  </Card>
+  <Card title="AI providers" icon="sparkles" href="/self-hosting/ai-providers">
+    Connect your own model.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/self-hosting/troubleshooting">
+    Symptom, cause and fix.
+  </Card>
+</CardGroup>
+
+{/* source: docs/self-hosting.md, deploy/docker-compose.yml, apps/api/src/config.ts, packages/license/src/index.ts, apps/api/src/index.ts */}

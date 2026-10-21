@@ -1,0 +1,96 @@
+---
+title: Needs attention
+description: Work the queue of conversations where the AI stopped and a person should step in, by claiming, assigning and resolving handoffs.
+icon: triangle-exclamation
+---
+
+The **Needs attention** page is for support leads and agents. It lists every conversation where the AI handed off to a person, longest waiting first, so nobody is left waiting. This guide shows how to read the queue, claim an item, and resolve it.
+
+**Role needed:** agent, admin or owner. Only admins and owners can assign items to someone else. Viewers do not see this page.
+
+## Why items appear here
+
+The AI creates a handoff when it cannot or should not continue. Each item has one of three types:
+
+| Type | When it happens |
+|---|---|
+| **Uncertain** | The AI could not answer from your knowledge, the customer asked for a person, or a message contained one of the agent's escalation keywords. |
+| **Lead ready** | A qualified lead is ready for a person. This happens when **Hand off qualified leads** is on for the agent. |
+| **System failure** | Something broke: a tool or calendar call failed, the AI provider was unavailable, or your AI credits ran out. |
+
+The conversation's status becomes **Needs attention** and the AI stops replying until a person acts or the customer returns to the AI.
+
+## Read the queue
+
+Open **Needs attention** in the left menu. The three tiles at the top show how many unresolved items of each type exist. Click a tile to filter by that type (click again to remove the filter).
+
+Use the tabs to change what you see:
+
+| Tab | Shows |
+|---|---|
+| **Active** | Waiting and claimed items (the default) |
+| **Waiting** | Items nobody has claimed yet |
+| **Claimed** | Items a teammate is handling |
+| **Resolved** | Finished items |
+
+Switch on **Assigned to me** to see only your items. The page refreshes by itself every 15 seconds.
+
+Each card shows the type, whether it came **Out of hours**, its state (**Waiting**, **Claimed** or **Resolved**), the customer and channel, and the reason. If the AI wrote a summary, you see it too. For lead handoffs a **lead card** shows the name, company, email, phone, need, budget, timeline and score the AI captured. A grey, amber or red timer shows how long the item has waited: under 10 minutes, 10 to 30 minutes, and over 30 minutes.
+
+## Handle an item
+
+<Steps>
+  <Step title="Claim it">
+    Click **Claim**. The conversation is assigned to you, the AI stays off, and the Inbox opens on that conversation so you can reply right away.
+    If a teammate claimed it first, you see "Someone else claimed this first." Admins and owners can click **Take over anyway**.
+  </Step>
+  <Step title="Help the customer">
+    Reply in the [Inbox](/guides/workspace/inbox). Use an internal note to pass context to colleagues.
+  </Step>
+  <Step title="Resolve it">
+    Back on Needs attention, click **Resolve**. In **Resolve handoff**, add an optional **Resolution note**. Switch on **Hand the conversation back to the AI** if the AI should answer the customer's next message. If you leave it off, your team keeps replying.
+  </Step>
+</Steps>
+
+Other buttons on a card:
+
+- **Release** (the person who claimed it, or an admin) puts the item back in the waiting queue.
+- **Assign** (admins and owners) hands the item to an active teammate, who is notified.
+- **Open conversation** jumps to the Inbox thread without claiming.
+
+## Customers can come back to the AI
+
+While a customer waits for a person, the handoff message tells them they can reply with the agent's **resume keyword** (by default "AI") to carry on with the AI instead. If they do, and no teammate has replied yet, the conversation returns to the AI and the queue item clears by itself. You set the keyword on the agent's **Escalation** tab.
+
+## Out of hours and automatic assignment
+
+If a handoff arrives outside your [business hours](/guides/workspace/business-hours), the card shows **Out of hours**. Depending on your setting, the AI also tells the customer when you will be back. If assignment is set to **Least busy online agent**, the item is suggested to the online teammate with the fewest open conversations, and that teammate is notified. Otherwise every owner, admin and agent is notified that a handoff was requested.
+
+<Note>
+On the hosted service, a **System failure** with the reason "ai_credits_exhausted" means your credits ran out. Customers get a short notice and wait here until credits are added. See [Usage and credits](/guides/account/usage-and-credits). Self-hosted installations never hit this.
+</Note>
+
+## What you should see
+
+After **Claim**, the card state changes to **Claimed** and the count on its tile goes down. After **Resolve**, the item moves to the **Resolved** tab with the time it took, for example "Resolved in 12 min".
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| Everything lands here | Check the agent's knowledge and **Escalation** settings. See [Troubleshooting](/guides/troubleshooting). |
+| I cannot see the page | Your role is **Viewer**. Ask an admin to change it. |
+| I cannot assign | Assigning needs the admin or owner role. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Inbox" icon="inbox" href="/guides/workspace/inbox">
+    Reply to the customer once you have claimed the item.
+  </Card>
+  <Card title="Business hours" icon="clock" href="/guides/workspace/business-hours">
+    Decide how out-of-hours handoffs behave.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/attention/AttentionPage.tsx; docs/api/ops.md (Needs Attention queue, routing); apps/api/src/ops/handoffs.ts (roles); packages/ai-runtime/src/{turn,runtime}.ts (handoff types, resume keyword, credits gate); packages/db/migrations/0400_ops.sql (notifications, routing) */}

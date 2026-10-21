@@ -1,0 +1,132 @@
+---
+title: Operations and monitoring
+description: Check health, read logs, understand the worker's background jobs and queue, and run the smoke and load test scripts.
+icon: activity
+---
+
+This page is for operators who keep a self-hosted install running. It explains what to watch and what the background worker does without being asked.
+
+## Health endpoints
+
+Both endpoints are served by the API and reachable through Caddy without authentication.
+
+| Endpoint | Meaning | Healthy answer |
+|---|---|---|
+| `GET /healthz` | The API process is up. No dependency checks. | `200 {"status":"ok"}` |
+| `GET /readyz` | The API can reach its dependencies. Checks the database (2 second timeout) and Redis when configured. | `200 {"status":"ok","checks":{"db":"ok","redis":"ok"}}` |
+
+When a check fails, `/readyz` answers `503` with `"status":"unavailable"` and the failing check marked `fail`. Use `/healthz` for liveness probes and `/readyz` for readiness and uptime monitors.
+
+```bash
+curl -fsS https://app.example.com/readyz
+```
+
+Caddy also probes `/healthz` on the API every 15 seconds and the `api` image has its own container health check. The worker exposes no port and has no container health check; its restart policy covers crashes, and its heartbeat tells you whether it is alive (see below).
+
+## Status and logs
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml ps
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f api worker
+```
+
+Logs are one JSON object per line with `level`, `time`, `service` and `msg`. Containers use Docker's `json-file` driver, rotated at 10 MB with five files kept. `LOG_LEVEL` controls the volume.
+
+The logger redacts values for any field whose name matches `pass`, `secret`, `token`, `authorization`, `cookie`, `api key`, `hash`, `csrf`, `credential` or `private`, replacing them with `[REDACTED]`. Long strings are truncated at 2,000 characters. Treat logs as sensitive anyway: message ids and customer identifiers can appear.
+
+Useful lines to search for:
+
+| Message | Meaning |
+|---|---|
+| `api listening` | The API started; shows the port and whether the rate limiter uses Redis |
+| `ENCRYPTION_KEY is not set` | Channels, webhooks and calendar connect will answer `503` |
+| `self-hosted license` | Licence state at boot, see [Licensing](/self-hosting/licensing) |
+| `worker started` | The worker is processing, with the list of job names |
+| `job failed` | A job attempt failed and will be retried or dead-lettered |
+| `job dead-lettered` | A job used all its attempts |
+
+## The worker and the job queue
+
+The queue is a Postgres table named `jobs`, not Redis. The worker claims rows with `FOR UPDATE SKIP LOCKED`, so you can run extra workers safely. By default it runs 5 jobs at once and polls every second.
+
+Jobs include generating AI replies (`ai.respond`), delivering messages to channels (`channel.send`) and other background work such as outgoing webhooks. A job that fails is retried with exponential backoff starting at 1 second, with plus or minus 20% jitter, capped at one hour. After its last attempt a job becomes `dead` and is logged. Channel delivery retries transient errors up to 6 attempts and records permanent failures in the conversation.
+
+To inspect the queue from Postgres:
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml exec postgres \
+  psql -U yulona_owner -d yulona -c "select status, count(*) from jobs group by status"
+```
+
+A growing `queued` count with no `running` rows means the worker is down or stuck. Any `dead` rows deserve a look at the worker log for the cause.
+
+### Scheduled work
+
+| Task | When | What it does |
+|---|---|---|
+| Heartbeat | Every 30 seconds | Writes a worker heartbeat row |
+| Usage rollup | Hourly | Recomputes daily per-workspace usage for yesterday and today |
+| Billing grace expiry | Hourly | Downgrades workspaces whose payment grace ended (hosted product) |
+| Credit period rollover | Hourly, not when self-hosted | Opens the new month's credit rows (hosted product) |
+| Maintenance | At start, then hourly | Hard-deletes workspaces soft-deleted more than 30 days ago, prunes finished jobs older than 7 days, applies data-retention policies and removes expired data exports |
+| Ticket SLA scan | Every 60 seconds | Flags tickets that breached their SLA |
+| Notification emails | Every 15 seconds | Sends queued notification emails |
+
+<Note>
+In self-hosted mode usage is still recorded for the Usage page, but credits are never charged or enforced.
+</Note>
+
+### Is the worker alive?
+
+The worker writes its heartbeat to the database. The platform admin console shows it as Worker: Alive when the last beat is under 120 seconds old, along with queue counts and database latency. That console is off in self-hosted mode unless `SUPER_ADMIN_ENABLED=true`; see [Platform admin overview](/platform-admin/overview#system-health). Without it, read the worker log: `worker started` appears once, and the container should not be restarting in `docker compose ps`.
+
+## Smoke test
+
+`scripts/smoke-stack.ts` runs an end-to-end check against a running stack: readiness, login, agent create and publish, widget create, widget bundle, a visitor conversation with an AI answer, and the self-hosted gating (no signup, no billing, no super admin). It expects the mock AI provider.
+
+```bash
+BASE_URL=https://app.example.com ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='...' \
+  bun scripts/smoke-stack.ts
+```
+
+Run it against a scratch install rather than production, because it creates an agent and a widget.
+
+## Load test
+
+`scripts/load-test.ts` uses Bun's `fetch` with no dependencies.
+
+```bash
+BASE_URL=https://app.example.com ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='...' \
+  bun scripts/load-test.ts --duration 15 --concurrency 20
+```
+
+Options: `--scenario read|widget|all`, `--duration` seconds (default 15) and `--concurrency` (default 20). The `widget` scenario needs `WIDGET_KEY`, or creates one when admin credentials are set.
+
+A reference run on a laptop (Docker Desktop VM, mock AI provider, load generator on the same machine, 20 connections, 10 seconds):
+
+| Scenario | Result |
+|---|---|
+| `/healthz` | About 6,400 requests per second, p50 2 ms, p95 7 ms |
+| Authenticated reads | About 4,800 requests per second, almost all answered `429` by the rate limiter; accepted reads p50 2.6 ms |
+| Widget conversation start | `429` after a handful of requests (per-widget and per-IP limits) |
+
+The limiter engages before the app does, so a single IP cannot overload the API and the numbers above mostly measure the limiter. Real conversation time is dominated by your AI provider's latency. To measure raw capacity, run the generator from several IPs.
+
+## Common problems
+
+- `/readyz` returns `503` with `db: fail`: Postgres is down or the `yulona_app` password is wrong. See [Troubleshooting](/self-hosting/troubleshooting).
+- Customers get no AI replies and jobs stay `queued`: the worker is down. Check `docker compose ps` and the worker log.
+- Disk filling: logs are rotated, but backups and the `pgdata` volume grow. Prune old files in `deploy/backups/`.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/self-hosting/troubleshooting">
+    Symptom, cause and fix.
+  </Card>
+  <Card title="Upgrade, backup and restore" icon="database" href="/self-hosting/upgrade-backup-restore">
+    Keep backups current.
+  </Card>
+</CardGroup>
+
+{/* source: apps/api/src/routes/health.ts, apps/worker/src/index.ts, apps/worker/src/billing.ts, apps/worker/src/maintenance.ts, apps/worker/src/ops.ts, packages/shared/src/logger.ts, scripts/load-test.ts, scripts/smoke-stack.ts, docs/self-hosting.md, docs/api/platform.md */}

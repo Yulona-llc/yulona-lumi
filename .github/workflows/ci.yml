@@ -1,0 +1,95 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: yulona
+          POSTGRES_USER: yulona_owner
+          POSTGRES_PASSWORD: yulona_owner
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U yulona_owner -d yulona"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      # Owner connection (runs migrations / test setup). Tests connect as yulona_app for RLS checks.
+      TEST_DATABASE_URL: postgres://yulona_owner:yulona_owner@localhost:5433/yulona
+      TEST_APP_DATABASE_URL: postgres://yulona_app:yulona_app@localhost:5433/yulona
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: latest }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - name: Create runtime DB role (same script as deploy/postgres/init-roles.sh)
+        run: |
+          sudo apt-get install -y --no-install-recommends postgresql-client >/dev/null
+          PGPASSWORD=yulona_owner APP_DB_PASSWORD=yulona_app POSTGRES_USER=yulona_owner POSTGRES_DB=yulona \
+            PGHOST=localhost PGPORT=5433 sh deploy/postgres/init-roles.sh
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test
+      # Advisory for now: remaining findings are dev-only (vitest/jsdom) or transitive in file extractors; see docs/self-hosting.md.
+      - name: Dependency audit
+        continue-on-error: true
+        run: bun audit
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: api, file: apps/api/Dockerfile }
+          - { name: dashboard, file: apps/dashboard/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          push: false
+          tags: yulona/${{ matrix.name }}:ci
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          load: true
+      - name: Image contents (widget bundle ships in the dashboard image; api image has bundled entrypoints)
+        run: |
+          if [ "${{ matrix.name }}" = dashboard ]; then
+            docker run --rm --entrypoint sh yulona/dashboard:ci -c 'test -s /usr/share/nginx/html/widget.js && ls /usr/share/nginx/html/widget.*.js && test -s /usr/share/nginx/html/widget-preview.html'
+          else
+            docker run --rm --entrypoint sh yulona/api:ci -c 'ls /app/dist/index.js /app/dist/worker.js /app/dist/migrate.js /app/dist/create-tenant.js /app/dist/clean-env.js'
+          fi
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose files and scripts
+        run: |
+          printf 'POSTGRES_PASSWORD=a\nAPP_DB_PASSWORD=b\nREDIS_PASSWORD=c\nJWT_SECRET=d\nENCRYPTION_KEY=e\nMINIO_ROOT_PASSWORD=f\n' > /tmp/ci.env
+          docker compose --env-file /tmp/ci.env -f deploy/docker-compose.yml config -q
+          COMPOSE_PROFILES=minio,clamav,tools docker compose --env-file /tmp/ci.env -f deploy/docker-compose.yml config -q
+          docker compose -f deploy/docker-compose.dev.yml config -q
+          for f in deploy/*.sh; do bash -n "$f"; done
+          sudo apt-get install -y --no-install-recommends shellcheck >/dev/null
+          shellcheck deploy/*.sh deploy/postgres/init-roles.sh apps/dashboard/nginx/40-yulona-config.sh

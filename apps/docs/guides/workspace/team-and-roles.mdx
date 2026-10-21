@@ -1,0 +1,114 @@
+---
+title: Team and roles
+description: Invite teammates, choose between the owner, admin, agent and viewer roles, see exactly what each role can do, and disable people who leave.
+icon: users
+---
+
+This page is for owners and admins who manage who can use the workspace. Every person has one role, and the role decides which screens they see and what they can change.
+
+**Role needed:** anyone can view the team list. Admins and owners can invite and manage people.
+
+## The four roles
+
+| Role | Meant for | In one line |
+|---|---|---|
+| **Owner** | The person responsible for the account | Everything, including plan and billing changes |
+| **Admin** | Managers and team leads | Manages settings, agents, channels and the team |
+| **Agent** | Support staff | Works the Inbox and day-to-day operations |
+| **Viewer** | Stakeholders, auditors | Read only |
+
+## What each role can do
+
+A tick means allowed. Screens a role cannot use are hidden from its menu or show a notice.
+
+| Area | Viewer | Agent | Admin | Owner |
+|---|---|---|---|---|
+| View Overview, Inbox, Contacts, Tickets, Bookings | Yes | Yes | Yes | Yes |
+| Reply, add notes, take over, assign, resolve conversations | No | Yes | Yes | Yes |
+| Edit and merge contacts | No | Yes | Yes | Yes |
+| Needs attention: view, claim, release, resolve | No | Yes | Yes | Yes |
+| Needs attention: assign to others, take over a claimed item | No | No | Yes | Yes |
+| Create, edit, comment on and bulk-update tickets | No | Yes | Yes | Yes |
+| Delete tickets | No | No | Yes | Yes |
+| Create and cancel bookings | No | Yes | Yes | Yes |
+| Connect or disconnect a calendar | No | No | Yes | Yes |
+| Transactions: view, add, edit, export | No | Yes | Yes | Yes |
+| Transactions: delete, webhook endpoints | No | No | Yes | Yes |
+| Canned responses: use and create | View only | Yes | Yes | Yes |
+| Canned responses: edit others', delete | No | No | Yes | Yes |
+| Tags: create and apply | View only | Yes | Yes | Yes |
+| Tags: rename and delete | No | No | Yes | Yes |
+| Set your own availability | No | Yes | Yes | Yes |
+| Business hours, routing, SLA times: view | Yes | Yes | Yes | Yes |
+| Business hours, routing, SLA times: change | No | No | Yes | Yes |
+| Knowledge page: see | No | Yes | Yes | Yes |
+| Knowledge: add, edit, delete | No | No | Yes | Yes |
+| Agents: create, edit, publish, roll back, archive | No | No | Yes | Yes |
+| Channels: connect and manage | No | No | Yes | Yes |
+| Website widget: view settings | Yes | Yes | Yes | Yes |
+| Website widget: change settings and rotate the key | No | No | Yes | Yes |
+| Team: view | Yes | Yes | Yes | Yes |
+| Team: invite, change roles, disable | No | No | Yes | Yes |
+| API keys, Webhooks, Audit log, Data and privacy | No | No | Yes | Yes |
+| Usage: totals and meter | Yes | Yes | Yes | Yes |
+| Usage: breakdown, CSV export, buy credits | No | No | Yes | Yes |
+| Billing: view | No | No | Yes | Yes |
+| Billing: upgrade, manage payment, cancel plan | No | No | No | Yes |
+| Rename the workspace | No | No | Yes | Yes |
+| Notifications | Yes | Yes | Yes | Yes |
+
+## Invite a teammate
+
+<Steps>
+  <Step title="Open the Team page">
+    Go to **Settings**, then **Team**, and click **Invite member**.
+  </Step>
+  <Step title="Choose email and role">
+    Enter their **Email** and pick a **Role**. You can only grant a role up to your own, and only owners can invite another owner. **Agent** is preselected.
+  </Step>
+  <Step title="Send">
+    Click **Send invite**. Yulona emails a link that is valid for 7 days. If the email cannot be sent, the dialog says "Invitation created, but the email could not be sent." On a development installation it also shows a link you can copy with **Copy link**.
+  </Step>
+</Steps>
+
+Under **Invitations** you can see each invitation's status (pending, accepted, revoked or expired) and expiry. Click **Revoke** on a pending one to make its link stop working.
+
+Invitations count against your plan's seat limit. If you reach it, the invite is refused with a plan limit message. Free a seat or upgrade under **Settings**, **Billing**. See [Billing and plans](/guides/account/billing-and-plans).
+
+## Change a role or disable someone
+
+On the Team page, use the role menu in a person's row to change it, or click **Disable** to block them and **Enable** to restore access. Disabling signs them out and they can no longer sign in. Their conversations, notes and history stay.
+
+The rules protect your workspace:
+
+- You cannot change your own role or disable yourself.
+- Admins can manage agents and viewers. Only an owner can change an admin or another owner.
+- A workspace must always keep at least one active owner.
+- Re-enabling someone needs a free seat on your plan.
+
+Rows you are not allowed to change show the role as a plain label with no menu.
+
+## What you should see
+
+After an invite, a row appears under **Invitations** with the status **pending**. The person opens the link, chooses a name and a password (at least 12 characters), and then signs in. After they accept, they appear in the member list with their role and **Last sign-in**.
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| I cannot invite an owner | Only owners can. |
+| The role menu is missing for someone | You cannot change your own role or people of equal or higher role. |
+| A teammate cannot see a page | Check the table above: their role may not allow it. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Notifications" icon="bell" href="/guides/workspace/notifications">
+    See what each role is notified about.
+  </Card>
+  <Card title="Privacy and data" icon="shield" href="/guides/account/privacy-and-data">
+    Review the audit log of role changes.
+  </Card>
+</CardGroup>
+
+{/* source: packages/shared/src/roles.ts; apps/dashboard/src/pages/Shell.tsx (min roles per menu item); features/team/TeamPage.tsx; apps/api/src/routes/users.ts; apps/api/src/platform/authz.ts (requireWriteRole); apps/api/src/ops/{tickets,transactions,handoffs,canned,tags,settings,bookings}.ts guards; apps/api/src/routes/{agents,api-keys,audit,widgets,knowledge}.ts; billing/routes.ts; usage/routes.ts; docs/api/platform.md. apps/dashboard/src/pages/AcceptInvite.tsx (the emailed link opens /accept-invite). */}

@@ -1,0 +1,125 @@
+---
+title: Credits and usage API
+description: Read the credits balance and AI usage, buy credit packs, and understand how credits are metered, gated and administered.
+icon: coins
+---
+
+Credits meter AI usage in SaaS deployments. This page is for developers building usage screens, billing automation or monitoring on top of the credits endpoints. Operators who only want to understand the numbers should read [Usage and credits](/guides/account/usage-and-credits).
+
+## Concepts
+
+- **Micro-credits.** Every credit amount on the wire is an integer in micro-credits. `1 credit = 1,000,000 micro`. Fields end in `Micro`. Divide by `1e6` to display. Plan limits, pack sizes and admin grants are expressed in whole credits.
+- **Cost of a call** is `ceil((promptTokens x inputMicroPer1k + completionTokens x outputMicroPer1k) / 1000)` micro-credits, using the rate row for the model or the `*` default row. The default rate is 0.25 credits in and 1 credit out per 1,000 tokens.
+- **Monthly period** is the UTC calendar month (`period` is its first day, `YYYY-MM-01`). The monthly allowance comes from the plan's `llm_credits_monthly` limit (`null` is unlimited) and resets each month. Consumption draws the allowance first, then the top-up balance, which carries over. An in-flight call can overshoot, so `topupMicro` may be slightly negative until the next top-up.
+- **Deployment mode.** In `saas`, credits are charged and gated and packs are sold. In `selfhosted`, usage is recorded with its computed cost but never charged or gated, and no billing routes exist.
+
+## Get the balance
+
+`GET /api/v1/usage/credits` (any role, always mounted).
+
+<CodeGroup>
+```bash curl
+curl https://YOUR_HOST/api/v1/usage/credits -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+```javascript fetch
+const res = await fetch("https://YOUR_HOST/api/v1/usage/credits", {
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
+const credits = await res.json();
+if (credits.enabled) console.log(credits.remainingMicro / 1e6, "credits left");
+```
+</CodeGroup>
+
+```json
+{
+  "mode": "saas",
+  "enabled": true,
+  "unlimited": false,
+  "period": "2026-10-01",
+  "allowanceMicro": 50000000,
+  "usedMicro": 12000000,
+  "topupMicro": 0,
+  "topupUsedMicro": 0,
+  "remainingMicro": 38000000,
+  "percentUsed": 24,
+  "status": "ok",
+  "warnings": []
+}
+```
+
+<ResponseField name="enabled" type="boolean">`false` on self-hosted. Hide credit meters and show tokens only.</ResponseField>
+<ResponseField name="unlimited" type="boolean">The plan has no credit limit.</ResponseField>
+<ResponseField name="allowanceMicro" type="integer | null">Monthly allowance; `null` when unlimited or self-hosted.</ResponseField>
+<ResponseField name="usedMicro" type="integer">Consumed from the allowance this period.</ResponseField>
+<ResponseField name="topupMicro" type="integer">Remaining top-up balance.</ResponseField>
+<ResponseField name="remainingMicro" type="integer | null">Allowance left plus top-up balance; `null` when unlimited or self-hosted.</ResponseField>
+<ResponseField name="percentUsed" type="integer | null">0 to 100, can exceed 100 on overshoot.</ResponseField>
+<ResponseField name="status" type="string">`ok`, `warning` (80% or more used) or `exhausted` (nothing remains).</ResponseField>
+<ResponseField name="warnings" type="string[]">Subset of `warning_80` and `exhausted`. Each is also sent once per period as an admin/owner notification (`credits.warning_80`, `credits.exhausted`).</ResponseField>
+
+On self-hosted installs the same call returns `mode: "selfhosted"`, `enabled: false`, and `null` for allowance fields.
+
+## What happens when credits run out
+
+In SaaS, when `remainingMicro <= 0` the AI does not call the model. The inbound message raises a `system_failure` handoff with reason `ai_credits_exhausted` (visible in Needs Attention), and the customer gets a safe notice (default "Our assistant is temporarily unavailable. A member of our team will get back to you shortly.", changeable by the operator with `CREDITS_EXHAUSTED_MESSAGE`). The sandbox and the agent builder answer `402 credits_exhausted` with `details: { remainingMicro }`:
+
+```json
+{ "error": { "code": "credits_exhausted", "message": "AI credits are used up. Buy more credits to keep testing.", "requestId": "b1f3c0de-6a1c-4a53-9d24-0a7a1d2f4e11", "details": { "remainingMicro": 0 } } }
+```
+
+Buying a pack lifts the gate immediately.
+
+## Usage over time
+
+`GET /api/v1/usage/ai?from=2026-09-20&to=2026-10-19&groupBy=agent` (minimum role `admin`). `from` and `to` are inclusive UTC dates (`YYYY-MM-DD`), defaulting to the last 30 days, with a maximum span of 366 days. `groupBy` is `day` (default), `agent`, `model` or `conversation`.
+
+```json
+{
+  "from": "2026-09-20", "to": "2026-10-19", "groupBy": "agent",
+  "items": [
+    { "key": "9f1e...", "label": "Support bot", "promptTokens": 1200, "completionTokens": 300, "totalTokens": 1500, "requests": 9, "creditsMicro": 450000 }
+  ],
+  "totals": { "promptTokens": 1200, "completionTokens": 300, "totalTokens": 1500, "requests": 9, "creditsMicro": 450000 }
+}
+```
+
+`key` and `label` depend on `groupBy`: a date for `day`; agent id and name for `agent` (`(unattributed)` or `(deleted agent)` when there is none); the model name for `model` (`(unknown)` when missing); the conversation id for `conversation` (top 200 by credits). `day` sorts ascending, the others by `creditsMicro` descending.
+
+`GET /api/v1/usage/ai/export` takes the same query and returns `text/csv` with the columns `key,label,promptTokens,completionTokens,totalTokens,requests,creditsMicro`.
+
+For plan limits, `GET /api/v1/tenant` returns the current limits with a `warning` flag at 80%. In SaaS mode, `GET /api/v1/usage?days=30` (any role) also returns the daily rollup as `{ limits, series }`; it is mounted with the billing routes, so it does not exist on self-hosted installs.
+
+## Credit packs and checkout (SaaS only)
+
+These routes are mounted only in SaaS mode and need minimum role `admin`.
+
+```bash
+curl https://YOUR_HOST/api/v1/billing/credit-packs -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+# { "items": [ { "id": "4c1f...", "name": "Starter", "credits": 500, "priceCents": 900, "currency": "usd" } ] }
+
+curl -X POST https://YOUR_HOST/api/v1/billing/credits/checkout \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"packId":"4c1f..."}'
+# { "url": "https://checkout.stripe.com/..." }
+```
+
+Redirect the browser to `url`. After payment, the provider webhook (`POST /api/v1/webhooks/billing`) adds the pack's credits to the top-up balance, idempotently: a redelivered event or a second event for the same checkout session is ignored. The customer returns to `{APP_URL}/settings/billing?credits=success` or `?credits=cancelled`. Errors: `404 not_found` for an unknown or inactive pack, `503 service_unavailable` when the payment provider is down or has no one-time payments configured.
+
+## Platform-admin endpoints
+
+For the people who run the SaaS, under `/api/v1/admin/...` with a platform-admin token ([Authentication](/developers/authentication)). Every write is recorded in the platform audit log.
+
+| Area | Endpoints |
+|---|---|
+| LLM provider profiles | `GET/POST /admin/llm-profiles`, `GET/PATCH/DELETE /admin/llm-profiles/:id`, `POST /admin/llm-profiles/:id/test`. Any OpenAI-compatible service; the API key is write-only and needs `ENCRYPTION_KEY`; the base URL is SSRF-checked. |
+| Model rates | `GET/PUT/DELETE /admin/model-rates`. The `*` default row cannot be deleted. |
+| Plan credit limits | `PUT /admin/plans/:key/limits/llm_credits_monthly` with `{ "limit": 1500 }` (whole credits, `null` for unlimited) |
+| Credit packs | `GET/POST /admin/credit-packs`, `PATCH/DELETE /admin/credit-packs/:id` (a purchased pack is deactivated, not deleted) |
+| Tenant credits | `GET /admin/tenants/:id/credits`, `POST /admin/tenants/:id/credits` with `{ "credits": 100, "reason": "Goodwill after outage" }` (negative values deduct; the reason is 3 to 300 characters) |
+
+The platform-admin screens are described in the platform admin guide on [plans, credits and rates](/platform-admin/plans-credits-and-rates).
+
+For model behavior and when usage is recorded, see [AI runtime](/developers/ai-runtime). For error handling, see [Errors](/developers/errors).
+
+{/* source: docs/api/credits.md, docs/api/billing-admin.md, packages/ai-runtime/src/usage.ts, packages/ai-runtime/src/runtime.ts, apps/api/src/usage/routes.ts, apps/api/src/billing/credits.ts, apps/api/src/agent-builder/engine.ts, apps/api/src/routes/knowledge.ts */}

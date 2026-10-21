@@ -1,0 +1,27 @@
+# ADR 0002 — Defaults for PLAN §9 open questions
+
+Status: accepted (provisional; the product owner may override any item). Owner: `platform`.
+
+| # | Question | Decision | Consequence |
+|---|---|---|---|
+| 1 | Billing | Stripe behind a `BillingProvider` interface. `StubBillingProvider` is used when `STRIPE_SECRET_KEY` is unset. | Interface + stub exist in `@yulona/providers`; the Stripe implementation and checkout/webhook routes land in the billing wave. Plans/limits (`plans`, `plan_limits`, `tenants.plan_key`) already exist and are enforced via `checkLimit`. Seeded plans: free, pro, enterprise, self_hosted (unlimited). |
+| 2 | LLM (no embeddings, superseded) | OpenAI behind `LlmProvider` / `EmbeddingProvider`. Env: `AI_PROVIDER` (`openai`\|`mock`; default `openai` if `AI_API_KEY` set, else `mock`), `AI_API_KEY`, `AI_MODEL` (default `gpt-4o-mini`), `AI_EMBEDDING_MODEL` (default `text-embedding-3-small`), dim 1536. | Deterministic `mock` provider for tests/dev with no key. No Yulona-hosted key proxying/metering yet; token usage is recorded in `usage_counters` (`llm_tokens_monthly`) by the runtime. |
+| 3 | Calendar | Google first behind `CalendarProvider`. | Interface + `MockCalendarProvider` now; Google implementation arrives with bookings (Wave 2). |
+| 4 | DB access | Keep `postgres` + raw SQL migrations (no ORM). | Per ADR 0001. Migration ranges per agent (platform 0100–0199). |
+| 5 | Email | `EmailProvider`: SMTP (nodemailer) when `SMTP_HOST` is set, otherwise a console provider that logs the message. | Invitations are emailed; in non-production the API also returns `inviteUrl` in the create response so dev works with the console provider. |
+| 6 | Object storage / AV | S3-compatible via Bun's built-in S3 client (`S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`; MinIO in self-host). Optional ClamAV HTTP hook via `CLAMAV_URL` (fails closed). | In-memory storage when S3 is unconfigured (dev only). |
+| 7 | Landing | Stays a separate project (`../ai-bi/yulona-landing`). | No `apps/landing`. |
+| 8 | Redis | Optional. Job queue is Postgres (`jobs` table, `FOR UPDATE SKIP LOCKED`). WS fan-out uses Redis pub/sub when `REDIS_URL` is set, else in-process. | Single-instance deployments need only Postgres. |
+
+## Additional platform decisions
+
+- **Super admin is not a tenant user.** Separate `platform_admins` table (no `tenant_id`), separate JWT realm (key `JWT_SECRET:platform-admin`, claim `typ=sa`), routes under `/api/v1/admin/*`, all access through narrow `SECURITY DEFINER` functions (`sa_*`); the app role has no table grants on platform tables. Tenant tokens do not open admin routes and vice versa. Toggle with `SUPER_ADMIN_ENABLED` (default true; set false for single-tenant self-host). Create the first admin with `apps/api/scripts/create-platform-admin.ts` (owner DB role).
+- **Tenants cannot change their own plan/status**: `UPDATE` on `tenants` is revoked from the app role except `(name, updated_at)`; lifecycle changes go through `sa_*` functions which also write the tenant's `audit_logs` and `platform_audit_logs`.
+- **Tenant lifecycle:** suspend/delete revoke refresh tokens and block login (`tenant.status <> 'active'`). Soft delete sets `deleted_at`; restore allowed for 30 days; `platform_purge_deleted_tenants()` (hourly worker maintenance) hard-deletes after 30 days by walking every `public` table with a `tenant_id` column (so later waves are covered automatically; new tenant tables MUST have an `owner_all` RLS policy like 0001 or the purge cannot delete them and will leave the tenant row in place).
+- **Roles:** owner > admin > agent > viewer (`viewer` added in 0101). Authorization uses the JWT role claim (15-minute lag after a role change/disable; refresh tokens are revoked immediately on disable).
+- **Agent versions:** `agents.config` is the editable draft; publish snapshots it into immutable `agent_versions`; rollback republishes an old version as a new version.
+- **API keys:** `yl_<8 hex>_<43 char secret>`, SHA-256 hash only, full key shown once, per-key per-minute rate limit, scopes.
+- **Plan limits** are enforced at the API layer with `assertWithinLimit` (HTTP 402 `plan_limit_exceeded`). Counted live: seats (active users + pending invitations), agents, api_keys. Counter-based (`usage_counters`; call `incrementUsage`): widgets, storage_mb (gauges), monthly_conversations, llm_tokens_monthly (calendar-month periods).
+
+## Update: knowledge as skills, no embeddings (supersedes the embedding half of decision 2)
+Vector search depended on a third-party embeddings API (rate limits, extra key, model-specific score scales, a fixed `vector(N)` column). Agent knowledge is now organised as **skills**: every source (file, URL, text) becomes a skill folder with a slug, a one-line description and titled sections, stored in `knowledge_chunks` (title + content + a Postgres full-text index). The agent sees the skill index, gets the best keyword matches pre-loaded, and can open more with `search_skills` / `read_skill`; knowledge bases under ~9k characters are placed in the prompt whole. Ingestion makes no AI calls. `EmbeddingProvider`, `EMBEDDING_*`, `CHUNK_*` and the HNSW index are removed (migration `0902`). The `vector` extension is still created by the earlier migrations (they are applied history), so the Postgres image keeps pgvector until the migrations are squashed before a first release.

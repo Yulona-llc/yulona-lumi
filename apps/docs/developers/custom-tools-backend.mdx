@@ -1,0 +1,206 @@
+---
+title: Custom tools backend
+description: Build the HTTP backend that a Yulona agent calls as a tool, including request format, authentication, retries, response handling and testing.
+icon: server
+---
+
+A custom tool lets an agent call your own HTTP API during a conversation: look up an order, check stock, create a booking. This page is the contract for the backend you write. It is for developers; the no-code builder is covered in [Build a tool](/guides/tools/build-a-tool). The manifest that describes the tool is documented in [Tool manifest](/developers/tool-manifest).
+
+## How it fits together
+
+1. A **connection** stores your backend's base URL and credential, encrypted. Create it with `POST /api/v1/tool-connections` (owner or admin).
+2. A **tool** is a manifest (version 2) saved in the agent's `config.customTools` and switched on by adding its name to `config.enabledTools`.
+3. When the model calls the tool, Yulona validates the arguments against `inputSchema`, builds the HTTP request from the manifest, adds the connection's credential, calls your backend from the **worker**, and hands the (mapped) response to the model. The credential never reaches the model, prompts, logs or API responses.
+
+Your backend is only called for live conversations. The agent sandbox never calls custom tools; it reports what it would call. Use `POST /tools/test` to exercise the real backend.
+
+## What Yulona sends
+
+| Part | Rule |
+|---|---|
+| Method | `GET`, `POST`, `PUT`, `PATCH` or `DELETE`, from `request.method` |
+| URL | Connection `baseUrl` (trailing slashes removed) plus `request.path`. `{{field}}` placeholders are URL-encoded; values `.`, `..` or containing backslashes or line breaks are rejected. The URL must stay on the base URL's origin and path prefix. |
+| Query | Fields with `in: "query"`, appended as `key=value`; array values repeat the key. Missing or `null` fields are skipped. |
+| Body | Only for `POST`, `PUT`, `PATCH`: the rendered `bodyTemplate`, otherwise a JSON object of the `in: "body"` fields. If there is nothing to send, no body. Maximum 100,000 characters. |
+| Headers | `Accept: application/json`, `User-Agent: YulonaBot/1.0`, `Content-Type: application/json` when there is a body, static `request.headers`, `in: "header"` fields, then the authentication headers. Header names are lowercased. |
+
+## Authentication types
+
+Authentication is always taken from the connection and cannot be overridden by the manifest.
+
+| `authType` | What your backend receives |
+|---|---|
+| `none` | No credential header |
+| `bearer` | `Authorization: Bearer <secret>` |
+| `api_key` | `<authHeaderName>: <secret>` (default header `X-API-Key`) |
+| `basic` | `Authorization: Basic base64(secret)`; the secret must be `username:password` |
+| `hmac` | `X-Yulona-Timestamp: <unix seconds>` and `X-Yulona-Signature: v1=<hex>` |
+
+### HMAC signed requests
+
+The signature is `HMAC-SHA256(secret, "<timestamp>.<raw request body>")`, hex-encoded and prefixed `v1=`. The raw body is the exact bytes sent (compact JSON); for requests without a body (`GET`, `DELETE`, or a `POST` with nothing to send) it is the empty string. It is the same scheme as [webhooks](/developers/webhooks). Each retry is re-signed with a fresh timestamp. The signature does not cover the method or path, so check those yourself, and reject timestamps older than five minutes.
+
+<CodeGroup>
+```javascript Node.js
+import crypto from "node:crypto";
+
+export function verifyYulona(req, rawBody, secret) {
+  const ts = req.headers["x-yulona-timestamp"] ?? "";
+  const sig = req.headers["x-yulona-signature"] ?? "";
+  if (!Number.isFinite(Number(ts)) || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;
+  const expected = "v1=" + crypto.createHmac("sha256", secret).update(`${ts}.${rawBody}`).digest("hex");
+  const a = Buffer.from(expected), b = Buffer.from(sig);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+```
+
+```python Python
+import hashlib, hmac, time
+
+def verify_yulona(headers, raw_body: bytes, secret: str) -> bool:
+    ts = headers.get("X-Yulona-Timestamp", "")
+    sig = headers.get("X-Yulona-Signature", "")
+    if not ts.isdigit() or abs(time.time() - int(ts)) > 300:
+        return False
+    expected = "v1=" + hmac.new(secret.encode(), ts.encode() + b"." + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig)
+```
+</CodeGroup>
+
+## Timeouts, retries and redirects
+
+- **Timeout:** `timeoutMs`, 500 to 30000 ms, default 10000. The deadline covers one attempt including redirects.
+- **Retries:** only for `GET`, `PUT` and `DELETE`, and only when the manifest sets `retry: { attempts: 2-4, baseMs: 50-5000 }`. Waits grow exponentially (`baseMs`, then `2 x baseMs`, and so on). Retries happen on timeouts, network errors, HTTP `5xx` and `429`. `POST` and `PATCH` are never retried, so a duplicate side effect cannot come from Yulona.
+- **Redirects:** up to 3, each hop re-validated against the SSRF rules. When a redirect goes to another origin (different scheme, host or port), Yulona removes the credential headers (`Authorization`, `X-API-Key` or your custom key header, `X-Yulona-Signature`, `X-Yulona-Timestamp`, `Cookie`) before following it, so a redirect never leaks your secret. Same-origin hops keep them. `301`/`302` on a POST and `303` switch to GET without a body; a `307`/`308` that would replay a request body to another origin is refused and reported as `ssrf_blocked`. Point the connection at the final URL to avoid relying on redirects.
+- **Limits:** response bodies over 256 KB fail with `response_too_large`.
+
+## What your backend should return
+
+Return `2xx` with a JSON body. Any status below 400 is treated as success.
+
+- With `responseMapping`, the body must be JSON, otherwise the call fails with `not_json`. The model receives only the mapped keys.
+- Without a mapping, the model receives the whole JSON (a non-JSON body becomes `{ "text": "<first 4000 chars>" }`).
+- Whatever the model receives is cut at 8000 characters (`{ "truncated": true, "preview": "..." }`), so return small, relevant responses.
+
+Status handling:
+
+| Backend returns | Yulona treats it as |
+|---|---|
+| `2xx` or `3xx` without `Location` | Success |
+| `4xx` (except `429`) | Failure `http_error`, not retried. The response body is **not** shown to the model. |
+| `429`, `5xx` | Failure `http_error`, retried when `retry` is set |
+| Timeout, DNS or TLS error | Failure `timeout` or `network_error`, retried when `retry` is set |
+| Blocked host or redirect | Failure `ssrf_blocked`, never retried |
+
+<Warning>
+A business answer such as "order not found" should be `200 { "found": false }`, not `404`. A `404` is a tool failure: the customer sees a handoff (or an apology) instead of a clear answer.
+</Warning>
+
+### `onFailure`
+
+| Mode | Behavior |
+|---|---|
+| `handoff` (default) | The conversation moves to a person with a `system_failure` handoff. |
+| `tell_customer` | The model is told the tool failed and answers the customer without a handoff. |
+
+### `confirmBeforeRun`
+
+For tools with side effects, set `confirmBeforeRun: true`. The first call returns `confirmation_required` to the model, which must summarize the action and ask the customer. Only a second call with `confirmed: true` reaches your backend. The `confirmed` flag is added to the tool's parameters automatically and is not sent to you.
+
+## Rules for URLs
+
+- `https` is required for connection base URLs in SaaS; `http` is also allowed on self-hosted installs. No credentials, query or fragment in the base URL.
+- Private, loopback, link-local and metadata addresses are always rejected, on every call and every redirect. Your backend must be reachable from the worker over the public internet (or a public address).
+- Failed attempts, inputs and outputs are logged in `tool_executions` with credential-like values masked.
+
+## Test with `POST /tools/test`
+
+This performs the **real** request (side effects included for `POST`, `PUT`, `DELETE`). The manifest need not be saved. Limit: 20 per minute per workspace.
+
+```bash
+curl -X POST https://YOUR_HOST/api/v1/tools/test \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"manifest":{"version":2,"name":"check_availability","description":"List free slots on a date.","inputSchema":{"type":"object","required":["date"],"properties":{"date":{"type":"string","maxLength":10}}},"outputSchema":{"type":"object"},"connectionId":"CONNECTION_ID","request":{"method":"GET","path":"/availability","fields":[{"name":"date","in":"query"}]},"responseMapping":{"slots":"slots[].start"}},"sampleValues":{"date":"2026-10-22"}}'
+```
+
+```json
+{
+  "ok": true, "status": 200, "latencyMs": 96, "attempts": 1,
+  "request": { "method": "GET", "url": "https://api.salon.example/v1/availability?date=2026-10-22", "headers": { "accept": "application/json", "authorization": "Bearer ***" } },
+  "response": { "status": 200, "contentType": "application/json", "excerpt": "{\"slots\":[{\"start\":\"2026-10-22T09:00:00Z\"}]}", "truncated": false },
+  "mapped": { "slots": ["2026-10-22T09:00:00Z"] },
+  "fieldTree": { "rootType": "object", "fields": [ { "name": "slots", "path": "slots", "type": "array", "length": 1, "itemType": "object", "children": [ { "name": "start", "path": "slots[].start", "type": "string", "sample": "2026-10-22T09:00:00Z" } ] } ] },
+  "error": null
+}
+```
+
+The endpoint answers `200` even when your backend fails; check `ok`. Failure codes in `error.code`: `invalid_input`, `bad_input`, `connection_unavailable`, `ssrf_blocked`, `timeout`, `network_error`, `http_error` (with `error.status`), `response_too_large`, `not_json`. Endpoint-level errors: `400 validation_error` (invalid or non-v2 manifest), `404 not_found` (unknown connection), `429`, `503` (no `ENCRYPTION_KEY`). `POST /tool-connections/:id/test` checks just the connection (GET on `testPath`, default `/`).
+
+## Worked example: a booking backend
+
+A salon exposes `GET /v1/availability` and `POST /v1/bookings`.
+
+<Steps>
+  <Step title="Create the connection">
+    ```bash
+    curl -X POST https://YOUR_HOST/api/v1/tool-connections \
+      -H "Authorization: Bearer YOUR_ACCESS_TOKEN" -H "Content-Type: application/json" \
+      -d '{"name":"Salon API","baseUrl":"https://api.salon.example/v1","authType":"bearer","secret":"YOUR_BACKEND_TOKEN","testPath":"/health"}'
+    ```
+    The `201` response returns the connection with `hasSecret: true` and its `id`; the secret is never returned.
+  </Step>
+  <Step title="Define the booking tool">
+    ```json
+    {
+      "version": 2, "name": "create_booking",
+      "description": "Book an appointment. Use only after the customer chose a time from check_availability.",
+      "inputSchema": { "type": "object", "required": ["start", "service", "customerName"], "additionalProperties": false,
+        "properties": { "start": { "type": "string" }, "service": { "type": "string", "enum": ["haircut", "color"] }, "customerName": { "type": "string", "maxLength": 100 } } },
+      "outputSchema": { "type": "object" },
+      "connectionId": "CONNECTION_ID",
+      "request": { "method": "POST", "path": "/bookings",
+        "bodyTemplate": "{\"startsAt\":\"{{start}}\",\"service\":\"{{service}}\",\"name\":\"{{customerName}}\"}" ,
+        "fields": [] },
+      "responseMapping": { "bookingId": "id", "status": "status", "when": "startsAt" },
+      "onFailure": "tell_customer", "confirmBeforeRun": true
+    }
+    ```
+  </Step>
+  <Step title="Save and publish">
+    `PATCH /api/v1/agents/:id` replaces the **whole** `config` object, so fetch the agent, add the manifest to `customTools` and its name to `enabledTools`, then send the full config back. Publish with `POST /api/v1/agents/:id/publish`; live conversations run the published version.
+  </Step>
+</Steps>
+
+When the customer confirms, your backend receives:
+
+```http
+POST /v1/bookings HTTP/1.1
+Host: api.salon.example
+Authorization: Bearer YOUR_BACKEND_TOKEN
+Accept: application/json
+Content-Type: application/json
+User-Agent: YulonaBot/1.0
+
+{"startsAt":"2026-10-22T09:00:00Z","service":"haircut","name":"Ada"}
+```
+
+and replies:
+
+```json
+{ "id": "bk_8841", "status": "confirmed", "startsAt": "2026-10-22T09:00:00Z", "internalNotes": "not shown to the model" }
+```
+
+The model sees only `{ "bookingId": "bk_8841", "status": "confirmed", "when": "2026-10-22T09:00:00Z" }`. A minimal handler:
+
+```javascript
+app.post("/v1/bookings", express.json(), (req, res) => {
+  if (req.get("Authorization") !== `Bearer ${process.env.YULONA_TOOL_TOKEN}`) return res.sendStatus(401);
+  const { startsAt, service, name } = req.body;
+  if (slotTaken(startsAt)) return res.json({ error: "slot_taken", message: "That time was just booked." }); // 200: the model can explain
+  res.status(201).json(createBooking({ startsAt, service, name }));
+});
+```
+
+Return business outcomes as `200` with a clear field, and reserve `4xx`/`5xx` for real faults. See [Errors](/developers/errors) for API errors you may meet while managing connections.
+
+{/* source: packages/ai-runtime/src/http-tool.ts, packages/ai-runtime/src/tools.ts, packages/ai-runtime/src/ssrf.ts, packages/shared/src/tool-manifest.ts, apps/api/src/tools/test-endpoint.ts, apps/api/src/tools/connections.ts, apps/api/src/tools/schemas.ts, apps/api/src/routes/agents.ts, docs/api/tools.md */}

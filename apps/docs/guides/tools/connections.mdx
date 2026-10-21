@@ -1,0 +1,124 @@
+---
+title: Connections
+description: Store the address and login for your own system once, keep the secret safe, test it, rotate it and remove it.
+icon: cable
+---
+
+A **connection** tells the AI where one of your systems lives and how to sign in to it. Your tools then reuse it, so you enter the login once and never paste a password into a tool. This page is for admins and owners, usually working with whoever manages the system being connected.
+
+<Note>
+Connections are managed under **Settings, then Connections**. Only **admins and owners** can see and change them; other roles see a notice.
+</Note>
+
+## What a connection holds
+
+| Setting | What it is |
+|---|---|
+| **Connection name** | Anything you will recognise, such as "Orders system". |
+| **Web address of your system** | The address the AI calls, without the page part, for example `https://api.myshop.com/v1`. It must start with `https://`. Self-hosted installs also accept `http://`. Addresses inside private networks are always blocked. |
+| **How does your system sign requests in?** | The sign-in method, explained below. |
+| **Secret** | The token, key, password or signing secret for that method. |
+| **Page to test with (optional)** | A harmless page such as `/health`, used by **Test connection**. |
+
+## The sign-in methods, in plain words
+
+<Tabs>
+  <Tab title="No sign-in">
+    Your system accepts requests without a password. Only use this for public information. There is no secret to store.
+  </Tab>
+  <Tab title="Bearer token">
+    Your system gives you a long token. Yulona sends it with every request as the standard "Authorization: Bearer" header. Enter it in **Token**.
+  </Tab>
+  <Tab title="API key in a header">
+    Your system gives you a key and tells you which header carries it (often `X-API-Key`). Enter the header in **Header name** and the key in **API key**.
+  </Tab>
+  <Tab title="Username and password">
+    A username and a password, sent the standard way (HTTP basic sign-in). Enter both in **Username** and **Password**. Ask your developer for them.
+  </Tab>
+  <Tab title="Signed requests">
+    Instead of sending a password, Yulona signs every request with a shared secret so your system can check it really came from Yulona. Enter the secret in **Signing secret**, or click **Generate one** to create a strong one and then give it to your developer. Your developer needs it to check the signature; see the [developer guide](/developers/custom-tools-backend).
+  </Tab>
+</Tabs>
+
+Not sure which one you need? Ask the person who runs the system. Bearer token and API key are the most common.
+
+## Add a connection
+
+<Steps>
+  <Step title="Open Connections">
+    Go to **Settings**, then **Connections**, and click **New connection**. (You can also click **New connection** inside the [tool builder](/guides/tools/build-a-tool).)
+  </Step>
+  <Step title="Fill in the details">
+    Enter the name, the web address and the sign-in method, then the secret. **Show what I typed** lets you check the secret before saving.
+  </Step>
+  <Step title="Save and test">
+    Click **Save and test** to save and call your system once straight away, or **Save connection** to just save.
+  </Step>
+  <Step title="Read the result">
+    "Your system answered" with the status code and time means it works. Otherwise a message says what to fix.
+  </Step>
+</Steps>
+
+## Secrets are write-only
+
+Once saved, nobody can read a secret again, including you and your colleagues. The connection shows a badge **Secret saved**, and when you edit it you see "Secret saved. It is never shown again." with a **Replace secret** button. Secrets are stored encrypted, are added to requests on our server, and never reach the AI, its instructions or your conversation logs. If you lose a secret, get a new one from your system and replace it.
+
+<Warning>
+Never paste secrets into an agent's persona, a knowledge skill or a chat. The AI can repeat what it has read.
+</Warning>
+
+## Test a connection
+
+Click **Test connection** on any connection. Yulona calls the test page (or the main address) and tells you whether your system answered, with the status and speed. If it fails you see a reason in plain words: your system refused the sign-in (check the secret), the path was not found, the address cannot be reached, or the call timed out. Test results are kept for the current browser session only, so you may see "Not tested yet" after a reload. You can run up to 20 tests a minute.
+
+## Rotate a secret
+
+Rotating means replacing a secret with a new one, for example when a colleague leaves or the key was shared by mistake.
+
+<Steps>
+  <Step title="Get a new secret from your system">
+    Create it first so there is no gap.
+  </Step>
+  <Step title="Click Rotate secret">
+    On the connection, click **Rotate secret**, enter the new value ("New secret", or username and password) and click **Rotate secret**.
+  </Step>
+  <Step title="Test it">
+    The old secret stops working for the AI as soon as you save. Click **Test connection** to confirm the new one works. Then revoke the old one in your system.
+  </Step>
+</Steps>
+
+## Edit or delete
+
+**Edit** changes the name, address, method or test page. If you change the method you must enter a new secret. To remove a stored secret, switch the method to **No sign-in**.
+
+**Delete** removes the connection. The confirmation says it cannot be deleted while a tool still uses it. If any agent's tool still uses it, deletion is refused with a message such as "Still used by Support agent. Open that agent's Tools tab, switch the tool to another connection or delete the tool, save the agent, then delete this connection." Follow those steps and try again.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="My system answered 401 or 403">
+    The secret is wrong, expired, or does not match the sign-in method. Use **Rotate secret** with a fresh value.
+  </Accordion>
+  <Accordion title="The address is rejected">
+    It must be a public address, start with `https://` on the hosted version, and contain no username, password or `?` parts.
+  </Accordion>
+  <Accordion title="The connection has no secret">
+    A connection shows **No secret** if the saved secret is missing. Open **Rotate secret** and enter one.
+  </Accordion>
+  <Accordion title="Self-hosted: saving fails with a service message">
+    Connections need an encryption key configured on the server. Ask your administrator; see [Configuration](/self-hosting/configuration).
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Build a tool" icon="hammer" href="/guides/tools/build-a-tool">
+    Use your connection in a tool.
+  </Card>
+  <Card title="Tools overview" icon="wrench" href="/guides/tools/overview">
+    See everything an agent can do.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/tools/{ConnectionForm.tsx,ConnectionsPage.tsx,model.ts}, apps/dashboard/src/pages/Shell.tsx, docs/api/tools.md */}

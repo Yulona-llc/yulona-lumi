@@ -1,0 +1,91 @@
+---
+title: FAQ
+description: Quick answers to the questions owners, admins and support teams ask most often about agents, knowledge, handoffs, channels, credits and data.
+icon: circle-question
+---
+
+Short answers for owners, admins and support teams. Each one links to the page with the full steps.
+
+## Agents and answers
+
+<AccordionGroup>
+  <Accordion title="Will the AI make things up?">
+    The agent answers from the knowledge you give it. If it cannot find an answer, it first asks the customer to rephrase, and after a number of misses in a row (you set it on the agent's **Escalation** tab) it tells the customer it is passing them to your team and creates a handoff. The sandbox labels each answer **Grounded** or **Not found in knowledge** so you can check before going live. See [Concepts](/concepts).
+  </Accordion>
+  <Accordion title="What can I upload as knowledge?">
+    On the **Knowledge** page you can upload a PDF, DOCX, TXT, MD or HTML file up to 10 MB, add a web page (and up to 25 pages of the same site), or paste text. Each source becomes a skill the agent reads.
+  </Accordion>
+  <Accordion title="Do my edits go live straight away?">
+    No. **Save draft** keeps your edits private; **Publish** makes them a new numbered version that customers see. You can roll back to any earlier version from the **Versions** tab. Always publish before sharing your widget or connecting a channel.
+  </Accordion>
+  <Accordion title="Can I run more than one agent?">
+    Yes, up to your plan's agent limit. Each website widget and each channel connection picks which agent answers. See [Billing and plans](/guides/account/billing-and-plans).
+  </Accordion>
+  <Accordion title="Which languages does the agent speak?">
+    You tell the agent which languages to use in its persona instructions. The prompt helper on the **Persona** tab has a **Languages** field for this.
+  </Accordion>
+</AccordionGroup>
+
+## Conversations and handoffs
+
+<AccordionGroup>
+  <Accordion title="How do I stop the AI on one conversation?">
+    Open it in the [Inbox](/guides/workspace/inbox) and click **Take over**, or just send a reply. The AI stops answering until you click **Return to AI**.
+  </Accordion>
+  <Accordion title="How does a customer get a person?">
+    If they ask for one, or use one of your escalation keywords, the agent hands off immediately. The conversation appears in [Needs attention](/guides/workspace/needs-attention) and your team is notified.
+  </Accordion>
+  <Accordion title="Can a customer go back to the AI?">
+    Yes. While they wait, they can reply with the agent's resume keyword (by default "AI"). If no teammate has answered yet, the AI takes the conversation back. You can change or clear the keyword on the **Escalation** tab.
+  </Accordion>
+  <Accordion title="What happens outside business hours?">
+    You choose under **Settings**, **Hours and routing**: the AI keeps going, the AI tells the customer when you are back, or the handoff is simply marked **Out of hours**. See [Business hours](/guides/workspace/business-hours).
+  </Accordion>
+  <Accordion title="Which channels are supported?">
+    The website widget, WhatsApp, Messenger, Instagram, Telegram and Slack, all in one Inbox. WhatsApp, Messenger and Instagram only allow replies within 24 hours of the customer's last message.
+  </Accordion>
+</AccordionGroup>
+
+## Team and roles
+
+<AccordionGroup>
+  <Accordion title="Who can do what?">
+    Owners do everything, admins manage settings and the team, agents work conversations, and viewers read only. The full table is in [Team and roles](/guides/workspace/team-and-roles).
+  </Accordion>
+  <Accordion title="How long does an invitation last?">
+    Seven days. You can revoke a pending invitation any time from **Settings**, **Team**.
+  </Accordion>
+  <Accordion title="Someone left the company. What do I do?">
+    Click **Disable** next to their name on the Team page. They are signed out and cannot sign in again, and their history stays.
+  </Accordion>
+</AccordionGroup>
+
+## Credits, plans and data
+
+<AccordionGroup>
+  <Accordion title="What are credits?">
+    On the hosted service, credits measure how much AI you use. You get a monthly allowance and can buy top-ups that never expire. At 80% you get a warning; at 100% the AI pauses and chats wait for your team. See [Usage and credits](/guides/account/usage-and-credits).
+  </Accordion>
+  <Accordion title="Do self-hosted installations pay credits?">
+    No. Self-hosted installations use your own AI provider account and are never charged credits. The Usage page shows tokens and requests only.
+  </Accordion>
+  <Accordion title="Can I get a copy of a customer's data, or delete it?">
+    Yes. Admins can export or erase a contact under **Settings**, **Data and privacy**. Erasure anonymises the contact and replaces their messages with "[erased]". See [Privacy and data](/guides/account/privacy-and-data).
+  </Accordion>
+  <Accordion title="I lost my API key. Can I see it again?">
+    No. The full key is shown only once when you create it. Revoke it and create a new one under **Settings**, **API keys**.
+  </Accordion>
+</AccordionGroup>
+
+## Still stuck?
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/guides/troubleshooting">
+    Symptom, cause and fix tables.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Walk through the setup again from the start.
+  </Card>
+</CardGroup>
+
+{/* source: packages/ai-runtime/src/{turn,agent-loader}.ts; features/knowledge/KnowledgePage.tsx; features/agents/AgentEditor.tsx; features/team/TeamPage.tsx; features/usage/*; features/integrations-ui/DataPage.tsx; features/settings/ApiKeysPage.tsx; docs/api/{channels,platform,credits,integrations}.md */}

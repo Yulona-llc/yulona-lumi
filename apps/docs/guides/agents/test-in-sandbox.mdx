@@ -1,0 +1,90 @@
+---
+title: Test in the sandbox
+description: Chat with your agent safely, see which knowledge it read and when it would hand off, before any customer does.
+icon: flask-conical
+---
+
+The sandbox is a private test chat built into every agent. It runs the same logic customers get, but nothing is saved and nothing is sent to anyone. This page is for admins and owners who want to check an agent before publishing, or work out why it answered a certain way.
+
+<Note>
+The sandbox lives on the agent's page, so you need to be able to open **Agents**, which is for **admins and owners**.
+</Note>
+
+## Open the sandbox
+
+<Steps>
+  <Step title="Save your draft">
+    The sandbox needs a saved agent. If you have unsaved edits the **Sandbox** tab shows "Save your draft first. The sandbox runs the last saved draft." Click **Save draft** in the bottom bar.
+  </Step>
+  <Step title="Open the Sandbox tab">
+    Go to **Agents**, click your agent, then click the **Sandbox** tab. If you came from [Create with AI](/guides/agents/create-with-ai), the **Try it in the sandbox** button takes you here directly.
+  </Step>
+  <Step title="Type a customer message">
+    Type what a customer would ask in the **Message** box and click **Send**. The agent's reply appears in the **Test conversation**.
+  </Step>
+  <Step title="Click a reply to see why">
+    Click any agent reply. The **What the agent read** panel on the right explains that answer.
+  </Step>
+</Steps>
+
+## What you see for each answer
+
+Under each agent reply is a small note such as "3 sections read". The right-hand panel shows:
+
+- **Stage change**, for example "visitor to engaged". The stage is where the customer is in your funnel.
+- **Grounded** (green) means the answer came from your knowledge. **Not found in knowledge** (red) means the agent could not answer from it, so it asked for clarification or is preparing a handoff.
+- **Handoff**, when the agent would pass the conversation to a person, with its type and the reason. If it captured a lead, the lead card is shown too. See [Handoffs and human takeover](/guides/agents/handoffs-and-human-takeover).
+- **Skill sections**: the exact sections of your [skills](/guides/agents/knowledge-skills) the agent had in front of it. A tick marks sections used for the answer. Sections show "pre-loaded" when the agent already had them (or all your knowledge was short enough to include), or a match number when they were found by searching.
+- **Tool runs**: which tools the agent used and how long each took.
+- **Lead captured**: any contact or lead details the agent collected in this test.
+- **Tokens**: the amount of AI work used.
+
+## Test different situations
+
+- **Stage.** Use the **Stage** menu above the chat to start from a different point in the funnel, for example **qualified**, to test tools that only work later. The stage updates itself as the chat goes on.
+- **Reset.** The circular arrow button ("Reset conversation") clears the chat and sets the stage back to visitor.
+- **Follow-up questions.** The sandbox remembers the last several turns, like a real conversation, so you can test "and how much does that cost?" after a first question.
+
+A good test list: your five most common questions; a question your knowledge does not cover; "I want to talk to a person"; a word from your escalation keywords; a thank-you; and a message in another language you support.
+
+## What the sandbox does not do
+
+- **Nothing is saved.** No conversation, contact or ticket is created, and no customer is messaged.
+- **Your own custom tools are not called.** The test shows the tool run but your system is not contacted. To try a tool against your real system use **Test** in the tool builder. See [Build a tool](/guides/tools/build-a-tool).
+- **Calendar tools do not book.** Check availability and booking tools are not run in the sandbox. Test them with [a real booking](/guides/tools/calendar-booking) once your calendar is connected.
+- **Channels are not involved.** WhatsApp, Telegram and other channels have their own rules, such as reply windows. Send a real message after connecting a [channel](/guides/channels/website-widget).
+
+<Warning>
+Sandbox messages use the same AI as real conversations, so on the hosted version they use your AI credits. If your credits are used up, the sandbox shows an error instead of an answer. See [Usage and credits](/guides/account/usage-and-credits). The sandbox is limited to 20 messages per minute per person, and each message can be up to 2,000 characters.
+</Warning>
+
+<Note>
+The sandbox always runs your last saved draft, even when a different version is published. Customers keep getting the published version until you publish again.
+</Note>
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="The agent always says it cannot find the answer">
+    Look at **Skill sections**. If none were read, your knowledge may be empty or the wording differs from the question. Open the skill's sections in [Knowledge](/guides/agents/knowledge-skills) and add the missing words or a clearer heading.
+  </Accordion>
+  <Accordion title="The reply is slow">
+    The panel shows "Thinking…" while the agent opens sections and runs tools. Large knowledge bases take a little longer than short ones.
+  </Accordion>
+  <Accordion title="I see an error toast">
+    Read the message. Common causes are exhausted credits, the AI provider being unavailable, or sending more than 20 messages in a minute.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Publish" icon="rocket" href="/guides/agents/publish-and-versions">
+    Happy with the tests? Make it live.
+  </Card>
+  <Card title="Configure your agent" icon="sliders" href="/guides/agents/configure-your-agent">
+    Adjust the persona and handoff rules.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/agents/{SandboxConsole.tsx,AgentEditor.tsx}, packages/ai-runtime/src/{sandbox.ts,turn.ts,tools.ts}, docs/api/ai-runtime.md, apps/api/src/routes/knowledge.ts */}

@@ -1,0 +1,96 @@
+---
+title: Create an agent with AI
+description: Answer a few questions in a chat and let Yulona draft your agent's persona, handoff rules, tools and knowledge for you.
+icon: sparkles
+---
+
+Create with AI is the fastest way to get a first agent. You chat with an assistant about your business, and it fills in a live "Agent sheet" while you talk. This page is for workspace owners and admins who are setting up an agent for the first time (or want a fresh starting point).
+
+<Note>
+Only **admins and owners** can use Create with AI. Other roles see a notice instead of the chat.
+</Note>
+
+## Before you start
+
+- Know the basics of your business: what you sell or do, who your customers are, and what you want the agent to achieve (answer questions, collect leads, book appointments).
+- Have a web page or some text ready if you want the assistant to turn it into knowledge. You can also add knowledge later in [Knowledge](/guides/agents/knowledge-skills).
+- On the hosted (SaaS) version, the chat uses AI credits. If your credits run out, the chat stops and shows "AI credits are used up. Buy credits to keep building." See [Usage and credits](/guides/account/usage-and-credits). Self-hosted installs record usage but never block you.
+
+## Create your agent
+
+<Steps>
+  <Step title="Open Create with AI">
+    Go to **Agents** and click **Create with AI**. If you have no agents yet, the same button is on the empty page. The chat opens full screen.
+  </Step>
+  <Step title="Answer the assistant's questions">
+    The assistant opens with its first question. Type your answer in the box ("Type your answer") and press Enter, or click **Send**. When it offers quick answers, you can click one of the buttons under the chat instead of typing. Use Shift+Enter for a new line.
+  </Step>
+  <Step title="Watch the Agent sheet fill in">
+    On the right (or behind the **Agent sheet** bar on a phone) you see six rows fill in as you talk: **Name**, **Persona**, **Greeting**, **Handoff rules**, **Tools** and **Knowledge**. The counter shows how many are covered, for example "4 of 6 covered". A row briefly highlights when it changes.
+  </Step>
+  <Step title="Add knowledge in the chat (optional)">
+    Give the assistant a web page address or paste some text. It can add up to three knowledge sources per chat. It will not accept passwords or secrets, so do not paste any.
+  </Step>
+  <Step title="Create the draft">
+    When the draft is ready, a card says "Your draft is ready". You can keep chatting to change anything first. Then click **Create draft**, or click **Try it in the sandbox** to create the draft and open the sandbox straight away.
+  </Step>
+</Steps>
+
+<Warning>
+**Create draft** needs at least a name, a persona (at least 40 characters) and a greeting. Until those exist the buttons are disabled and the sheet says "Needs a name, a persona and a greeting first."
+</Warning>
+
+## What you should see
+
+The dashboard shows "Draft created" with the agent's name and opens the agent editor. The new agent is a **draft**: nothing goes live until you publish it, and customers cannot talk to it yet. Review each tab (Persona, Knowledge, Escalation, Tools), then [test it in the sandbox](/guides/agents/test-in-sandbox) and [publish](/guides/agents/publish-and-versions).
+
+## What the assistant can and cannot set
+
+The assistant writes the same settings you can edit by hand in [Configure your agent](/guides/agents/configure-your-agent):
+
+- Persona (role, scope, tone and rules), greeting, and the fallback, clarifying and handoff messages.
+- Escalation keywords, and whether to hand over qualified leads.
+- Which built-in tools are on. The chat can switch on **Qualify leads**, **Collect contact details**, **Pass to a person**, **Check calendar availability** and **Book appointments**.
+- Knowledge from a web page or pasted text.
+
+It cannot change the AI model, temperature or your own custom tools. Set those in the editor after the draft exists.
+
+<Tip>
+Be specific. "We run a dental clinic in Addis Ababa, we want to book cleanings, never give medical advice, and reply in Amharic or English" gives a much better persona than "customer support".
+</Tip>
+
+## Limits and common problems
+
+<AccordionGroup>
+  <Accordion title="The chat stopped accepting messages">
+    A single chat has a limit of 60 messages from you or about 150,000 tokens of AI work. If you reach it, click **Back to agents**, then start a new chat. Your earlier draft is not lost if you already created it.
+  </Accordion>
+  <Accordion title="It says the assistant is busy or unavailable">
+    The AI provider may be temporarily down, or a previous message is still being answered. Wait a moment and send again.
+  </Accordion>
+  <Accordion title="I hit a plan limit when creating the draft">
+    Your plan allows a set number of agents. Archive an agent you no longer use or upgrade in [Billing and plans](/guides/account/billing-and-plans).
+  </Accordion>
+  <Accordion title="I reloaded the page">
+    Your chat is remembered for the browser tab you are in, so the conversation and the Agent sheet come back. Closing the tab starts a fresh chat.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configure your agent" icon="sliders" href="/guides/agents/configure-your-agent">
+    Fine-tune the persona and handoff rules.
+  </Card>
+  <Card title="Add knowledge" icon="book-open" href="/guides/agents/knowledge-skills">
+    Give the agent real answers to work from.
+  </Card>
+  <Card title="Test in the sandbox" icon="flask-conical" href="/guides/agents/test-in-sandbox">
+    Try it safely before customers do.
+  </Card>
+  <Card title="Publish" icon="rocket" href="/guides/agents/publish-and-versions">
+    Make it live.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/agent-builder/{AgentBuilderPage.tsx,AgentSheet.tsx,model.ts}, apps/dashboard/src/features/agents/AgentsPage.tsx, docs/api/agent-builder.md */}

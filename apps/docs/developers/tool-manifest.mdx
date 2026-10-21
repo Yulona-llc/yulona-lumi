@@ -1,0 +1,158 @@
+---
+title: Tool manifest
+description: Field-by-field reference for version 1 and version 2 tool manifests, including stage gating, response mapping paths, validation rules and examples.
+icon: file-code
+---
+
+A tool manifest is the JSON document that tells an agent what a custom tool does, which arguments it takes, and how Yulona calls your backend. This reference is for developers who write manifests by hand or generate them. For the HTTP contract your backend must follow, see [Custom tools backend](/developers/custom-tools-backend).
+
+## Where manifests live
+
+Manifests are stored as bare objects in the agent config:
+
+- `config.customTools`: array of manifests (maximum 20 per agent).
+- `config.enabledTools`: array of tool names that are switched on (maximum 50). A custom tool is offered to the model only if its `name` is listed here. Built-in tools are `qualify_lead`, `collect_contact` and `escalate_to_human`.
+
+Saving goes through `PATCH /api/v1/agents/:id` (minimum role `admin`), which edits the **draft** and **replaces the whole `config`**, filling defaults for anything you omit. Always read the agent first, change the two arrays, and send the complete config back.
+
+<CodeGroup>
+```bash curl
+curl -X PATCH https://YOUR_HOST/api/v1/agents/AGENT_ID \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d @agent-patch.json   # {"config": { ...full config with customTools and enabledTools... }}
+```
+
+```javascript fetch
+const base = "https://YOUR_HOST/api/v1";
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+const agent = await (await fetch(`${base}/agents/${agentId}`, { headers })).json();
+const config = {
+  ...agent.config,
+  customTools: [...agent.config.customTools, manifest],
+  enabledTools: [...new Set([...agent.config.enabledTools, manifest.name])],
+};
+const res = await fetch(`${base}/agents/${agentId}`, { method: "PATCH", headers, body: JSON.stringify({ config }) });
+// then POST /agents/:id/publish so live conversations use it
+```
+</CodeGroup>
+
+An invalid manifest returns `400 validation_error` with paths like `config.customTools.0.request.path`. Live conversations run the **published** version, so publish after saving.
+
+## Version 2 reference
+
+Version 2 uses a **connection** for the base URL and credential. All objects are strict: unknown keys are rejected.
+
+<ParamField body="version" type="2" required>Literal `2`.</ParamField>
+<ParamField body="name" type="string" required>Matches `^[a-z][a-z0-9_]{1,63}$`. Must be unique, must not reuse a built-in name, and must appear in `enabledTools`.</ParamField>
+<ParamField body="description" type="string" required>1 to 1000 characters. The model reads this to decide when to call the tool, so say when to use it and when not to.</ParamField>
+<ParamField body="inputSchema" type="object" required>JSON Schema subset for the arguments (see below). Arguments are validated before any call; a violation is fed back to the model as `invalid_input`.</ParamField>
+<ParamField body="outputSchema" type="object" required>Informational; use `{ "type": "object" }`. The field is required by the schema.</ParamField>
+<ParamField body="connectionId" type="string" required>UUID of a connection in the same workspace.</ParamField>
+<ParamField body="request" type="object" required>How to call the backend (below).</ParamField>
+<ParamField body="timeoutMs" type="integer" default="10000">500 to 30000.</ParamField>
+<ParamField body="retry" type="object">`{ attempts: 2-4, baseMs: 50-5000 (default 300) }`. Allowed only when `request.method` is `GET`, `PUT` or `DELETE`.</ParamField>
+<ParamField body="responseMapping" type="object">Output key to path in the JSON response. Keys match `^[A-Za-z][A-Za-z0-9_]{0,63}$`; paths are 1 to 300 characters.</ParamField>
+<ParamField body="onFailure" type="string" default="handoff">`handoff` or `tell_customer`.</ParamField>
+<ParamField body="confirmBeforeRun" type="boolean" default="false">Require customer confirmation before the call runs.</ParamField>
+<ParamField body="allowedStages" type="string[]">Stages where the tool may be offered. Default: `engaged`, `qualified`, `booking_offered`.</ParamField>
+
+### `request`
+
+<ParamField body="method" type="string" required>`GET`, `POST`, `PUT`, `PATCH` or `DELETE`.</ParamField>
+<ParamField body="path" type="string" required>Starts with a single `/`, up to 2048 characters, relative to the connection base URL. May contain `{{field}}` placeholders (letters, digits, underscores).</ParamField>
+<ParamField body="fields" type="object[]" default="[]">Up to 50 of `{ name, in, as? }`. `name` is the key in the tool input (`^[A-Za-z][A-Za-z0-9_]{0,63}$`); `in` is `path`, `query`, `body` or `header`; `as` renames the query or body key or the header name. No duplicates per `in` and `name`.</ParamField>
+<ParamField body="headers" type="object">Static extra headers; values may use `{{field}}`.</ParamField>
+<ParamField body="bodyTemplate" type="string">JSON string, up to 8000 characters, for `POST`, `PUT`, `PATCH` only.</ParamField>
+
+Validation rules for `request`:
+
+- Every `{{placeholder}}` in `path` needs a field with `in: "path"`, and every `in: "path"` field must appear in the path.
+- Header names (in `fields` and `headers`) cannot be `authorization`, `proxy-authorization`, `cookie`, `host`, `content-length`, `connection`, `transfer-encoding`, `x-yulona-signature` or `x-yulona-timestamp`, and must match `A-Za-z0-9-` up to 64 characters.
+- `bodyTemplate` must be valid JSON once placeholders are replaced. Put placeholders **inside strings**: `"{{qty}}"` as a whole string keeps the value's type (a number stays a number); `"Order {{id}}"` interpolates text. Without a template, `in: "body"` fields are sent as a JSON object.
+- At runtime the final URL must remain on the connection's origin and path prefix.
+
+### `inputSchema` subset
+
+Supported: `type` of `object`, `string`, `number`, `integer`, `boolean`, `array`; `enum`; `required`; `properties`; `additionalProperties: false`; `minLength`, `maxLength`; `minimum`, `maximum`; `maxItems`, `items`. Other keywords (such as `pattern` or `format`) are ignored, so validate stricter formats in your backend. Do not add `confirmed` yourself; it is added automatically when `confirmBeforeRun` is true.
+
+## Stage gating
+
+A tool is offered to the model, and accepted by the executor, only in the stages it is allowed in. The model cannot call a tool that is not legal in the current stage.
+
+| Stage | Built-in tools | Custom tools (default) |
+|---|---|---|
+| `visitor` | `collect_contact`, `escalate_to_human` | No |
+| `engaged` | `collect_contact`, `qualify_lead`, `escalate_to_human` | Yes |
+| `qualified` | same as `engaged` | Yes |
+| `booking_offered` | `collect_contact`, `escalate_to_human` | Yes |
+| `booked` | `escalate_to_human` | No |
+| `handoff_requested` | none (the AI is paused) | No |
+
+Set `allowedStages` to widen or narrow a tool. The first AI reply moves a conversation from `visitor` to `engaged`, so a tool limited to `visitor` is effectively unreachable. See [AI runtime](/developers/ai-runtime).
+
+## Response mapping paths
+
+`responseMapping` turns the backend JSON into the small object the model sees.
+
+| Path | Meaning |
+|---|---|
+| `status` | Key `status` at the root |
+| `customer.email` | Nested key |
+| `lines[0].total` | Index into an array |
+| `lines[].sku` | Array of every item's `sku` |
+| `[]` | A root array, as is |
+| `[].name` | `name` of each item of a root array |
+
+Missing values become `null`. Without a mapping the whole JSON goes to the model (cut at 8000 characters). If a mapping is set and the reply is not JSON, the call fails with `not_json`. Use `POST /tools/test`: its `fieldTree` response lists every path you can copy.
+
+## Examples
+
+### GET with a path parameter
+
+```json
+{
+  "version": 2, "name": "lookup_order",
+  "description": "Look up an order by its number and report its status. Use when the customer gives an order number.",
+  "inputSchema": { "type": "object", "required": ["orderId"], "additionalProperties": false,
+    "properties": { "orderId": { "type": "string", "maxLength": 40 }, "include": { "type": "string", "enum": ["lines"] } } },
+  "outputSchema": { "type": "object" },
+  "connectionId": "7b0f1c2e-5d3a-4e8b-9c1d-2a6f4e8b0c3d",
+  "request": { "method": "GET", "path": "/orders/{{orderId}}",
+    "fields": [ { "name": "orderId", "in": "path" }, { "name": "include", "in": "query" } ] },
+  "timeoutMs": 8000, "retry": { "attempts": 3, "baseMs": 300 },
+  "responseMapping": { "status": "status", "skus": "lines[].sku", "firstTotal": "lines[0].total" },
+  "onFailure": "tell_customer"
+}
+```
+
+### POST with a body template and confirmation
+
+```json
+{
+  "version": 2, "name": "cancel_order",
+  "description": "Cancel an order after the customer explicitly confirms.",
+  "inputSchema": { "type": "object", "required": ["orderId", "reason"], "properties": { "orderId": { "type": "string" }, "reason": { "type": "string", "maxLength": 200 } } },
+  "outputSchema": { "type": "object" },
+  "connectionId": "7b0f1c2e-5d3a-4e8b-9c1d-2a6f4e8b0c3d",
+  "request": { "method": "POST", "path": "/orders/{{orderId}}/cancel",
+    "fields": [ { "name": "orderId", "in": "path" }, { "name": "reason", "in": "body" } ] },
+  "responseMapping": { "cancelled": "ok" },
+  "confirmBeforeRun": true, "allowedStages": ["engaged", "qualified"]
+}
+```
+
+## Version 1 (legacy)
+
+Version 1 manifests keep working unchanged. They have no connection: the URL and credential live in the manifest.
+
+| Field | Rule |
+|---|---|
+| `version` | `1` |
+| `name`, `description`, `inputSchema`, `outputSchema`, `allowedStages` | Same as v2 |
+| `authType` | `none`, `api_key` (header `X-API-Key`), `bearer` or `oauth2` (both send `Authorization: Bearer`) |
+| `endpointTemplate` | `"[METHOD ]https://host/path/{{param}}"`, up to 2048 characters. Default method `POST`. Parameters not used in the URL go to the query string for `GET` and `DELETE`, otherwise into a JSON body. |
+| `responseMapping` | Output key to a dot path (`a.b`, `a[0].b`); no `items[].name` form |
+
+The credential is supplied through a wrapper `{ "manifest": { ... }, "secret": "..." }` in `customTools`. v1 has no retries or `onFailure` choice: any failure raises a `system_failure` handoff, and `confirmBeforeRun` is not available. Prefer v2 for new tools. `POST /tools/test` accepts v2 manifests only.
+
+{/* source: packages/shared/src/tool-manifest.ts, packages/shared/src/agent.ts, packages/ai-runtime/src/tools.ts, packages/ai-runtime/src/http-tool.ts, packages/ai-runtime/src/stage.ts, apps/api/src/routes/agents.ts, apps/api/src/tools/test-endpoint.ts, docs/api/tools.md */}

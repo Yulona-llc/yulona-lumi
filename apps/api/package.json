@@ -1,0 +1,36 @@
+{
+  "name": "@yulona/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "bun build src/index.ts --target=bun --outdir dist",
+    "migrate": "bun ../../packages/db/src/cli.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "openapi:export": "bun scripts/export-openapi.ts"
+  },
+  "dependencies": {
+    "@scalar/hono-api-reference": "^0.12.13",
+    "@yulona/ai-runtime": "workspace:*",
+    "@yulona/channels": "workspace:*",
+    "@yulona/crypto": "workspace:*",
+    "@yulona/db": "workspace:*",
+    "@yulona/integrations": "workspace:*",
+    "@yulona/license": "workspace:*",
+    "@yulona/ops": "workspace:*",
+    "@yulona/providers": "workspace:*",
+    "@yulona/queue": "workspace:*",
+    "@yulona/shared": "workspace:*",
+    "postgres": "^3.4.5",
+    "hono": "^4.6.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  }
+}

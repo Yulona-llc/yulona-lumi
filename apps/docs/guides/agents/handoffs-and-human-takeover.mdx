@@ -1,0 +1,106 @@
+---
+title: Handoffs and human takeover
+description: Understand when the AI hands a conversation to your team, how customers are never left stuck, and how to take over or give a chat back.
+icon: hand
+---
+
+A **handoff** is the moment the AI stops answering and passes a conversation to a person. This page is for support leads, agents and admins. It explains what triggers a handoff, what the customer is told, and what you do next. You set the rules in [Configure your agent](/guides/agents/configure-your-agent).
+
+## The three kinds of handoff
+
+Every handoff has a type, shown as a coloured card in **Needs attention**:
+
+| Type | Label in Needs attention | When it happens |
+|---|---|---|
+| Uncertainty | **Uncertain** | The AI could not answer from your knowledge, or the customer asked for a person, or hit one of your escalation keywords. |
+| Stage | **Lead ready** | A lead is qualified and ready for a salesperson (the agent decided to pass it on, or **Hand off qualified leads** is on). It comes with a lead card showing name, contact details, need, budget and timeline. |
+| System failure | **System failure** | Something broke: the AI provider was unavailable, a tool or calendar call failed, or (on the hosted version) your AI credits ran out. |
+
+## Clarify first, then hand off
+
+When a customer asks something your knowledge does not cover, the agent does **not** hand off at once. It follows two steps:
+
+1. **Clarify.** It replies with a short message that says it could not find that information and asks the customer to rephrase or add detail. This is the **Clarifying reply** setting (the AI writes it in the customer's language and falls back to your text).
+2. **Hand off.** If the agent still cannot answer after **Hand off after unanswered questions** misses in a row (default 3), it hands off and sends your **Fallback message**.
+
+A question the agent does answer resets the count. Greetings and thank-yous are answered normally and never count as misses. An agent with no knowledge at all follows the same path.
+
+## When the customer asks for a person
+
+If a customer clearly asks for a human ("I want to talk to someone", "real person please", "not a bot"), or their message contains one of your **Escalation keywords**, the agent hands off **immediately** with your **Handoff message**. It skips the clarifying step. A message that merely contains the word "agent" does not trigger a handoff by itself.
+
+## Customers are never stuck: the resume keyword
+
+Every handoff message ends with a short notice so the customer can choose not to wait:
+
+> You don't have to wait: reply "AI" at any time to keep chatting with the assistant instead.
+
+"AI" is the default **Resume keyword**. When a customer replies with exactly that word (capital letters and punctuation do not matter), the conversation goes back to the AI, which welcomes them back. The open handoff is marked resolved with the note "customer resumed the AI", so it leaves your Needs attention queue.
+
+Two protections apply: the keyword only works while the handoff is still open **and** no teammate has replied yet. Once a person has joined the conversation, the customer cannot push them out by typing it. You can change the word, or empty the field to turn the feature off, on the **Escalation** tab.
+
+## Out-of-hours behaviour
+
+Your team's opening hours come from [Business hours](/guides/workspace/business-hours). When a handoff happens outside them, the customer sees a different notice depending on your **Outside business hours** setting:
+
+- **AI only**: the AI keeps the chat, and the handoff notice also says "Our team is currently offline and will reply when they are back. You don't have to wait: reply "AI" to keep chatting with the assistant right now."
+- **AI sends a message**: the AI posts your **Out-of-hours message** (or a default) so the visitor knows when to expect a reply, and the handoff keeps the standard "you don't have to wait" line.
+- **Flag in the queue**: the handoff is marked out of hours in Needs attention so you can see it first thing in the morning.
+
+With no business hours configured your team is treated as always open.
+
+## What your team sees
+
+When a handoff happens the conversation is marked as needing a person, the AI goes quiet, and a card appears in [Needs attention](/guides/workspace/needs-attention). The inbox shows "The AI has stopped and needs a person. Reply or take over to continue." Each card shows how long the customer has been waiting, a summary of the last messages and, for lead handoffs, the lead card. Depending on your assignment setting, it may be suggested to a specific teammate.
+
+## Take over and return to AI
+
+<Steps>
+  <Step title="Claim it">
+    In **Needs attention**, click **Claim** on the card to make it yours and open the conversation. (Agents, admins and owners can use this page.)
+  </Step>
+  <Step title="Take over">
+    In the [Inbox](/guides/workspace/inbox), open a conversation the AI is handling and click **Take over**. You can also simply send a **Reply to customer**: sending a reply takes over from the AI automatically. Choose **Internal note** to write something only your team sees.
+  </Step>
+  <Step title="Help the customer">
+    While a person owns the conversation, the AI does not reply.
+  </Step>
+  <Step title="Give it back">
+    Click **Return to AI** (or **Hand back to AI** if someone else is assigned). The AI answers the customer's next message. Alternatively, resolve the card in Needs attention and switch on **Hand the conversation back to the AI**. Click **Resolve** to close a finished conversation.
+  </Step>
+</Steps>
+
+<Note>
+If someone else has the conversation assigned, taking over is blocked unless you are an admin or owner. Check the **Assignee** menu first.
+</Note>
+
+## Hosted and self-hosted
+
+On the hosted version, when your AI credits run out the AI stops calling the model and every new message becomes a **System failure** handoff. The customer sees "Our assistant is temporarily unavailable. A member of our team will get back to you shortly." Buy credits in [Usage and credits](/guides/account/usage-and-credits). Self-hosted installs never run out of credits.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="The agent hands off too often">
+    Raise **Hand off after unanswered questions**, shorten your keyword list, and add the missing information to [Knowledge](/guides/agents/knowledge-skills).
+  </Accordion>
+  <Accordion title="The agent never hands off">
+    Lower the number of unanswered questions, add keywords, and check that **Escalate to human** is switched on in the **Tools** tab.
+  </Accordion>
+  <Accordion title="A customer says they are stuck">
+    Make sure the **Resume keyword** is not empty, and reply to the customer yourself from the inbox.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Needs attention" icon="shield-alert" href="/guides/workspace/needs-attention">
+    Work the handoff queue.
+  </Card>
+  <Card title="Inbox" icon="inbox" href="/guides/workspace/inbox">
+    Reply to customers.
+  </Card>
+</CardGroup>
+
+{/* source: packages/ai-runtime/src/{turn.ts,intent.ts,smalltalk.ts,runtime.ts,types.ts}, packages/shared/src/agent.ts, apps/dashboard/src/features/{attention/AttentionPage.tsx,inbox/ConversationView.tsx,inbox/Composer.tsx,ops-settings/OpsSettingsPage.tsx,agents/AgentEditor.tsx}, docs/api/{ops,conversations,ai-runtime}.md */}

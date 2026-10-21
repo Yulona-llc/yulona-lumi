@@ -1,0 +1,115 @@
+---
+title: Realtime
+description: Connect to the Yulona WebSocket and server-sent event streams, authenticate in the first frame, handle events and reconnect safely.
+icon: bolt
+---
+
+Yulona pushes new messages, conversation changes, typing and presence over a WebSocket. This page is for developers building a custom inbox or a custom website chat client. The shipped dashboard and widget already do all of this.
+
+| Client | Transport | Endpoint | Credential |
+|---|---|---|---|
+| Dashboard or agent tool | WebSocket | `wss://YOUR_HOST/api/v1/realtime/ws` | Access token (JWT) |
+| Website visitor | WebSocket | `wss://YOUR_HOST/api/v1/public/widget/ws?key=wk_...` | Widget session token |
+| Website visitor | Server-sent events | `GET /api/v1/public/widget/stream` | Widget key and session token in headers |
+
+## Authenticate in the first frame
+
+**Tokens are never put in the URL.** After the socket opens, the first frame must be an `auth` frame within 5 seconds. Otherwise the server closes the socket with code `4408`. A bad or expired token closes it with `4401`.
+
+<CodeGroup>
+```javascript Dashboard (browser)
+const ws = new WebSocket("wss://YOUR_HOST/api/v1/realtime/ws");
+
+ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token: accessToken }));
+
+ws.onmessage = (e) => {
+  const ev = JSON.parse(e.data);
+  switch (ev.type) {
+    case "ready": console.log("connected as", ev.kind); break; // "agent"
+    case "message.created": console.log(ev.conversationId, ev.message); break;
+    case "conversation.updated": console.log(ev.conversation); break;
+    case "typing": console.log(ev.conversationId, ev.from, ev.typing); break;
+    case "presence": console.log(ev.subject, ev.online); break;
+    case "error": console.warn(ev.code, ev.message); break;
+  }
+};
+```
+
+```javascript Visitor (browser)
+const ws = new WebSocket(`wss://YOUR_HOST/api/v1/public/widget/ws?key=${widgetKey}`);
+ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token: sessionToken }));
+// the page's Origin must match the widget's allowed domains
+```
+</CodeGroup>
+
+On success the server sends `{ "type": "ready", "kind": "agent" }` (or `"visitor"`). Agent sockets automatically receive events for the whole workspace; there is no subscribe step. Visitor sockets receive only their own conversation.
+
+If you connect with a plain `GET` and no `Upgrade: websocket` header, the dashboard endpoint answers `426` with `code: "upgrade_required"`. If the browser sends an `Origin` that is not in the operator's `CORS_ORIGINS`, the dashboard endpoint returns `403 forbidden`.
+
+## Client frames
+
+Frames are JSON text, at most 4096 characters. A larger frame closes the socket with `1009`. Invalid frames after authentication get an `error` frame with `code: "validation_error"`.
+
+| Frame | Purpose |
+|---|---|
+| `{ "type": "auth", "token": "..." }` | Must be first. Ignored afterwards. |
+| `{ "type": "typing", "conversationId": "<uuid>", "typing": true }` | Typing indicator. Agents must pass `conversationId`; visitors do not. Limited to 5 per second per socket (extra frames are dropped silently). |
+| `{ "type": "ping" }` | Server replies `{ "type": "pong" }`. |
+
+## Server events
+
+| `type` | Payload | Who receives it |
+|---|---|---|
+| `ready` | `kind`: `agent` or `visitor` | Everyone, once, after auth |
+| `message.created` | `conversationId`, `message` | Agents: every workspace message as a `MessageDto`, including internal notes. Visitors: only their conversation, as a `PublicMessage` (never notes or system lines). |
+| `conversation.updated` | `conversation` | Agents: full `ConversationSummary`. Visitors: `{ id, status, handler }`. |
+| `typing` | `conversationId`, `from` (`contact`, `ai`, `human`), `userId?`, `typing` | Both |
+| `presence` | `subject` (`contact` or `agent`), `conversationId?`, `userId?`, `online` | Agents |
+| `error` | `code`, `message` | Sender of the bad frame, or on connection limits |
+
+Message shapes match the REST API. See [Public API](/developers/public-api) for `MessageDto` and `ConversationSummary`, and [Widget embed](/developers/widget-embed) for `PublicMessage` and `ui`.
+
+AI replies written by the worker reach sockets without extra wiring: database triggers fire on every message insert and Postgres `LISTEN/NOTIFY` fans events out to every API instance. Typing and presence use Redis pub/sub when `REDIS_URL` is set, otherwise Postgres `NOTIFY`. Presence is accurate per instance and best effort across instances.
+
+## Limits and heartbeats
+
+- At most **5 sockets per user** (agents) or **per widget session** (visitors), and 1000 per workspace per API instance. Exceeding a limit sends an `error` frame with `code: "rate_limited"` and closes with `4429`.
+- The server drops idle connections after about 60 seconds without traffic, and its transport sends pings. Send your own `{ "type": "ping" }` about every 25 seconds, as the widget does, to keep proxies from timing the socket out.
+- Reverse proxies must pass WebSocket upgrades. The bundled Caddy configuration does.
+
+## Server-sent events for the widget
+
+When WebSockets are blocked, visitors can stream over SSE. `EventSource` cannot set headers, so use `fetch` streaming.
+
+```javascript
+const res = await fetch(`${API}/public/widget/stream`, {
+  headers: { "X-Widget-Key": widgetKey, Authorization: `Bearer ${sessionToken}`, Accept: "text/event-stream" },
+});
+const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+let buf = "";
+for (;;) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  buf += value;
+  let i;
+  while ((i = buf.indexOf("\n\n")) >= 0) {
+    const block = buf.slice(0, i); buf = buf.slice(i + 2);
+    const event = /^event: (.+)$/m.exec(block)?.[1];
+    const data = /^data: (.+)$/m.exec(block)?.[1];
+    if (event && data) handle(event, JSON.parse(data)); // ready, message.created, conversation.updated, typing
+  }
+}
+```
+
+The stream sends `event: <type>` and `data: <json>` and a `: ping` comment about every 20 seconds. A visitor over the connection limit gets `429 rate_limited` with `Retry-After: 10`.
+
+## Reconnect guidance
+
+1. Reconnect with **exponential backoff and jitter**, for example 1 s doubling to a 30 s cap. The widget uses this pattern.
+2. **Re-authenticate** on every new socket. For agents, refresh the access token first if it has expired ([Authentication](/developers/authentication)); a `4401` close usually means the token expired or the workspace is suspended.
+3. **Catch up from REST.** Events are not replayed. After reconnecting, fetch what you missed: visitors call `GET /public/widget/messages?after=<last message id>`; agents re-list conversations and fetch messages for the open one.
+4. **Fall back.** If WebSockets keep failing, switch to SSE, then to polling (the widget polls every 4 seconds while no live channel is up).
+5. **De-duplicate** by message id, because an event can arrive both live and in the catch-up response.
+6. A `401` or `403` on the widget API means start a new conversation. Do not loop.
+
+{/* source: apps/api/src/realtime/ws.ts, apps/api/src/realtime/hub.ts, apps/api/src/routes/realtime.ts, apps/api/src/routes/public-widget.ts, apps/widget/src/transport.ts, packages/shared/src/conversations.ts, deploy/Caddyfile, docs/api/conversations.md */}

@@ -1,0 +1,25 @@
+{
+  "name": "@yulona/tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@yulona/api": "workspace:*",
+    "@yulona/db": "workspace:*",
+    "@yulona/shared": "workspace:*",
+    "@yulona/providers": "workspace:*",
+    "@yulona/queue": "workspace:*",
+    "@yulona/ai-runtime": "workspace:*",
+    "@yulona/worker": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "playwright-core": "^1.64.1",
+    "typescript": "^5.6.0"
+  }
+}

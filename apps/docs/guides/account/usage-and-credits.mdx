@@ -1,0 +1,98 @@
+---
+title: Usage and credits
+description: See how many AI credits you have, what warnings to expect at 80 and 100 percent, how to buy more, and where your usage went by agent, model and conversation.
+icon: gauge
+---
+
+This page is for owners and admins who watch what the AI costs. On the hosted service, every AI answer uses credits. On a self-hosted installation nothing is charged and the page shows tokens only.
+
+**Role needed:** every role sees the credit meter and the warnings. Admins and owners see the breakdown, can export it to CSV and can buy credits.
+
+## Credits in plain words
+
+A **credit** is the unit of AI usage on the hosted service. Each AI reply costs credits based on how much text goes into and comes out of the model, and some models cost more than others.
+
+- Your plan includes a **monthly allowance**. It resets at the start of each calendar month (UTC).
+- You can buy **top-ups**. They never expire and carry over from month to month.
+- Credits are used from the allowance first, then from your top-up balance.
+- Some plans have no credit limit at all. The page then says "Your plan has no credit limit."
+
+<Note>
+Self-hosted installations run on your own AI provider account. Yulona never charges credits there and never pauses the AI for lack of credits. The **Usage** page shows the message "Usage on your own provider key is not charged" and lists tokens and requests so you can estimate your provider's bill.
+</Note>
+
+## Check your credits
+
+Open **Settings**, then **Usage**. At the top you see a gauge and, under **This month**, three figures: **Monthly allowance**, **Used this month** and **Top-up balance** (marked "Never expires"). The page also tells you the date your allowance resets. The **Overview** page shows a smaller **AI credits** card with the same meter.
+
+## Warnings
+
+| When | What you see | What happens |
+|---|---|---|
+| **80% used** | A banner: "You have used 80% of your AI credits" with how many are left. Owners and admins also get a notification and an email, once per month. | Everything keeps working. |
+| **100% used** | A red banner on every page: "AI replies are paused until you add credits", with an **Add credits** link (admins and owners) or **View usage**. Owners and admins get a notification and an email. | The AI stops answering. The customer gets a short notice and a **System failure** item appears in [Needs attention](/guides/workspace/needs-attention). |
+
+When credits run out:
+
+- Customers see a short message such as "Our assistant is temporarily unavailable. A member of our team will get back to you shortly." The exact text is set by whoever operates the deployment.
+- Their chats wait in **Needs attention** until you add credits or a teammate replies.
+- Testing in the sandbox and the **Create with AI** builder stop working and tell you credits are used up.
+- Buying a credit pack lifts the pause as soon as the payment clears.
+
+## Buy more credits
+
+**Role needed:** admin or owner.
+
+<Steps>
+  <Step title="Click Buy credits">
+    On **Usage**, or from a warning banner, click **Buy credits**.
+  </Step>
+  <Step title="Choose a pack">
+    In the **Buy credits** dialog pick a credit pack. The dialog reminds you that credits never expire and are used after your monthly allowance runs out.
+  </Step>
+  <Step title="Pay">
+    Confirm and you are sent to the payment page. When you come back you see "Credits added. AI replies resume as soon as the payment clears." or, if you cancelled, "Checkout canceled. No credits were added."
+  </Step>
+</Steps>
+
+If the dialog says "No credit packs are available right now", payments are not set up for your workspace. Contact support.
+
+## See where credits went
+
+**Role needed:** admin or owner. Viewers and agents see a notice instead of this section.
+
+Under **Breakdown**, choose a date range of 7, 30 or 90 days. You get:
+
+- Totals for **Total tokens**, **Input tokens**, **Output tokens** and **Requests**.
+- A **Daily usage** chart. On the hosted service switch it between credits and tokens.
+- A table you can group three ways: **By agent**, **By model** or **Top conversations** (the top 200 by cost). Each row shows credits (hosted only), **Requests**, **Input tokens** and **Output tokens**. A conversation row links to the thread in the Inbox.
+
+Usage that has no agent attached appears as "(unattributed)".
+
+Click **Export CSV** to download the grouped table. The file has these columns: key, label, promptTokens, completionTokens, totalTokens, requests and creditsMicro. The last column is in millionths of a credit, so divide by 1,000,000 to get credits. On a self-hosted installation the cost column is only an estimate and is never charged.
+
+## What you should see
+
+After a busy day your **Used this month** figure rises, the gauge fills, and the top agent in **By agent** is the one answering the most.
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| The AI stopped answering | Your credits may be used up. Check the red banner and buy credits. See [Troubleshooting](/guides/troubleshooting). |
+| I cannot see the breakdown | It needs the admin or owner role. |
+| I bought credits but the banner is still there | Payments can take a moment to clear. Refresh the page. |
+| The page shows tokens but no credits | Your installation is self-hosted, so credits are off. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Billing and plans" icon="credit-card" href="/guides/account/billing-and-plans">
+    Compare plans and manage payment.
+  </Card>
+  <Card title="Needs attention" icon="triangle-exclamation" href="/guides/workspace/needs-attention">
+    Work the chats that waited while credits were out.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/usage/{UsagePage,Breakdown,BuyCreditsDialog,CreditAlerts,Gauge}.tsx; docs/api/credits.md (periods, order of consumption, gate, warnings, CSV columns, deployment modes); packages/db/migrations/0910_credits_metering.sql (notifications to owners/admins); packages/ai-runtime/src/{runtime,turn}.ts (credits gate); apps/api/src/usage/routes.ts */}

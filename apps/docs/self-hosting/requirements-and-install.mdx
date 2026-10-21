@@ -1,0 +1,173 @@
+---
+title: Requirements and install
+description: Prepare a Linux host and install Yulona with one command, then sign in to your first workspace.
+icon: terminal
+---
+
+This page is for operators installing Yulona for the first time. By the end you will have a running stack behind HTTPS and an admin account for your single workspace.
+
+## Requirements
+
+| Item | Minimum |
+|---|---|
+| Operating system | Linux host |
+| CPU, memory, disk | 2 vCPU, 4 GB RAM, 20 GB disk |
+| Software | Docker Engine 24 or later with Compose v2, plus `openssl` and `git` |
+| Network | A DNS A/AAAA record pointing at the host, and ports 80 and 443 open (automatic HTTPS) |
+
+The compose resource limits add up to about 3.7 GB. Add roughly 2 GB if you enable ClamAV and 512 MB for MinIO.
+
+<Note>
+Without a domain you can still install for evaluation: use `localhost` (local test CA) or `:80` (plain HTTP, trusted networks only).
+</Note>
+
+## Install
+
+<Steps>
+  <Step title="Get the code">
+    ```bash
+    git clone <repo> yulona && cd yulona
+    ```
+    Replace `<repo>` with the repository URL you were given.
+  </Step>
+  <Step title="Run the setup script">
+    ```bash
+    deploy/setup.sh app.example.com --email you@example.com --workspace "Acme"
+    ```
+    The domain is the first argument. Options: `--email` (admin login, default `admin@<host>`), `--workspace` (default `My Workspace`), `--name` (admin display name, default `Admin`).
+  </Step>
+  <Step title="Save the printed password">
+    When the script finishes it prints the URL, the admin email and a generated password. The password is shown once. Sign in and change it.
+  </Step>
+  <Step title="Check health">
+    ```bash
+    curl https://app.example.com/readyz
+    ```
+    A healthy stack answers `{"status":"ok","checks":{"db":"ok","redis":"ok"}}`.
+  </Step>
+</Steps>
+
+For an install without a domain:
+
+<CodeGroup>
+```bash Local test CA
+deploy/setup.sh
+# https://localhost with a self-signed local CA
+```
+
+```bash Plain HTTP
+deploy/setup.sh :80
+# http://<this-host>, only on a trusted network
+```
+</CodeGroup>
+
+### What setup.sh does
+
+1. Checks that `docker`, Compose v2 and `openssl` are installed.
+2. Refuses to continue if `deploy/.env` already exists, so it never overwrites secrets. Use `deploy/upgrade.sh` for existing installs.
+3. Copies `deploy/.env.example` to `deploy/.env` (mode 600) and fills `SITE_ADDRESS`, `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`, `REDIS_PASSWORD`, `JWT_SECRET`, `ENCRYPTION_KEY` and `MINIO_ROOT_PASSWORD` with random values.
+4. Builds the images.
+5. Starts Postgres and Redis. On first start Postgres runs `deploy/postgres/init-roles.sh`, which creates the runtime role `yulona_app` (no `BYPASSRLS`, not a superuser) with `APP_DB_PASSWORD`, and enables the `vector` extension.
+6. Runs the `migrate` one-shot service as the owner role `yulona_owner`.
+7. Runs the `create-tenant` one-shot service to create your workspace and its owner.
+8. Starts everything and waits for health checks.
+
+<Warning>
+Back up `deploy/.env` immediately. `ENCRYPTION_KEY` encrypts channel credentials, webhook secrets and OAuth tokens. If you lose it, those credentials cannot be recovered.
+</Warning>
+
+## Services, ports and URLs
+
+| Service | Published port | Reachable at |
+|---|---|---|
+| `caddy` | 80, 443 (TCP) and 443 (UDP, HTTP/3) | `https://<SITE_ADDRESS>` |
+| `api` | none (3000 inside the network) | `/api/*`, `/ws`, `/healthz`, `/readyz` through Caddy |
+| `dashboard` | none (8080 inside the network) | everything else through Caddy |
+| `postgres`, `redis` | none | internal network only |
+
+Caddy sends `/api/*`, `/ws`, `/healthz` and `/readyz` to the API and everything else to the dashboard. It also adds compression, an HSTS header, and limits request bodies to 2 MB at the proxy. The API enforces its own `BODY_LIMIT_BYTES` and a 10 MB file limit on knowledge uploads.
+
+### TLS
+
+Set `SITE_ADDRESS` to your domain and Caddy obtains and renews a Let's Encrypt certificate automatically. Ports 80 and 443 must reach the host. `localhost` uses a local certificate authority your browser will not trust by default, and `:80` disables TLS.
+
+To use your own reverse proxy instead, run with `SITE_ADDRESS=:80` behind it and forward `/` plus WebSocket upgrades (`/api/v1/realtime/ws`, `/api/v1/public/widget/ws`) to Caddy.
+
+## Add another workspace or admin
+
+Self-hosted mode is designed for one workspace, but you can create more with the same command setup used:
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml \
+  run --rm create-tenant --workspace Acme --email a@b.com
+```
+
+Flags: `--workspace`, `--email`, `--name`, `--password` (or `ADMIN_PASSWORD` in the environment), `--plan` (default `self_hosted`) and `--json`. Without a password a strong one is generated and printed once. The command uses the owner database role and rejects an email that already has an account.
+
+## Optional services
+
+Enable them with `COMPOSE_PROFILES` in `deploy/.env`, comma separated:
+
+```bash
+COMPOSE_PROFILES=minio,clamav
+```
+
+<Tabs>
+  <Tab title="MinIO (storage)">
+    Adds S3-compatible storage on the internal network and creates the bucket for you. Point the S3 settings at it:
+
+    ```bash
+    S3_ENDPOINT=http://minio:9000
+    S3_BUCKET=yulona
+    S3_REGION=us-east-1
+    S3_ACCESS_KEY_ID=yulona            # your MINIO_ROOT_USER
+    S3_SECRET_ACCESS_KEY=<MINIO_ROOT_PASSWORD value>
+    ```
+    Without any S3 settings, uploaded files and exports are kept in memory and are lost on restart.
+  </Tab>
+  <Tab title="ClamAV (virus scanning)">
+    Adds `clamd` and an HTTP wrapper. Set `CLAMAV_URL=http://clamav:3000`. Allow about 1.5 to 2 GB extra RAM. A `tcp://host:3310` address of your own `clamd` also works. See [Channels and integrations setup](/self-hosting/channels-and-integrations-setup#clamav).
+  </Tab>
+</Tabs>
+
+Apply a change with:
+
+```bash
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
+```
+
+## Development compose
+
+`deploy/docker-compose.dev.yml` starts only Postgres and Redis for local development, bound to `127.0.0.1` (Postgres on 5433, Redis on 6380) with throwaway credentials. Never use it in production.
+
+```bash
+docker compose -f deploy/docker-compose.dev.yml up -d postgres redis
+```
+
+## Using prebuilt images
+
+By default the images are built from the repository. To skip building, set pinned registry images in `deploy/.env`:
+
+```bash
+YULONA_API_IMAGE=ghcr.io/your-org/yulona-api:1.0.0
+YULONA_DASHBOARD_IMAGE=ghcr.io/your-org/yulona-dashboard:1.0.0
+```
+
+## Common problems
+
+- `variable is missing a value`: run Compose with `--env-file deploy/.env`, or run `deploy/setup.sh` first.
+- `setup.sh` says `deploy/.env already exists`: that is intentional. Delete the file only if you want to start over with an empty database.
+- More fixes are in [Troubleshooting](/self-hosting/troubleshooting).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration reference" icon="sliders" href="/self-hosting/configuration">
+    Set your domain, email, storage and more.
+  </Card>
+  <Card title="AI providers" icon="sparkles" href="/self-hosting/ai-providers">
+    Replace the demo mock provider with a real model.
+  </Card>
+</CardGroup>
+
+{/* source: deploy/setup.sh, deploy/docker-compose.yml, deploy/docker-compose.dev.yml, deploy/Caddyfile, deploy/postgres/init-roles.sh, apps/api/scripts/create-tenant.ts, docs/self-hosting.md */}

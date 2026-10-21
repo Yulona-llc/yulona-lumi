@@ -1,0 +1,16 @@
+{
+  "name": "@yulona/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "bun build src/index.ts --target=bun --outdir dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": { "@yulona/ai-runtime": "workspace:*", "@yulona/channels": "workspace:*", "@yulona/crypto": "workspace:*", "@yulona/db": "workspace:*", "@yulona/integrations": "workspace:*", "@yulona/ops": "workspace:*", "@yulona/providers": "workspace:*", "@yulona/queue": "workspace:*", "@yulona/shared": "workspace:*" },
+  "devDependencies": { "@types/bun": "latest", "typescript": "^5.6.0" }
+}

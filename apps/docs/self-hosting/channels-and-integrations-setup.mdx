@@ -1,0 +1,144 @@
+---
+title: Channels and integrations setup
+description: Configure the server side of Google Calendar, Calendly, WhatsApp and other channels, Stripe, SMTP, S3 or MinIO, and ClamAV.
+icon: plug
+---
+
+This page is for operators. Customers and workspace admins connect channels and calendars in the dashboard, but several of them need something on your server first: a public HTTPS address, an OAuth app, or an environment variable. Everything here is optional. Skip what you do not use.
+
+<Note>
+Channel credentials, webhook secrets and OAuth tokens are encrypted with `ENCRYPTION_KEY`. If it is missing, connecting a channel, creating a webhook or connecting a calendar answers `503 service_unavailable`. `deploy/setup.sh` always sets it.
+</Note>
+
+## Public HTTPS URL
+
+Webhook-based channels (WhatsApp, Messenger, Instagram, Telegram, Slack) and OAuth callbacks need your install to be reachable from the internet over HTTPS.
+
+1. Point a DNS record at the host and set `SITE_ADDRESS` to the domain, so Caddy issues a real certificate. A `localhost` or self-signed address is rejected by providers.
+2. Leave `PUBLIC_API_URL` empty when the dashboard and API share a domain (the default). Webhook URLs then use the address the dashboard was opened on. Set it only for split deployments.
+3. Set `APP_URL` if you need a canonical dashboard URL different from `https://<SITE_ADDRESS>`.
+
+Each channel connection shows the exact webhook URL in the dashboard. Its shape is:
+
+```text
+https://app.example.com/api/v1/webhooks/channels/<channel>/<connectionId>
+```
+
+Webhook signatures are verified over the raw body before anything else. A wrong signature answers `401`. An unknown, disabled or wrong-channel connection answers `404`.
+
+## Google Calendar
+
+Lets agents check availability and book on a workspace's Google Calendar.
+
+<Steps>
+  <Step title="Create an OAuth client">
+    In the Google Cloud console create a project, enable the Google Calendar API, and create an OAuth client of type Web application.
+  </Step>
+  <Step title="Register the redirect URI">
+    Add `https://app.example.com/api/v1/calendar/google/callback`. It must match `GOOGLE_REDIRECT_URI` exactly. If you leave that variable empty the default is `<PUBLIC_API_URL>/api/v1/calendar/google/callback`.
+  </Step>
+  <Step title="Set the variables">
+    ```bash
+    GOOGLE_CLIENT_ID=123.apps.googleusercontent.com
+    GOOGLE_CLIENT_SECRET=...
+    GOOGLE_REDIRECT_URI=https://app.example.com/api/v1/calendar/google/callback
+    ```
+    Then run `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d`.
+  </Step>
+  <Step title="Connect from the dashboard">
+    A workspace admin connects Google Calendar from Settings, Integrations. Yulona asks for the `calendar.events` and `calendar.freebusy` scopes with offline access.
+  </Step>
+</Steps>
+
+If the variables are missing the connect action answers `503`. See [Calendar and booking](/guides/tools/calendar-booking).
+
+## Calendly
+
+<Steps>
+  <Step title="Create the OAuth app">
+    At developer.calendly.com create a web OAuth app with PKCE. Request the scopes `users:read`, `event_types:read`, `availability:read`, `scheduled_events:write` and `scheduling_links:write`.
+  </Step>
+  <Step title="Register the redirect">
+    Use `https://app.example.com/api/v1/calendar/calendly/callback` (HTTPS is required). The default when `CALENDLY_REDIRECT_URI` is empty is `<PUBLIC_API_URL>/api/v1/calendar/calendly/callback`.
+  </Step>
+  <Step title="Set the variables">
+    ```bash
+    CALENDLY_CLIENT_ID=...
+    CALENDLY_CLIENT_SECRET=...
+    CALENDLY_REDIRECT_URI=https://app.example.com/api/v1/calendar/calendly/callback
+    ```
+    The `api` and `worker` services both read them, and the compose file passes them to both.
+  </Step>
+</Steps>
+
+<Warning>
+Calendly's scheduling API, which lets Yulona create bookings, is available only on paid Calendly plans (Standard and above). On a free plan Calendly answers `403`. The integration was built against Calendly's published documentation and tested with a mock server; it has not been run against a live Calendly account.
+</Warning>
+
+A workspace can connect Google and Calendly together; the last one connected becomes the default.
+
+## WhatsApp, Messenger and Instagram (Meta)
+
+You need a Meta app with the product enabled, plus a public HTTPS URL.
+
+<Steps>
+  <Step title="Create the connection in Yulona">
+    In the dashboard open Channels and add the channel. Yulona generates a verify token and shows it once. Copy it, along with the webhook URL.
+  </Step>
+  <Step title="Configure the webhook in Meta">
+    In the Meta app, set the callback URL to the webhook URL and the verify token to the one Yulona showed. Meta sends a `GET` request with `hub.challenge`, and Yulona answers it when the token matches.
+  </Step>
+  <Step title="Provide the app secret">
+    Yulona needs the app secret (`appSecret`) to verify the `X-Hub-Signature-256` signature on every message. Enter it in the connection's credentials.
+  </Step>
+  <Step title="Subscribe to message events and test">
+    Subscribe the app to message events, then use Test connection on the channel in the dashboard.
+  </Step>
+</Steps>
+
+Messenger, Instagram and WhatsApp allow free-form replies only within 24 hours of the customer's last message. Outside that window WhatsApp uses a configured template if one is set, otherwise delivery fails with `window_closed`. See [WhatsApp](/guides/channels/whatsapp) and [Messenger and Instagram](/guides/channels/messenger-instagram).
+
+## Telegram
+
+Create a bot with BotFather and add its token in the dashboard. Yulona generates a webhook secret. Register the webhook with Telegram once, replacing the placeholders:
+
+```bash
+curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<WEBHOOK_URL>&secret_token=<WEBHOOK_SECRET>"
+```
+
+Telegram then sends the secret in `X-Telegram-Bot-Api-Secret-Token` on every request. See [Telegram](/guides/channels/telegram).
+
+## Slack
+
+Create a Slack app, install it to the workspace, and copy the bot token (`xoxb-...`) and the signing secret into the connection. Enable Event Subscriptions with the webhook URL as the request URL; Yulona answers Slack's `url_verification` challenge. Requests older or newer than five minutes are rejected. See [Slack](/guides/channels/slack).
+
+## Stripe (hosted product only)
+
+Billing routes are not mounted in self-hosted mode, so Stripe settings have no effect there. For the hosted product, set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, one `STRIPE_PRICE_<PLAN>` per paid plan (for example `STRIPE_PRICE_PRO`), and point a Stripe webhook at `https://<host>/api/v1/webhooks/billing`. Handled events: `checkout.session.completed`, `customer.subscription.created|updated|deleted`, and `invoice.payment_failed|payment_succeeded`. Without `STRIPE_SECRET_KEY` a stub provider is used, and in production the unsigned webhook answers `404`.
+
+## SMTP
+
+Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE` and `EMAIL_FROM`. Use `SMTP_SECURE=true` for implicit TLS (typically port 465). Without `SMTP_HOST`, invitations and notifications are written to the log instead of sent. Confirm sending by inviting a teammate from the dashboard and checking their inbox, or look for the message in `docker compose logs api worker`.
+
+## S3 or MinIO
+
+For durable file storage set `S3_BUCKET`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, plus `S3_ENDPOINT` and `S3_REGION` for anything other than AWS. For the bundled MinIO, enable the profile and use the values in [Requirements and install](/self-hosting/requirements-and-install#optional-services). Without storage settings, files are held in memory and disappear on restart. Back up the bucket along with the database.
+
+## ClamAV
+
+Set `COMPOSE_PROFILES=clamav` and `CLAMAV_URL=http://clamav:3000`. With a scanner configured, uploads are scanned and rejected if the scanner is unreachable (fail closed).
+
+`CLAMAV_URL` accepts two forms: `http://clamav:3000` (the bundled REST wrapper, which scans through `POST /api/v1/scan`) or `tcp://host:3310` for a `clamd` you run yourself. A clean result, an infected file and an unreachable scanner are all handled: infected and unreachable both reject the upload.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration reference" icon="sliders" href="/self-hosting/configuration">
+    Every variable on this page, with defaults.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/self-hosting/troubleshooting">
+    Webhooks not arriving, 503 on connect.
+  </Card>
+</CardGroup>
+
+{/* source: docs/api/channels.md, docs/api/ops.md, docs/api/billing-admin.md, deploy/.env.example, packages/providers/src/s3.ts, packages/ai-runtime/src/clamav.ts, apps/api/src/routes/knowledge.ts, apps/api/src/channels/routes.ts */}

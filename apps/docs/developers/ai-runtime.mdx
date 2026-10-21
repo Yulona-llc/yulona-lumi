@@ -1,0 +1,100 @@
+---
+title: AI runtime
+description: Understand the turn lifecycle, knowledge skills, stage machine, handoff types, resume keyword, usage metering and background jobs behind every AI reply.
+icon: robot
+---
+
+The AI runtime turns a customer message into a reply, a tool call, or a handoff to a person. This page is for developers who need to predict or debug agent behavior, build tools, or react to handoffs. For the operator view, see [Handoffs and human takeover](/guides/agents/handoffs-and-human-takeover) and [Knowledge and skills](/guides/agents/knowledge-skills).
+
+## Jobs
+
+The worker runs these jobs. Retryable failures throw and the queue retries with exponential backoff (1 second base, plus or minus 20% jitter, capped at 1 hour) before the job is marked `dead`. Finished jobs are pruned after 7 days.
+
+| Job | Payload | Does |
+|---|---|---|
+| `ai.respond` | `{ tenantId, conversationId, messageId }` | Produces one AI turn for a customer message. Enqueued in the same transaction that stores the message. Idempotent per `messageId`: a per-conversation advisory lock and an "already replied" check prevent double replies. |
+| `channel.send` | `{ tenantId, messageId }` | Delivers an `ai` or `human` message to WhatsApp, Messenger, Instagram, Telegram or Slack. Enqueued by a database trigger. Transient errors retry; permanent ones are recorded and surfaced as a `system` message. |
+| `knowledge.ingest` (and `knowledge.crawl`) | `{ tenantId, sourceId }` | Extracts text from a knowledge source and splits it into titled sections. No AI calls. |
+
+Other jobs (`webhook.deliver`, `gdpr.export`, `gdpr.erase`) are covered in [Webhooks](/developers/webhooks).
+
+## Turn lifecycle
+
+`ai.respond` first loads the conversation, message, stage and agent in one short transaction (no model call happens while a transaction is open), then runs the turn, then persists everything atomically.
+
+<Steps>
+  <Step title="Skip checks">
+    The job returns without replying when the message or conversation is missing, the message is not from the contact, the conversation is `resolved`, a person has taken over (`handler = human`), the conversation is `pending_human`, the AI is paused (stage `handoff_requested`), a reply to this message already exists, or no agent resolves (the conversation's agent, else the workspace's oldest agent). If the agent has a published version it runs that version; an agent that was never published runs its draft config.
+  </Step>
+  <Step title="Credit gate (SaaS only)">
+    If the credit pool is empty, the model is not called. The runtime raises a `system_failure` handoff with reason `ai_credits_exhausted` and sends the customer a safe notice. See [Credits API](/developers/credits-api).
+  </Step>
+  <Step title="Structured form submissions">
+    A widget form submission (`metadata.uiEvent` of type form) is handled deterministically, with no model call: contact fields go through `collect_contact`, `need`, `budget` and `timeline` through `qualify_lead`.
+  </Step>
+  <Step title="Explicit person requests">
+    Phrases such as "talk to a human" or "real person please", or any of the agent's `escalationRules.keywords`, hand off immediately with reason `customer asked for a person`. No retrieval, no model call. A bare word like "agent" does not trigger it.
+  </Step>
+  <Step title="Small talk">
+    A message that is entirely a greeting, thanks, goodbye or "who are you" is answered conversationally with no knowledge and no tools, and never counts as a miss. "Hi, what are your prices?" is not small talk.
+  </Step>
+  <Step title="Knowledge: skills">
+    Every knowledge source is a **skill**: a slug, description and titled sections. If all of the agent's knowledge is 9000 characters or less, all of it goes into the prompt and the model runs once without tools. Otherwise the prompt carries the skill list plus the four best keyword matches (stemmed prefix terms ranked by Postgres full-text rank and term coverage), and the model may call `search_skills { query, skill? }` and `read_skill { skill, section? }` for up to four rounds. Results return inside `<knowledge_result>` data blocks. There are no embeddings; `similarityThreshold` and `topK` in the config are deprecated and ignored.
+  </Step>
+  <Step title="Model and tools">
+    The model sees only the tools legal in the current stage (built-ins, enabled custom tools, and the two knowledge tools), with customer and knowledge text wrapped in `<user_message>` and `<knowledge>` blocks and declared untrusted. Tool calls are validated and gated by stage again server-side. A model error is retried once; a second failure raises a `system_failure` handoff.
+  </Step>
+  <Step title="Answer, clarify or hand off">
+    If the model replies with `[[NO_ANSWER]]` (or the agent has no ready skills), the runtime counts an **unanswered turn**. Below `escalationRules.maxUnansweredTurns` (default 3, range 1 to 20) the AI asks a clarifying question, written by the model in the customer's language with `clarifyMessage` as the fallback. At the limit it hands off with type `uncertainty`. A grounded answer, or a return to the AI, resets the counter. With `maxUnansweredTurns = 1` the first miss hands off.
+  </Step>
+  <Step title="Persist">
+    One transaction writes `tool_executions`, merges lead data (and fills the contact), applies legal stage hops, inserts any `handoffs` row, inserts the `ai` message, and records usage.
+  </Step>
+</Steps>
+
+The AI message stores `content` (plain-text rendition), `ui` (a [WidgetUISchema](/developers/widget-embed) formatted for the channel's capabilities) and `metadata`: `inReplyTo`, `agentId`, `stage`, `guardTriggered`, `sources` (skill sections used, with scores), `handoff` (`type`, `reason`) and `windowExpired`. When `windowExpired` is true the channel's reply window has passed and the adapter must send a template instead.
+
+## Stage machine
+
+The conversation stage lives in `conversation_ai_state` (created on the first AI turn, default `visitor`). Every change appends a row to `stage_transitions`.
+
+| From | Allowed next stages |
+|---|---|
+| `visitor` | `engaged`, `handoff_requested` |
+| `engaged` | `qualified`, `handoff_requested` |
+| `qualified` | `booking_offered`, `handoff_requested` |
+| `booking_offered` | `booked`, `qualified`, `handoff_requested` |
+| `booked` | `handoff_requested` |
+| `handoff_requested` | `engaged` (when a person returns the conversation to the AI) |
+
+Automatic rules: the first AI answer moves `visitor` to `engaged`; `qualify_lead` with a `need` plus a `budget` or `timeline` moves to `qualified`; the booking tools move to `booking_offered` and `booked`; an escalation, or `handoffAtQualified` once qualified, moves to `handoff_requested`. The allowed tools per stage are listed in [Tool manifest](/developers/tool-manifest).
+
+## Handoffs
+
+Three types exist. Each handoff, in one transaction, inserts a `handoffs` row (`type`, `reason`, `summary` of the last turns, `lead_card`, `context`), sets the stage to `handoff_requested` and `ai_paused = true`, sets the conversation to `pending_human` (Needs Attention), and sends the customer `handoffMessage` (or `fallbackMessage` for `uncertainty`) plus a notice. The `handoff.requested` [webhook](/developers/webhooks) fires from the new row.
+
+| Type | Raised when |
+|---|---|
+| `uncertainty` | The customer asked for a person or hit an escalation keyword; the unanswered-turn limit was reached; the model called `escalate_to_human` with `type: uncertainty` (or any non-`stage` type); the model produced no answer |
+| `stage` | The model called `escalate_to_human` with `type: stage`, or `handoffAtQualified` is on and the lead just qualified. Always carries a lead card. |
+| `system_failure` | The model provider failed, a tool failed with `onFailure: handoff`, or credits are exhausted (`ai_credits_exhausted`) |
+
+The lead card is `{ name?, email?, phone?, need?, budget?, timeline?, score?, stage, summary }`.
+
+### Resume keyword
+
+The notice appended to every handoff message tells the customer they can reply with the agent's `escalationRules.resumeKeyword` (default `AI`; empty disables it) to keep chatting with the assistant. The match is exact on the whole message, ignoring case and punctuation. It works only while an unresolved handoff exists **and** no person has replied since it was raised. Then the conversation returns to `open` and `handler = ai`, open handoffs are resolved (`resolution_note: "customer resumed the AI"`), a `customer_resumed_ai` system message is added, and the AI sends a welcome message (job result `resumed`). When business hours are closed, the notice also says the team is offline.
+
+A person returns a conversation to the AI from the inbox (`POST /api/v1/conversations/:id/return-to-ai`), which resumes at `engaged`.
+
+## Usage metering and the credit gate
+
+Every model call records an `ai_usage_events` row (agent, conversation, `source` of `turn`, `sandbox`, `builder` or `tool_test`, model, prompt and completion tokens, `credits_micro`) and daily counters that feed the `llm_tokens_monthly` plan limit. In SaaS mode credits are charged against the monthly allowance, then the top-up balance; the next inbound message is gated when `remaining <= 0`. Self-hosted installs record usage but never charge or gate. The cost formula, amounts in micro-credits and the usage endpoints are in [Credits API](/developers/credits-api).
+
+## Security properties
+
+- Customer text and knowledge are wrapped in delimited blocks with delimiter and tag stripping, and the rules are restated as highest priority in the system prompt.
+- The stage-gated tool list is enforced in the prompt and again in the executor.
+- Provider keys and tool credentials never reach the browser, prompts or logs.
+
+{/* source: packages/ai-runtime/src/{runtime,turn,tools,stage,intent,smalltalk,knowledge,prompt,usage,jobs,agent-loader}.ts, packages/shared/src/{stage,agent}.ts, packages/channels/src/send-job.ts, docs/api/ai-runtime.md, docs/api/credits.md */}

@@ -1,0 +1,113 @@
+---
+title: Tenants and impersonation
+description: Find workspaces, read their usage, suspend or delete them, and support customers by impersonating a workspace owner with a full audit trail.
+icon: users
+---
+
+This page is for platform admins of the hosted product. A tenant is one customer workspace. The Tenants section is where you look one up, check its plan and usage, change its status, adjust its AI credits, and, when a customer needs hands-on help, act as its owner for a short, audited session.
+
+## Find a tenant
+
+Open Tenants. Search by name (the box labelled Search by name) and filter by status. The table shows Name, Status, Plan, Users and Created, and pages with Previous and Next. Click a row to open the tenant.
+
+## Read a tenant
+
+The detail page shows:
+
+- **Header.** Name, plan, last activity, a status badge, and the Suspend and Impersonate buttons.
+- **Counts.** Users, agents, widgets, contacts, conversations and knowledge sources.
+- **Plan and limits.** One meter per metric with current use against the limit. A meter warns at 80%.
+- **AI credits.** Remaining, Used this month, Top-up balance and Status, plus Adjust credits. See [Plans, credits and rates](/platform-admin/plans-credits-and-rates#grant-or-deduct-credits).
+- **Usage, 30 days.** A daily chart. When several metrics exist, pick one with the Metric selector (conversations, messages, tokens, new contacts and credits among them).
+
+## Suspend and unsuspend
+
+<Steps>
+  <Step title="Open the tenant and click Suspend">
+    A dialog titled Suspend tenant? warns that all users lose access until unsuspended.
+  </Step>
+  <Step title="Confirm">
+    All sessions are revoked and sign-in is blocked. The tenant stays in the list with a Suspended badge.
+  </Step>
+  <Step title="Reverse it">
+    Click Unsuspend. Users regain access immediately.
+  </Step>
+</Steps>
+
+Both actions write to the platform audit log and to the tenant's own audit log. A suspended tenant cannot be impersonated.
+
+## Delete and restore
+
+Deleting is a soft delete: the tenant's `deleted_at` is set, users cannot sign in, and the tenant shows as Deleted. **Restore** works for 30 days. After that the worker's hourly maintenance job hard-deletes the tenant and all its rows, and restore answers `409`.
+
+The console does not have delete or restore buttons today; they are API actions, authorised with a platform admin token from `POST /api/v1/admin/auth/login`:
+
+```bash
+curl -X DELETE https://api.example.com/api/v1/admin/tenants/TENANT_ID \
+  -H "Authorization: Bearer ADMIN_TOKEN"
+
+curl -X POST https://api.example.com/api/v1/admin/tenants/TENANT_ID/restore \
+  -H "Authorization: Bearer ADMIN_TOKEN"
+```
+
+<Warning>
+After 30 days the purge is permanent and cannot be undone, including from the console. Export anything a customer needs before that point.
+</Warning>
+
+## Impersonation
+
+Impersonation lets you see the product exactly as the tenant's owner does, for support and debugging.
+
+### Start a session
+
+<Steps>
+  <Step title="Click Impersonate">
+    On the tenant detail page. The button is disabled for suspended tenants.
+  </Step>
+  <Step title="Give a reason">
+    The Reason field takes 5 to 500 characters. It is stored with the session.
+  </Step>
+  <Step title="Click Start impersonation">
+    You land in the workspace inbox, signed in as the tenant's oldest active owner.
+  </Step>
+</Steps>
+
+### What the session can and cannot do
+
+| Rule | Detail |
+|---|---|
+| Duration | 15 minutes. The token cannot be refreshed or exchanged for a refresh token |
+| Role | Capped at admin. You cannot change roles or ownership, and you cannot manage billing, which is owner only |
+| Who you act as | The tenant's oldest active owner (the API also accepts a specific user id) |
+| Blocked for | Suspended and deleted tenants (`409`) |
+
+### The banner
+
+A bar stays at the top of every screen for the whole session. It reads "Impersonating WORKSPACE as EMAIL. Every action is audited and the session ends after 15 minutes." Click Stop impersonating to end the session early and return to the console sign-in.
+
+### Audit and revocation
+
+- Start and end are written to both the platform audit log (`impersonation.start`) and the tenant's audit log (`impersonation.started`).
+- Every tenant audit entry created during the session carries `metadata.impersonatorId`, so workspace admins can see what was done on their behalf.
+- Stopping calls the end endpoint, which revokes the session. If you do not stop it, the token expires on its own after 15 minutes.
+
+Use impersonation only with a reason a customer would accept. The audit log can be exported from the console header with Export audit CSV.
+
+## Common problems
+
+- Impersonate is disabled: the tenant is suspended. Unsuspend first.
+- Impersonation answers `409`: the tenant is suspended or deleted.
+- The banner is missing after a refresh: it is shown while the session token is valid. Start a new session if it expired.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Feature flags" icon="flag" href="/platform-admin/feature-flags">
+    Control features per platform or tenant.
+  </Card>
+  <Card title="Team and roles" icon="user-shield" href="/guides/workspace/team-and-roles">
+    The roles the customer sees.
+  </Card>
+</CardGroup>
+
+{/* source: docs/api/billing-admin.md, docs/api/platform.md, docs/adr/0002-defaults.md, apps/dashboard/src/features/admin/{TenantsPage,TenantDetailPage,ImpersonationBanner}.tsx, apps/worker/src/maintenance.ts */}

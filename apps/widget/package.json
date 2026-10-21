@@ -1,0 +1,26 @@
+{
+  "name": "@yulona/widget",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --open /demo/index.html",
+    "embed": "vite --port 4180 --open /demo/embed.html",
+    "build": "tsc --noEmit && vite build && bun run scripts/size.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "preact": "^10.24.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.0",
+    "@yulona/shared": "workspace:*",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0",
+    "@types/bun": "latest"
+  }
+}

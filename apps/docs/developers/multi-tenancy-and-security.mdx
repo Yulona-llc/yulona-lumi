@@ -1,0 +1,113 @@
+---
+title: Multi-tenancy and security
+description: Learn how Yulona isolates tenants, encrypts secrets, blocks SSRF and limits abuse, and what you should do as an integrator.
+icon: shield-halved
+---
+
+This page is for engineers and security reviewers who need to know how Yulona keeps one workspace's data away from another's, and which responsibilities stay with you when you integrate. Everything here describes the shipped behavior.
+
+## Three layers of tenant isolation
+
+A workspace is a **tenant**. Isolation does not rely on a single check; three independent layers each have to fail for data to leak.
+
+<Steps>
+  <Step title="Layer 1: tenant middleware">
+    `requireAuth` verifies the access JWT (or the API key, or the widget session token) and sets the tenant from the signed `tid` claim. Nothing in the request body, query or path can change it, and clients never send `tenantId`. Another tenant's ids simply return `404 not_found`.
+  </Step>
+  <Step title="Layer 2: tenant-scoped repositories">
+    Data access goes through classes that require a `tenantId` and a transaction from `withTenant`. Every query carries an explicit `tenant_id = ...` condition. The condition is deliberate redundancy; it is not what you rely on alone.
+  </Step>
+  <Step title="Layer 3: PostgreSQL row-level security">
+    Every tenant table has `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`. The application connects as the role `yulona_app`, which is created `NOSUPERUSER NOBYPASSRLS` (the migration aborts if it is not). `withTenant` opens a transaction and runs `set_config('app.current_tenant_id', <uuid>, true)`; the setting is local to that transaction. The policy `tenant_isolation` allows only rows where `tenant_id = app_tenant_id()`. With no tenant set, the function returns `NULL` and the policy matches nothing.
+  </Step>
+</Steps>
+
+The owner role (used for migrations) has an `owner_all` policy so that a small number of `SECURITY DEFINER` functions can work across tenants where that is unavoidable: login lookup before the tenant is known, API-key resolution, widget-key resolution, channel-webhook connection lookup, and the platform-admin functions. Each does one narrow thing and returns minimal data. The application role has no cross-tenant policy.
+
+Other properties of the app role: `audit_logs` is append-only (select and insert only), and event emission (`webhook_emit`) refuses to write for a tenant other than the session's.
+
+<Note>
+Platform admins use a separate token realm and have no route into tenant data. Impersonation is explicit, time-boxed (15 minutes), role-capped and audited on both sides. See [Authentication](/developers/authentication).
+</Note>
+
+## Encryption at rest
+
+Credentials that Yulona must be able to read back (channel tokens, tool connection secrets, LLM provider keys, Google and Calendly tokens, inbound-webhook secrets) are encrypted with **AES-256-GCM envelope encryption** using `ENCRYPTION_KEY`.
+
+- `ENCRYPTION_KEY` is 32 bytes: base64 (`openssl rand -base64 32`) or 64 hex characters.
+- Each record gets a random data key; the data key is wrapped with the master key. The stored form is `v1.<wrapped key>.<ciphertext>`.
+- Records are bound with additional authenticated data, so a ciphertext copied to another row or tenant fails to decrypt: `toolconn:<tenantId>:<connectionId>` for tool connections and `<tenantId>:<connectionId>` for channel connections.
+- Outbound webhook secrets are sealed with AES-256-GCM directly under the master key, bound to the webhook id.
+- Without `ENCRYPTION_KEY`, endpoints that store secrets answer `503 service_unavailable`. The API and the worker must share the same key. Losing it makes stored credentials unreadable, so back it up separately from the database.
+- API keys and refresh tokens are stored only as SHA-256 hashes. Passwords use Argon2id. Nothing secret is stored in plaintext.
+
+Secrets are write-only over the API. Responses return flags such as `hasSecret` or masked values, never the secret. A tool's credential never reaches the model, prompts, `tool_executions` or logs.
+
+## SSRF protections
+
+Any feature where Yulona fetches a URL you control is guarded the same way (outbound webhooks, tool calls, URL knowledge sources, LLM provider profiles):
+
+- Only `http` or `https`; no credentials in the URL; no `localhost`, `.local`, `.internal` or IP literals in private, loopback, link-local, CGNAT, multicast or reserved ranges (including IPv4-mapped IPv6).
+- The hostname is resolved and **every** returned address must be public, on every request.
+- Redirects are never followed blindly: each hop is revalidated (tools and knowledge crawling), or not followed at all (webhooks).
+- Size and time are capped per feature.
+
+Save-time checks are only a first filter. The authoritative check runs on each call. There is a residual DNS-rebinding window between the validator's lookup and the HTTP client's own lookup, so operators should run the worker behind an egress policy that blocks private ranges. See [Webhooks](/developers/webhooks) and [Custom tools backend](/developers/custom-tools-backend) for the exact per-feature rules.
+
+## Upload checks
+
+`POST /api/v1/knowledge/sources/file` accepts `pdf`, `docx`, `txt`, `md` and `html`, up to 10 MB. The server checks the extension against an allowlist and verifies the **magic bytes** (a mismatch is rejected; text files must be valid UTF-8). If `CLAMAV_URL` is set, the bytes are streamed to ClamAV first and the upload fails closed when the scanner is unreachable or finds malware. The global `BODY_LIMIT_BYTES` (default 1 MB) still applies; raise it, and the reverse-proxy limit, to allow 10 MB.
+
+## Rate limits
+
+| Scope | Limit |
+|---|---|
+| Every request, per IP | 300 per minute |
+| Login | 8 per 15 minutes per IP and email; 40 per 15 minutes per IP |
+| Refresh | 60 per minute per IP |
+| API key | `rateLimitPerMinute` per key (default 60) |
+| Widget config, per widget and IP | 120 per minute |
+| Widget conversation start, per widget and IP | 10 per 10 minutes |
+| Widget messages and UI events, per session | 30 per minute |
+| Widget typing / history / refresh, per session | 60 / 120 / 20 per minute |
+| Tool test and connection test, per tenant | 20 per minute |
+| Agent builder, per user | 10 new sessions and 20 messages per minute |
+| Provider webhooks | 1200 per minute per IP, 600 per minute per connection |
+
+A `429` returns `Retry-After` in seconds. When `REDIS_URL` is set the counters are shared across API instances (with an automatic in-memory fallback if Redis errors); otherwise each instance counts alone. Behind a reverse proxy, set `TRUST_PROXY=true` so limits key on the real client IP (the rightmost `X-Forwarded-For` entry, which your single trusted proxy adds).
+
+## Secrets handling
+
+- Logs record method, path (never the query string), status, timing, request id, tenant and user ids. Secrets and passwords are not logged.
+- Validation errors report the field path and message, never the submitted value.
+- Tool test results and `tool_executions` mask credential headers and secret-looking keys (`token`, `secret`, `password`, `api_key`, `authorization`, `signature`, `cookie` and similar).
+- Production start is refused for a weak `JWT_SECRET`, a development database password, a wildcard in `CORS_ORIGINS`, or `OPENAPI_ENABLED` without `DOCS_PASSWORD`.
+
+## Audit logs
+
+Security-relevant actions write to the tenant audit log: logins (successful and failed), refresh-reuse detection, user and invitation changes, API key creation and revocation, agent publishes, webhook and tool-connection changes, GDPR requests, impersonation and more. Read it with `GET /api/v1/audit-logs` (admin) or export up to 50,000 rows with `GET /api/v1/audit-logs/export?format=csv|json`. CSV cells that start with `=`, `+`, `-` or `@` are prefixed with `'` to defuse spreadsheet formula injection. Retention is configurable with `PUT /api/v1/retention` (`auditLogsDays` 30 to 3650, or `null` to keep forever).
+
+## What you should do as an integrator
+
+<AccordionGroup>
+  <Accordion title="Protect credentials">
+    Keep API keys and webhook secrets in a secrets manager, one key per integration, with the narrowest scopes. Rotate by creating a new key, deploying it, then revoking the old one. Rotate webhook secrets with `POST /api/v1/webhooks/:id/rotate-secret`.
+  </Accordion>
+  <Accordion title="Verify what you receive">
+    Verify the HMAC signature on every webhook, reject stale timestamps, and de-duplicate on the event id. Verify the signature on requests Yulona makes to your tool backend if you use the `hmac` connection type.
+  </Accordion>
+  <Accordion title="Treat customer text as untrusted">
+    Message content comes from anonymous visitors. Escape it before rendering, never build SQL or shell commands from it, and validate every tool argument on your backend; the model's arguments are validated against your `inputSchema`, but your backend is the last line of defense.
+  </Accordion>
+  <Accordion title="Lock down the widget">
+    Set `allowedDomains` to the exact origins that host the widget. An empty list denies every origin in production.
+  </Accordion>
+  <Accordion title="Make tool backends safe to retry and to refuse">
+    Idempotent methods are retried automatically; design `POST` tools to tolerate a duplicate or require `confirmBeforeRun`. Authenticate every request.
+  </Accordion>
+  <Accordion title="Handle errors and 429s">
+    Back off on `429` using `Retry-After`. Treat `401` as a signal to refresh once, then sign in again.
+  </Accordion>
+</AccordionGroup>
+
+{/* source: packages/db/migrations/0001_init.sql, packages/db/src/tenant.ts, packages/crypto/src/index.ts, packages/integrations/src/signing.ts, packages/ai-runtime/src/ssrf.ts, packages/ai-runtime/src/extract.ts, packages/ai-runtime/src/clamav.ts, apps/api/src/config.ts, apps/api/src/middleware.ts, apps/api/src/routes/public-widget.ts, apps/api/src/routes/auth.ts, docs/api/platform.md, docs/api/billing-admin.md, docs/api/ai-runtime.md */}

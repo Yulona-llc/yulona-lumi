@@ -1,0 +1,93 @@
+---
+title: Tools overview
+description: Learn what tools your agent can use, from built-in lead capture to booking and your own systems, and when the AI decides to use them.
+icon: wrench
+---
+
+A **tool** is an action your agent can take besides talking: save a customer's details, check your calendar, look up an order. This page is for admins and owners who decide what each agent is allowed to do.
+
+<Note>
+Tools are switched on per agent, on the agent's **Tools** tab. Only **admins and owners** can change them. Go to **Agents**, open an agent, then click **Tools**.
+</Note>
+
+## Three kinds of tools
+
+<CardGroup cols={3}>
+  <Card title="Built-in tools" icon="toolbox">
+    Qualify leads, collect contact details, pass to a person.
+  </Card>
+  <Card title="Calendar tools" icon="calendar-days">
+    Check availability and book on Google Calendar or Calendly.
+  </Card>
+  <Card title="Custom tools" icon="plug">
+    Your own system: orders, stock, a CRM, a booking system.
+  </Card>
+</CardGroup>
+
+### Built-in tools
+
+Under **Built-in tools** on the Tools tab you can switch each of these on or off:
+
+| Tool | What it does |
+|---|---|
+| **Qualify lead** | Captures the customer's need, budget and timeline and moves the conversation to the qualified stage. |
+| **Collect contact** | Asks for name, email and phone with a small form, and saves them on the contact. |
+| **Escalate to human** | Hands the conversation to your team with a summary. See [Handoffs](/guides/agents/handoffs-and-human-takeover). |
+| **Check calendar availability** | Looks up open appointment times on your connected calendar. |
+| **Book appointments** | Books a time the customer confirmed. Needs a connected calendar. |
+
+The first three are on by default for new agents. The two calendar tools need a calendar set up first; see [Calendar and booking](/guides/tools/calendar-booking).
+
+### Custom tools
+
+Custom tools let the AI use **your own systems**, for example "where is my order", "is this item in stock", "book a table in our reservation software" or "send this lead to our CRM". You build them without code in a guided builder. See [Build a tool](/guides/tools/build-a-tool). Each tool uses a [connection](/guides/tools/connections), which stores your system's address and login once. An agent can have up to 20 custom tools.
+
+## When does the AI use a tool?
+
+The AI decides during the conversation, based on what the customer says and on the tool's description. You control three things:
+
+1. **Whether it is switched on.** A tool that is off is invisible to the AI.
+2. **Which moment of the conversation it may be used in.** The conversation moves through stages: when someone first arrives, while chatting, once qualified, when offering a booking, and after they have booked. Each tool is only offered in its stages. Built-in tools follow fixed rules you can read in the **Stage rules** on the Escalation tab. For custom tools you choose the stages yourself on the last step of the builder.
+3. **Whether the customer must confirm.** A custom tool can be set to "Ask the customer to confirm before it runs", which is the right choice for anything that books, orders or changes something.
+
+The AI cannot call a tool that is not allowed in the current stage, even if a customer asks for it. After the conversation is handed to a person (the **handoff requested** stage), no tools run.
+
+## Where to see tool activity
+
+At the top of the Tools tab, **Tool activity** lists the latest times the AI used a custom tool in real conversations, with whether each run worked. It is visible to agents, admins and owners. The sandbox never calls your custom tools or the calendar; see [Test in the sandbox](/guides/agents/test-in-sandbox).
+
+## If a tool fails
+
+For each custom tool you choose what happens when it fails:
+
+- **Hand over to a person**: the conversation goes to your team with a note about what failed (a **System failure** handoff).
+- **Tell the customer and carry on**: the AI says it could not do it and keeps helping.
+
+Calendar failures after retries always hand the conversation to a person.
+
+## Changing tools is part of the draft
+
+Switching a tool on or off, or adding a custom tool, changes the agent's draft only. Click **Save draft**, then **Publish** so customers get it. See [Publish and versions](/guides/agents/publish-and-versions).
+
+<Warning>
+Custom tools make real requests to your systems when customers use them. Start with read-only tools such as lookups, and use "Ask the customer to confirm before it runs" for anything that changes data.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Build a tool" icon="hammer" href="/guides/tools/build-a-tool">
+    The six-step builder.
+  </Card>
+  <Card title="Connections" icon="cable" href="/guides/tools/connections">
+    Store the login for your own system.
+  </Card>
+  <Card title="Calendar and booking" icon="calendar-days" href="/guides/tools/calendar-booking">
+    Let the AI book appointments.
+  </Card>
+  <Card title="Developer reference" icon="code" href="/developers/custom-tools-backend">
+    For the engineer who owns your system.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/agents/AgentEditor.tsx, apps/dashboard/src/features/tools/{ToolsPanel.tsx,model.ts}, packages/ai-runtime/src/{tools.ts,turn.ts}, packages/ops/src/tools.ts, docs/api/tools.md */}

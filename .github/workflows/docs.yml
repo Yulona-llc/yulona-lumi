@@ -1,0 +1,24 @@
+name: docs
+on:
+  pull_request:
+    paths: ["apps/docs/**", "docs/openapi.json", "deploy/.env.example", "tests/docs/**", ".claude/rules/documentation.md"]
+  push:
+    branches: [main]
+    paths: ["apps/docs/**", "docs/openapi.json", "deploy/.env.example"]
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: bun install --frozen-lockfile
+      - name: Spec copy is in sync
+        run: bun scripts/docs-sync.ts && git diff --exit-code apps/docs/api-reference/openapi.json
+      - name: Docs structure tests (navigation, frontmatter, links, env vars, changelog)
+        working-directory: tests
+        run: bun test docs
+      - name: Mintlify validate and broken links
+        working-directory: apps/docs
+        run: npx --yes mint validate && npx --yes mint broken-links

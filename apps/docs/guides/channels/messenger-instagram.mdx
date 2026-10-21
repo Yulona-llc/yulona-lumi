@@ -1,0 +1,118 @@
+---
+title: Messenger and Instagram
+description: Connect your Facebook Page and Instagram professional account so your agent answers direct messages from both.
+icon: messages-square
+---
+
+Messenger (Facebook Page messages) and Instagram direct messages both run through a Meta app, so the setup is almost the same. This page is for admins and owners. You work in Meta for Developers and in the Yulona dashboard. Meta changes its screens often, so use these steps as a guide and follow Meta's help where it differs.
+
+<Note>
+Only **admins and owners** can connect channels. You connect each channel separately, so you can use one, or both with different agents.
+</Note>
+
+## Before you start
+
+- A [published agent](/guides/agents/publish-and-versions); only published agents appear in the **Answering agent** list.
+- A **Meta app** you control, and a **Facebook Page** you manage.
+- For Instagram: an Instagram account switched to a **professional** (business or creator) account and linked to your Facebook Page.
+- **Self-hosted:** the server's public https address and encryption key must be configured. See [Channels and integrations setup](/self-hosting/channels-and-integrations-setup).
+
+<Warning>
+While your Meta app is in development mode, only people who have a role on the app can message you. To serve the public, complete Meta's app review and switch the app to live. This is done in Meta, not in Yulona.
+</Warning>
+
+<Tabs>
+  <Tab title="Messenger">
+    <Steps>
+      <Step title="Prepare the Meta app">
+        In Meta for Developers, create or open an app, add the **Messenger** product and link your Facebook Page.
+      </Step>
+      <Step title="Collect the values">
+        Generate a **Page access token** for the Page, copy the **Page ID**, and copy the app's **App secret**.
+      </Step>
+      <Step title="Connect in Yulona">
+        Go to **Channels** and click **Messenger**. Enter a **Connection name**, choose the **Answering agent**, and paste the **Page access token**, **Page ID** and **App secret**. Leave **Webhook verify token** empty and Yulona generates one. Click **Connect**.
+      </Step>
+      <Step title="Copy the webhook values">
+        The panel says "Shown only once". Copy the **Webhook URL** and the **Webhook verify token**.
+      </Step>
+      <Step title="Paste them into Meta">
+        In Meta, under **Messenger**, then **Webhooks**, paste the **Callback URL** and **Verify token**, then verify. Subscribe your Page to **messages** and **messaging_postbacks**.
+      </Step>
+      <Step title="Test">
+        In Yulona click **Test connection**; "Connection OK" shows your account. Click **I have saved these**, then message your Page from another Facebook account.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Instagram">
+    <Steps>
+      <Step title="Prepare the Meta app">
+        Make sure the Instagram account is professional and linked to your Facebook Page. In your Meta app, add **Instagram** messaging.
+      </Step>
+      <Step title="Collect the values">
+        Generate an **Instagram access token**, copy the **Instagram account ID**, and copy the app's **App secret**.
+      </Step>
+      <Step title="Connect in Yulona">
+        Go to **Channels** and click **Instagram**. Enter a **Connection name**, choose the **Answering agent**, and paste the **Instagram access token**, **Instagram account ID** and **App secret**. Leave **Webhook verify token** empty. Click **Connect**.
+      </Step>
+      <Step title="Copy the webhook values">
+        Copy the **Webhook URL** and **Webhook verify token** while the panel shows them.
+      </Step>
+      <Step title="Paste them into Meta">
+        In Meta, under **Instagram**, then **Webhooks**, paste the **Callback URL** and **Verify token**, verify, and subscribe to **messages**.
+      </Step>
+      <Step title="Test">
+        Click **Test connection** in Yulona, then send a direct message to your Instagram account from another account.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## The 24-hour reply window
+
+Both channels only allow a business to reply within **24 hours of the customer's last message**. The agent answers within seconds, so this normally causes no trouble. It matters when a teammate takes over and answers more than a day later. In that case:
+
+- The reply cannot be delivered. There are no template messages for these channels in Yulona.
+- A notice appears in the conversation that the message was not delivered ("delivery failed"), so you know to reach the customer another way.
+
+Reply promptly to handed-off conversations, or ask the customer to message again to reopen the window.
+
+## Good to know
+
+- Messages are text only. Forms and buttons the agent might use elsewhere turn into plain text lists, and very long answers are shortened to fit the channel.
+- Pictures and files from customers show up as a placeholder like `[image]`.
+- If the same person messages you on several channels with the same email, phone or name, Yulona suggests merging them. See **Possible duplicate contacts** at the bottom of the **Channels** page and [Contacts](/guides/workspace/contacts).
+
+## Manage the connection
+
+Under **Connected**, each connection shows a health badge (**Connected**, **Needs attention**, **Error**, **Paused**, **Not tested yet**), its last check, masked credentials and Webhook URL. Use **Test connection**, **Edit** (rename, change the agent, rotate credentials by filling only the fields to replace), **Disable**/**Enable**, or **Delete**. Deleting keeps the conversation history but stops replies.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="Meta cannot verify the webhook">
+    The Callback URL or verify token does not match. Copy them again from the connection (the Webhook URL is always visible on the connection; if you lost the token, use **Edit** to set a new one and update Meta).
+  </Accordion>
+  <Accordion title="Test connection fails">
+    The access token has expired or lacks permission. Generate a new token in Meta and enter it under **Edit**. Page and Instagram tokens often expire unless you create long-lived ones.
+  </Accordion>
+  <Accordion title="Strangers can message me but nothing arrives">
+    Check that the webhook subscriptions (messages, and messaging_postbacks for Messenger) are on, and that the Meta app is live if it is not just for your testers.
+  </Accordion>
+  <Accordion title="No agent reply">
+    Make sure the connection is not **Paused**, the agent is published and the conversation is not waiting for a person. See [Handoffs](/guides/agents/handoffs-and-human-takeover).
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="WhatsApp" icon="phone" href="/guides/channels/whatsapp">
+    Also uses a Meta app.
+  </Card>
+  <Card title="Inbox" icon="inbox" href="/guides/workspace/inbox">
+    Reply to customers from one place.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/channels/{ChannelsPage.tsx,guides.ts,api.ts}, packages/channels/src/meta.ts, docs/api/channels.md */}

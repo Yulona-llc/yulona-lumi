@@ -1,0 +1,108 @@
+---
+title: Platform admin overview
+description: Create a platform admin, sign in to the console at /admin, and learn what each section lets you do.
+icon: shield-check
+---
+
+This section is for the people who run the hosted Yulona product: platform admins. The console manages every workspace on the platform, the AI providers behind them, plans and credits. It is separate from the workspace dashboard. Workspace owners and admins cannot sign in to it, and platform admins have no route into a workspace's data except through [impersonation](/platform-admin/tenants-and-impersonation).
+
+<Note>
+The console is mounted when `DEPLOYMENT_MODE=saas`, or when you set `SUPER_ADMIN_ENABLED=true`. A self-hosted install has it off by default, and its billing sections stay unavailable. See [Self-hosting overview](/self-hosting/overview).
+</Note>
+
+## Before you start
+
+- The API must be running and the database migrated.
+- You need shell access to run a script with the database owner credentials. The runtime role cannot touch platform admin tables on purpose.
+- Platform admins are not workspace users. They have their own table, their own sign-in and their own token.
+
+## Create a platform admin
+
+The script creates an admin, or resets the password of an existing one with the same email.
+
+<Steps>
+  <Step title="Get the code and dependencies">
+    From a checkout of the repository, run `bun install`.
+  </Step>
+  <Step title="Run the script with owner credentials">
+    ```bash
+    OWNER_DATABASE_URL='postgres://yulona_owner:OWNER_PASSWORD@DB_HOST:5432/yulona' \
+    PLATFORM_ADMIN_EMAIL='ops@example.com' \
+    PLATFORM_ADMIN_PASSWORD='a-long-unique-password' \
+    PLATFORM_ADMIN_NAME='Ops Lead' \
+    bun apps/api/scripts/create-platform-admin.ts
+    ```
+    The password must be at least 12 characters. `PLATFORM_ADMIN_NAME` is optional and defaults to `Platform Admin`. On success the script prints `platform admin ready: ops@example.com`.
+  </Step>
+  <Step title="Sign in">
+    Open `https://<your-domain>/admin` and enter the email and password.
+  </Step>
+</Steps>
+
+<Warning>
+The script is not part of the API container image, and in the bundled Compose stack Postgres is on an internal network with no published port. You must run the script from a place that can reach the database as the owner role, for example a trusted admin host or a container attached to the stack's `backend` network that has the repository and its installed dependencies mounted. Do not publish Postgres to the internet to make this work.
+</Warning>
+
+## Sign in and sessions
+
+The console has its own sign-in page, titled Platform admin, with a link back to workspace sign-in. Behind it:
+
+- **Short sessions.** The access token lasts 15 minutes and there is no refresh token. When it expires you sign in again. The token is held in memory only, so a page reload also signs you out.
+- **Separate realm.** The token is signed with a different key from workspace tokens, so neither type works on the other's routes.
+- **Lockout.** After 5 failed sign-ins the account locks. The lock starts at 30 seconds, doubles with each further failure, and is capped at 15 minutes. A successful sign-in clears it.
+- **Audit.** Every write is recorded in the platform audit log. Use Export audit CSV in the header to download it (up to 50,000 rows, newest first).
+
+## The sections
+
+| Section | What it does | Page |
+|---|---|---|
+| Overview | Health of the platform, tenant counts, estimated MRR, conversation volume, funnel and plan mix | This page |
+| Tenants | Find a workspace, see usage and limits, suspend or unsuspend it, adjust credits, impersonate its owner | [Tenants and impersonation](/platform-admin/tenants-and-impersonation) |
+| Credits | Four tabs: Providers, Model rates, Plan allowances, Credit packs | [Providers](/platform-admin/providers), [Plans, credits and rates](/platform-admin/plans-credits-and-rates) |
+| Feature flags | Platform defaults for features, with per-tenant overrides | [Feature flags](/platform-admin/feature-flags) |
+
+### System health
+
+The Overview page opens with a System health card that refreshes every 15 seconds and shows an overall badge of `ok`, `degraded` or `down`.
+
+| Tile | Meaning |
+|---|---|
+| Database | Reachable, with round-trip latency |
+| Queue | Jobs queued and running, dead jobs, and the age of the oldest queued job |
+| Worker | Alive when the last heartbeat is under 120 seconds old, otherwise Stale. The worker beats every 30 seconds |
+| Dead jobs | Jobs that used all their retries. Anything above zero needs attention |
+
+The overall status is `degraded` when the worker is stale or dead jobs exist.
+
+### Platform numbers
+
+Below health you see:
+
+- **Tenants** with active and suspended counts, **New in 30 days**.
+- **MRR (estimate)**, the sum of plan prices over active paid tenants. It is not accounting.
+- **Conversations, 30 days**, a per-day chart, the conversion funnel by stage, and tenants by plan.
+
+## Common problems
+
+- Sign-in says the account is locked: wait out the lock (up to 15 minutes), or reset the password with the same script, which also clears the lock.
+- The `/admin` page shows the workspace sign-in instead: the console is off. Check `DEPLOYMENT_MODE` and `SUPER_ADMIN_ENABLED`.
+- You are signed out unexpectedly: sessions last 15 minutes by design.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Plans, credits and rates" icon="coins" href="/platform-admin/plans-credits-and-rates">
+    Set what each plan includes and what models cost.
+  </Card>
+  <Card title="Providers" icon="plug" href="/platform-admin/providers">
+    Connect the AI provider that answers customers.
+  </Card>
+  <Card title="Tenants and impersonation" icon="users" href="/platform-admin/tenants-and-impersonation">
+    Support and manage workspaces.
+  </Card>
+  <Card title="Feature flags" icon="flag" href="/platform-admin/feature-flags">
+    Roll features out gradually.
+  </Card>
+</CardGroup>
+
+{/* source: apps/api/scripts/create-platform-admin.ts, docs/api/platform.md, docs/api/billing-admin.md, docs/adr/0002-defaults.md, packages/db/migrations/0101_platform_core.sql, apps/dashboard/src/features/admin/AdminRoutes.tsx, apps/dashboard/src/features/admin/OverviewPage.tsx */}

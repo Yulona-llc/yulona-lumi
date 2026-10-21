@@ -1,0 +1,89 @@
+---
+title: Feature flags
+description: Create platform-wide feature flags, set their defaults, and override them for a single tenant through the admin API.
+icon: flag
+---
+
+This page is for platform admins. A feature flag is a named on/off switch the product can check. A flag has a platform default, and you can override it for individual tenants. That lets you roll a feature out to one workspace first, or switch it off for one that has a problem.
+
+## How flags resolve
+
+For any tenant the effective value is the tenant's override if one exists, otherwise the platform default. Workspaces read the result as a simple map from `GET /api/v1/feature-flags`, for example `{ "flags": { "new_inbox": true } }`. A flag that does not exist is treated as off.
+
+## Manage defaults in the console
+
+Open Feature flags. The page has a New flag card and a list of existing flags.
+
+<Steps>
+  <Step title="Name the flag">
+    Enter a Flag key of up to 64 characters using lowercase letters, digits, `_`, `.` and `-`, for example `new_inbox`.
+  </Step>
+  <Step title="Add a description">
+    Optional, but helpful for the next admin.
+  </Step>
+  <Step title="Choose the default">
+    Turn Enabled by default on or off.
+  </Step>
+  <Step title="Click Save flag">
+    A "Flag saved" message confirms it. Saving the same key again updates it.
+  </Step>
+</Steps>
+
+Each row in the list shows the key, the description and "On by default" or "Off by default". Use the switch to change the default straight away. Use the bin icon to delete a flag. Deleting asks you to confirm, and tenant overrides for that flag stop applying.
+
+<Warning>
+Changing a default affects every tenant that has no override for that flag, immediately. Check which tenants rely on the default before you flip it.
+</Warning>
+
+## Override a flag for one tenant
+
+Per-tenant overrides are managed through the admin API. The console's Feature flags page notes that overrides "live on each tenant", but the tenant detail page does not show them today, so use the API.
+
+<Steps>
+  <Step title="Sign in and get a token">
+    ```bash
+    curl -X POST https://api.example.com/api/v1/admin/auth/login \
+      -H "Content-Type: application/json" \
+      -d '{"email":"ops@example.com","password":"YOUR_PASSWORD"}'
+    ```
+    The response contains `accessToken`, valid for 900 seconds.
+  </Step>
+  <Step title="Set the override">
+    ```bash
+    curl -X PUT https://api.example.com/api/v1/admin/tenants/TENANT_ID/flags/new_inbox \
+      -H "Authorization: Bearer ADMIN_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"enabled": true}'
+    ```
+  </Step>
+  <Step title="Clear it later">
+    Send `{"enabled": null}` to remove the override and return the tenant to the platform default.
+  </Step>
+</Steps>
+
+To list a tenant's flags use `GET /api/v1/admin/tenants/TENANT_ID/flags`. Defaults can also be managed with `GET /api/v1/admin/feature-flags` and `PUT` or `DELETE /api/v1/admin/feature-flags/:key` with a body such as `{"description":"New inbox layout","defaultEnabled":false}`.
+
+## Audit
+
+Flag changes made by platform admins are written to the platform audit log. Export it from the console header with Export audit CSV.
+
+## Common problems
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Save flag is disabled | The key field is empty | Enter a key |
+| Key rejected | Uppercase letters or spaces | Use lowercase letters, digits, `_`, `.`, `-` only |
+| A tenant still sees the old value | It has an override | Clear the override with `{"enabled": null}` |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Tenants and impersonation" icon="users" href="/platform-admin/tenants-and-impersonation">
+    Look at a tenant before you change its flags.
+  </Card>
+  <Card title="Platform admin overview" icon="shield-check" href="/platform-admin/overview">
+    The rest of the console.
+  </Card>
+</CardGroup>
+
+{/* source: docs/api/platform.md, apps/dashboard/src/features/admin/FlagsPage.tsx, apps/dashboard/src/features/admin/api.ts */}

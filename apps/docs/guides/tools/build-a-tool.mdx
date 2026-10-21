@@ -1,0 +1,103 @@
+---
+title: Build a tool
+description: Use the guided six-step builder to let your agent look things up or send information to your own system, without writing code.
+icon: hammer
+---
+
+The tool builder walks you through connecting the AI to one of your systems: pick what the tool should do, choose the connection, decide what the AI asks the customer, test it with real data, and set the rules. This page is for admins and owners. You do not need to write code, but you do need the web address of your system and, usually, a login for it from whoever manages it.
+
+<Note>
+Only **admins and owners** can build tools. Tools you build are added to the agent's **draft**, so customers do not see them until you save and [publish](/guides/agents/publish-and-versions).
+</Note>
+
+## Before you start
+
+- Know what the tool should do in one sentence, for example "look up where a customer's order is".
+- Have the web address of your system and how it signs requests in (a token, a key, or a username and password). If you do not, ask your developer. You can share the [developer guide](/developers/custom-tools-backend) with them.
+- Know which questions the AI must ask the customer first, such as an order number.
+
+## Open the builder
+
+Go to **Agents**, open the agent, click the **Tools** tab, then click **New tool** (or **Build your first tool** if you have none). The builder opens as a full window with a progress bar of six steps: **Start**, **Connect**, **Ask**, **Send**, **Test** and **Rules**. Use **Back** and **Next** to move; you can click a finished step to return to it. If you close the window with changes, it asks "Discard this tool?".
+
+<Steps>
+  <Step title="Start: what should this tool do?">
+    Pick the closest template. It fills in the next steps and you can change everything.
+
+    - **Check availability on my system**: ask your own booking or stock system what is free.
+    - **Book an appointment on my system**: create the booking in your own system once the customer agrees.
+    - **Look up an order or customer**: find an order, account or ticket and read the status back.
+    - **Send details to my system (webhook)**: pass the customer's details to your CRM or another system.
+    - **Start from scratch**: build it yourself.
+
+    Or type a sentence under "Or describe it in a sentence" and click **Suggest**; it looks for common words and marks a template **Looks like a match**.
+  </Step>
+  <Step title="Connect: which system does it talk to?">
+    Choose an existing [connection](/guides/tools/connections), or click **New connection** to add one right here. Click **Test** next to a connection to check your system answers. **Next** stays disabled until you choose one.
+  </Step>
+  <Step title="Ask: what should the AI ask the customer?">
+    First, **Name this tool** with something your team will recognise. Then list the questions. For each one set:
+
+    - **Question**, for example "Order number".
+    - **Answer type**: **Text**, **Number**, **Yes or no**, **Choice** (you add the **Choices**, separated by commas) or **Date**.
+    - **Example answer**: helps the AI and pre-fills the test.
+    - **Required**: switch off for optional details.
+
+    Use the arrows to reorder questions and the bin to remove one. **Add a question** adds more (up to 20). A tool with no questions calls your system without asking anything. Under **Advanced: names and what the AI is told** you can see the internal tool name (it cannot change after saving) and edit the description the AI reads. We write that description from your answers until you edit it; **Write it for me again** brings it back.
+  </Step>
+  <Step title="Send: how is it sent?">
+    Choose **What kind of request** it is: **GET** reads information, **POST** sends new information, **PUT** replaces it, **PATCH** changes part of it, **DELETE** removes it. Set the **Path on your system**, which is added after the connection's address. Use `{{field}}` to place an answer in the address. Under **Where does each answer go?** choose **In the address**, **After the ? in the address**, or **In the message body**. Reads and deletes have no body, so answers go in the address.
+
+    A dark preview, **What your system will receive**, shows the request. Dots stand for your secret, and angle brackets show where a customer answer will go. If you are unsure, keep the defaults from the template.
+  </Step>
+  <Step title="Test: try it with real data">
+    Fill in the sample answers, then click **Run test**. The AI is not involved; Yulona calls your system once, for real, and shows whether it worked: the status, how long it took, **What was sent (secrets hidden)** and **What came back**. If it failed, a plain message tells you what to check, for example "Your system refused the sign-in (401). Check the secret on the connection."
+  </Step>
+  <Step title="Rules: when may the AI use it?">
+    Tick the moments the AI may use the tool: **When someone first arrives**, **While chatting**, **Once they are qualified**, **When offering a booking**, **After they have booked**. Decide if the customer must confirm first, and what happens if it fails. When "Ready to save" appears, click **Save tool**.
+  </Step>
+</Steps>
+
+<Warning>
+**Run test** sends a real request. A POST, PUT, PATCH or DELETE test may create or change real data in your system. Use sample values that are safe, or a test environment. Tests are limited to 20 per minute.
+</Warning>
+
+## Click-to-map: choose what the AI reads back
+
+After a successful test, **Tap the fields the AI should read back** shows the answer from your system as a tree of fields with sample values. Click the ones that matter, such as `status` or the delivery date. Each one appears under **What the AI should read back** with a label you can rename. You can remove any.
+
+Why bother: without a choice, the AI receives your system's whole answer (shortened to 8 KB), which can include noise and private details. Picking fields keeps answers accurate and keeps data you do not want to share out of the conversation. If your system does not answer in JSON, there are no fields to pick and the AI reads the text as it is.
+
+## After you save
+
+The tool appears in **Custom tools** on the Tools tab, with a message "Tool added to the draft. Save the draft to keep it, then publish." Click **Save draft** and then **Publish**. On each tool card you can **Edit**, **Test**, **Duplicate** or **Delete** it. Tools show warnings such as **Connection missing** if the connection was removed. Deleted tools stop being used once you save and publish; the connection is kept.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="Next is disabled">
+    The message at the bottom says why: pick a starting point, choose a connection, or fix a question (every question needs a label, and a Choice needs at least two options).
+  </Accordion>
+  <Accordion title="Save tool is disabled">
+    Under "Fix before saving" the builder lists problems with a **Go there** link for each. A common one is a name already used by another tool.
+  </Accordion>
+  <Accordion title="Test says not found (404)">
+    Check the **Path on your system** on the **Send** step against your system's documentation.
+  </Accordion>
+  <Accordion title="Test says it cannot reach your system">
+    The address must be a public one. Private network addresses are blocked. On hosted Yulona the address must start with https://.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Connections" icon="cable" href="/guides/tools/connections">
+    Manage logins and test them.
+  </Card>
+  <Card title="Test in the sandbox" icon="flask-conical" href="/guides/agents/test-in-sandbox">
+    Chat with the agent that uses your tool.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/tools/{ToolBuilder.tsx,steps.tsx,model.ts,ToolsPanel.tsx,ConnectionForm.tsx}, docs/api/tools.md, packages/ai-runtime/src/tools.ts */}

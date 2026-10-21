@@ -1,0 +1,161 @@
+---
+title: API conventions
+description: Learn the rules every Yulona endpoint follows, including base URL, request bodies, pagination, idempotency, rate limits, request ids and versioning.
+icon: book
+---
+
+These conventions apply to the dashboard API, the public API and the public widget API. Read this page once, then use the endpoint reference without surprises. It is written for developers writing API clients.
+
+## Base URL and format
+
+| Item | Value |
+|---|---|
+| Base URL | `https://YOUR_HOST/api/v1` |
+| Request and response body | JSON (`Content-Type: application/json`) |
+| Timestamps | ISO 8601 strings in UTC, for example `2026-10-19T09:30:00.000Z` |
+| Identifiers | UUIDs |
+| Machine-readable spec | `GET /api/v1/openapi.json` (HTTP basic auth, enabled when the operator sets `DOCS_PASSWORD`) |
+
+Health checks live outside the versioned prefix: `GET /healthz` and `GET /readyz`.
+
+The `YOUR_HOST` value is your Yulona API origin. On a self-hosted install behind the bundled Caddy proxy, the API is reachable under `/api/*` on your site address.
+
+## Request bodies are strict
+
+- Send `Content-Type: application/json` on every request with a body. Anything else returns `415 unsupported_media_type` (file upload endpoints expect `multipart/form-data`).
+- Malformed JSON returns `400 invalid_json`.
+- Bodies are validated with strict schemas: **unknown fields are rejected**, they are not ignored. A typo fails loudly instead of being silently dropped.
+- The default body cap is 1 MB (`BODY_LIMIT_BYTES`); larger bodies return `413 payload_too_large`. The public widget API caps bodies at 16 KB.
+- Query strings are validated with strict schemas on the list endpoints, so an unknown query parameter returns `400 validation_error` there too.
+
+A validation failure lists every problem by path. Submitted values are never echoed back.
+
+<CodeGroup>
+```bash curl
+curl -X POST https://YOUR_HOST/api/v1/public-api/contacts \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ada","emial":"ada@example.com"}'
+```
+
+```javascript fetch
+const res = await fetch("https://YOUR_HOST/api/v1/public-api/contacts", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+  body: JSON.stringify({ name: "Ada", emial: "ada@example.com" }),
+});
+```
+</CodeGroup>
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "Invalid request",
+    "requestId": "b1f3c0de-6a1c-4a53-9d24-0a7a1d2f4e11",
+    "details": [{ "path": "", "message": "Unrecognized key: \"emial\"" }]
+  }
+}
+```
+
+The envelope is the same for every error. See [Errors](/developers/errors).
+
+## Pagination
+
+Most lists use **keyset (cursor) pagination**. Pass `limit` (1 to 100; the default is 30, and 50 for message lists) and the opaque `cursor` from the previous page. The response is `{ "items": [...], "nextCursor": "..." }`; `nextCursor` is `null` on the last page. Do not parse or build cursors yourself.
+
+<CodeGroup>
+```bash curl
+curl "https://YOUR_HOST/api/v1/public-api/contacts?limit=2" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+curl "https://YOUR_HOST/api/v1/public-api/contacts?limit=2&cursor=MjAyNi0xMC0xOVQwOTozMDowMC4wMDAwMDBafDhhMS4uLg" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```javascript fetch
+async function* allContacts(apiKey) {
+  let cursor = null;
+  do {
+    const url = new URL("https://YOUR_HOST/api/v1/public-api/contacts");
+    url.searchParams.set("limit", "100");
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+    if (!res.ok) throw new Error((await res.json()).error.code);
+    const page = await res.json();
+    yield* page.items;
+    cursor = page.nextCursor;
+  } while (cursor);
+}
+```
+</CodeGroup>
+
+```json
+{ "items": [{ "id": "8a1c...", "name": "Ada", "email": "ada@example.com" }, { "id": "3d9e...", "name": "Grace", "email": null }], "nextCursor": "MjAyNi0xMC0xOVQwOTozMDow..." }
+```
+
+Exceptions:
+
+| List | Style |
+|---|---|
+| `GET .../conversations/:id/messages` | `before` is a message id; `nextCursor` is the id to pass as `before` for older messages. Items come back oldest to newest within a page. |
+| `GET /public/widget/messages` | `after` or `before` (a message id, not both) and `hasMore`; there is no `nextCursor`. |
+| `GET /knowledge/sources`, `GET /admin/tenants` | Offset style: `limit` and `offset`. Knowledge returns `{ items, limit, offset }`; admin tenants adds `total`. |
+
+## Idempotency
+
+Yulona has no generic `Idempotency-Key` header. Idempotency is explicit where retries are expected:
+
+| Where | Key | Replay behavior |
+|---|---|---|
+| `POST /public-api/conversations/:id/messages` | `clientMessageId` (1 to 64 characters, optional) | `201` the first time, `200` with the original message on replay |
+| Widget `POST /public/widget/messages` and `/ui-events` | `clientMessageId` (8 to 64 characters from `A-Za-z0-9_-`, required) | `201` first, `200` with the original on replay |
+| Outbound webhooks | Envelope `id`, constant across retries and redeliveries | Your receiver should ignore ids it has already processed |
+| Provider webhooks (channels) | Provider event id | Duplicates answer `200` and are skipped |
+| Inbound transaction webhooks | `externalId` | A replay updates the existing record |
+
+Create endpoints without a key (for example `POST /public-api/contacts`) are not idempotent. If a request times out, read before you retry.
+
+## Rate limits
+
+When a limit is exceeded the API answers `429` with a `Retry-After` header (seconds) and the standard error body:
+
+```json
+{ "error": { "code": "rate_limited", "message": "Too many requests", "requestId": "b1f3c0de-6a1c-4a53-9d24-0a7a1d2f4e11" } }
+```
+
+There are no `X-RateLimit-*` headers. Track your own budget and back off on `429`:
+
+```javascript
+async function call(url, init, tries = 4) {
+  for (let i = 0; i < tries; i++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429) return res;
+    const wait = Number(res.headers.get("Retry-After") ?? 1) * 1000;
+    await new Promise((r) => setTimeout(r, wait + Math.random() * 250));
+  }
+  throw new Error("rate limited");
+}
+```
+
+The limits are listed in [Multi-tenancy and security](/developers/multi-tenancy-and-security). API keys have their own per-minute limit.
+
+## Request ids
+
+Every response carries an `X-Request-Id` header, and every error body repeats it as `error.requestId`. You may supply your own on the request if it matches `A-Za-z0-9_-` and is 8 to 64 characters long; otherwise the server generates a UUID. Include the id when you contact support or search audit logs (audit entries store `requestId`).
+
+## CORS
+
+Browsers can call the dashboard API only from origins listed in the operator's `CORS_ORIGINS`. Allowed headers are `Authorization`, `Content-Type`, `X-CSRF-Token` and `X-Request-Id`. The public widget API has its own per-widget origin allowlist. See [Widget embed](/developers/widget-embed). Server-to-server calls with an API key are not subject to CORS.
+
+## Versioning
+
+- The URL carries the major version: `/api/v1`. Within `v1`, expect additive changes (new endpoints, new optional fields, new enum values, new error codes). Write clients that ignore unknown response fields and handle unknown values defensively.
+- Embedded schemas are versioned separately: tool manifests have `version` 1 and 2 ([Tool manifest](/developers/tool-manifest)), widget messages carry `WidgetUISchema` `version` 1 and the widget config reports `schemaVersion` ([Widget embed](/developers/widget-embed)).
+- The webhook envelope has no version field. Treat unknown event types as ignorable.
+
+## Roles and plan limits
+
+Endpoints state a minimum role (`viewer`, `agent`, `admin`, `owner`). Creating resources beyond your plan returns `402 plan_limit_exceeded` with `details: { metric, limit, used }`. Check `GET /api/v1/tenant` for current usage against limits.
+
+{/* source: apps/api/src/http.ts, apps/api/src/app.ts, apps/api/src/middleware.ts, apps/api/src/ratelimit.ts, apps/api/src/integrations/public-api.ts, apps/api/src/routes/public-widget.ts, apps/api/src/conversations/dto.ts, packages/shared/src/conversations.ts, docs/api/platform.md, docs/api/ops.md */}

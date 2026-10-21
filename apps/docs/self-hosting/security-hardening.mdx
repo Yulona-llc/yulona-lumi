@@ -1,0 +1,124 @@
+---
+title: Security hardening
+description: Secure a self-hosted Yulona install with strong secrets, TLS, an egress firewall, encrypted backups and a final checklist.
+icon: shield
+---
+
+This page is for operators. The default install is already locked down in several ways; this page lists what is done for you, what you must do, and a checklist to finish with.
+
+## What the stack does for you
+
+- **One entry point.** Only Caddy publishes ports (80 and 443). Postgres and Redis sit on an internal network with no internet access and no published ports. Redis requires a password.
+- **Hardened containers.** `api`, `worker`, `dashboard`, `caddy` and `minio` run with a read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, and a `/tmp` tmpfs. Exceptions are intentional: Caddy adds `NET_BIND_SERVICE`, and Postgres and Redis add the capabilities their entrypoints need to prepare data volumes and drop privileges. The optional ClamAV containers are not hardened this way.
+- **Non-root application.** The images contain only compiled code and SQL migrations, with no source and no secrets. Secrets are injected at runtime from `deploy/.env`.
+- **Least-privilege database.** The runtime role `yulona_app` is not a superuser and cannot bypass row-level security. Only the one-shot `migrate` and `create-tenant` services use the owner role.
+- **Production safety checks.** In production the API refuses to start when `JWT_SECRET` is weak (under 32 characters, low entropy, or containing words like `change`, `secret`, `test`), when `DATABASE_URL` has no password or uses a development default, when `CORS_ORIGINS` contains `*`, or when `OPENAPI_ENABLED=true` without `DOCS_PASSWORD`.
+- **Request limits.** Rate limits, body limits and a logger that redacts secrets are built in. See [Configuration reference](/self-hosting/configuration#rate-limits-fixed-in-code).
+
+## Secrets
+
+`deploy/setup.sh` generates `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`, `REDIS_PASSWORD`, `JWT_SECRET` (96 hex characters), `ENCRYPTION_KEY` and `MINIO_ROOT_PASSWORD` with `openssl rand`, and writes `deploy/.env` with mode 600. To generate one yourself:
+
+<CodeGroup>
+```bash Passwords and JWT secret
+openssl rand -hex 24      # URL-safe password
+openssl rand -hex 48      # JWT_SECRET
+```
+
+```bash Encryption key
+openssl rand -base64 32   # ENCRYPTION_KEY (base64 of 32 bytes)
+```
+</CodeGroup>
+
+Keep `deploy/.env` out of version control, readable only by the account that runs Docker, and in a secret store you control.
+
+### ENCRYPTION_KEY
+
+The key encrypts channel credentials, webhook signing secrets, calendar tokens, tool-connection secrets and provider keys. Each record gets its own data key that is wrapped with this master key (AES-256-GCM).
+
+<Warning>
+There is no built-in command to rotate `ENCRYPTION_KEY`. If you change it, every stored credential becomes unreadable and each channel, calendar, webhook and tool connection must be reconnected. Back up the key with `deploy/.env` and never change it casually. If you suspect it leaked, plan a maintenance window: change the key, restart `api` and `worker`, then re-enter every credential.
+</Warning>
+
+### JWT_SECRET
+
+Changing it signs everyone out, which is the right response to a suspected leak. It does not affect stored data. Platform admin tokens use a derived key, so they are also invalidated.
+
+## TLS
+
+Caddy gets and renews Let's Encrypt certificates when `SITE_ADDRESS` is a public domain, and sends `Strict-Transport-Security` with a two-year lifetime. Do not run production on `:80`. If you terminate TLS elsewhere, keep Caddy on `:80` behind your proxy, forward the real client IP, and keep the proxy as the only way in.
+
+## Egress firewall for the worker (SSRF)
+
+The `api` and `worker` containers join the `edge` network so they can call your AI provider, SMTP server, Google, Calendly and customers' webhooks and custom tools. The application blocks private, loopback, link-local and cloud metadata addresses for crawls, webhooks and custom tools, and re-checks on every redirect. Add defence in depth on the host by blocking those ranges from the Docker bridge:
+
+```bash
+docker network inspect yulona_edge --format '{{(index .IPAM.Config 0).Subnet}}'
+# example result: 172.19.0.0/16
+sudo iptables -I DOCKER-USER -s 172.19.0.0/16 -d 10.0.0.0/8 -j DROP
+sudo iptables -I DOCKER-USER -s 172.19.0.0/16 -d 169.254.169.254 -j DROP
+```
+
+Repeat for `172.16.0.0/12`, `192.168.0.0/16` and your management network, and allow DNS and your intended destinations first. If your AI provider runs on a private address (Ollama or vLLM), allow that single address before the drop rule.
+
+## Headers and CSP
+
+| Header | Value | Set by |
+|---|---|---|
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | Caddy and the dashboard |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; connect-src 'self' <API origin>; object-src 'none'; frame-ancestors 'none'; ...` | Dashboard nginx |
+| `X-Frame-Options` | `DENY` (`SAMEORIGIN` for the widget preview page only) | Dashboard nginx |
+| `X-Content-Type-Options` | `nosniff` | Caddy and the dashboard |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Dashboard nginx |
+| `Permissions-Policy` | camera, microphone, geolocation, payment and usb denied | Dashboard nginx |
+
+The CSP `connect-src` is generated at container start from `DASHBOARD_API_URL`, so one image works for any API origin.
+
+## CORS and cookies
+
+Leave `CORS_ORIGINS` empty for the default same-origin setup. For a split deployment list the exact dashboard origins, never `*`. Set `CROSS_SITE_COOKIES=true` only when the dashboard and API are on different sites, because it relaxes the refresh cookie to `SameSite=None`. Keep `ALLOW_PUBLIC_SIGNUP=false`; in self-hosted mode signup is closed regardless.
+
+## Upload scanning
+
+Enable the `clamav` profile and set `CLAMAV_URL` to scan uploaded knowledge files. Scanning fails closed. `CLAMAV_URL` can be `http://clamav:3000` (bundled profile) or `tcp://host:3310` (your own `clamd`); see [Channels and integrations setup](/self-hosting/channels-and-integrations-setup#clamav).
+
+## API reference exposure
+
+Keep `OPENAPI_ENABLED=false` unless you need the reference at `/docs`. If you enable it, set a long `DOCS_PASSWORD`; the endpoint is protected by HTTP basic auth and its own rate limit.
+
+## Encrypt backups
+
+`deploy/backup.sh` writes unencrypted gzip files. Encrypt them before copying off the host:
+
+```bash
+gpg --symmetric --cipher-algo AES256 deploy/backups/yulona-20261019-031700.sql.gz
+```
+
+Store the passphrase separately from `deploy/.env`, and test that you can decrypt and restore.
+
+## Hardening checklist
+
+- [ ] `SITE_ADDRESS` is a real domain and `https://<domain>/readyz` answers `ok`
+- [ ] `deploy/.env` is mode 600, backed up, and not in git
+- [ ] `ENCRYPTION_KEY` is backed up separately and documented as non-rotatable
+- [ ] The first admin's generated password was changed
+- [ ] Only ports 80 and 443 are open on the host firewall
+- [ ] Egress rules block RFC1918 ranges and `169.254.169.254` from `yulona_edge`
+- [ ] `ALLOW_PUBLIC_SIGNUP=false` and `CORS_ORIGINS` lists only your dashboard
+- [ ] `OPENAPI_ENABLED=false`, or `DOCS_PASSWORD` is set
+- [ ] Backups run from cron, are encrypted, and have been test-restored
+- [ ] Images are pinned to tags or digests, and you apply updates with `deploy/upgrade.sh`
+- [ ] Docker and the host OS receive security updates
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Upgrade, backup and restore" icon="database" href="/self-hosting/upgrade-backup-restore">
+    Schedule backups and practise a restore.
+  </Card>
+  <Card title="Developer security model" icon="lock" href="/developers/multi-tenancy-and-security">
+    How tenant isolation and auth work.
+  </Card>
+</CardGroup>
+
+{/* source: deploy/docker-compose.yml, deploy/Caddyfile, apps/dashboard/nginx/40-yulona-config.sh, apps/api/src/config.ts, packages/crypto/src/index.ts, docs/self-hosting.md */}

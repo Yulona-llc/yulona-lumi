@@ -1,0 +1,280 @@
+# Yulona production stack. Run via deploy/setup.sh (generates .env) or:
+#   docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --wait
+# Networks: only Caddy publishes ports (80/443). `backend` is internal (no egress, no host access):
+# postgres/redis live ONLY there. api/worker also join `edge` for Caddy + outbound calls (LLM providers etc.).
+name: yulona
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+x-api-env: &api-env
+  NODE_ENV: production
+  PORT: "3000"
+  DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-selfhosted}
+  SUPER_ADMIN_ENABLED: ${SUPER_ADMIN_ENABLED:-}
+  DATABASE_URL: postgres://yulona_app:${APP_DB_PASSWORD:?run deploy/setup.sh}@postgres:5432/yulona
+  REDIS_URL: redis://:${REDIS_PASSWORD:?run deploy/setup.sh}@redis:6379
+  JWT_SECRET: ${JWT_SECRET:?run deploy/setup.sh}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run deploy/setup.sh}
+  APP_URL: ${APP_URL:-https://${SITE_ADDRESS:-localhost}}
+  PUBLIC_API_URL: ${PUBLIC_API_URL:-}
+  WIDGET_SCRIPT_URL: ${WIDGET_SCRIPT_URL:-/widget.js}
+  CORS_ORIGINS: ${CORS_ORIGINS:-}
+  ALLOW_PUBLIC_SIGNUP: ${ALLOW_PUBLIC_SIGNUP:-false}
+  CROSS_SITE_COOKIES: ${CROSS_SITE_COOKIES:-false}
+  TRUST_PROXY: "true"
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  OPENAPI_ENABLED: ${OPENAPI_ENABLED:-false}
+  DOCS_USERNAME: ${DOCS_USERNAME:-docs}
+  DOCS_PASSWORD: ${DOCS_PASSWORD:-}
+  # AI / providers. Empty AI_PROVIDER = openai when AI_API_KEY is set, else the offline mock provider.
+  AI_PROVIDER: ${AI_PROVIDER:-}
+  AI_API_KEY: ${AI_API_KEY:-}
+  AI_BASE_URL: ${AI_BASE_URL:-}
+  AI_MODEL: ${AI_MODEL:-}
+  # OpenAI-compatible provider options (Azure api-key header, extra headers, api-version query, custom chat path)
+  AI_AUTH_HEADER: ${AI_AUTH_HEADER:-}
+  AI_AUTH_SCHEME: ${AI_AUTH_SCHEME:-}
+  AI_EXTRA_HEADERS: ${AI_EXTRA_HEADERS:-}
+  AI_QUERY: ${AI_QUERY:-}
+  AI_CHAT_PATH: ${AI_CHAT_PATH:-}
+  # SaaS only: text shown to customers when the tenant's AI credits are used up
+  CREDITS_EXHAUSTED_MESSAGE: ${CREDITS_EXHAUSTED_MESSAGE:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_SECURE: ${SMTP_SECURE:-}
+  EMAIL_FROM: ${EMAIL_FROM:-}
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_BUCKET: ${S3_BUCKET:-}
+  S3_REGION: ${S3_REGION:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+  CALENDLY_CLIENT_ID: ${CALENDLY_CLIENT_ID:-}
+  CALENDLY_CLIENT_SECRET: ${CALENDLY_CLIENT_SECRET:-}
+  CALENDLY_REDIRECT_URI: ${CALENDLY_REDIRECT_URI:-}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  CLAMAV_URL: ${CLAMAV_URL:-}
+  LICENSE_KEY: ${LICENSE_KEY:-}
+  LICENSE_PUBLIC_KEY: ${LICENSE_PUBLIC_KEY:-}
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    <<: *hardening
+    cap_add: [NET_BIND_SERVICE]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    tmpfs: [/tmp]
+    networks: [edge]
+    depends_on:
+      api: { condition: service_healthy }
+      dashboard: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+  api:
+    image: ${YULONA_API_IMAGE:-yulona/api:local}
+    build: { context: .., dockerfile: apps/api/Dockerfile }
+    <<: *hardening
+    environment: *api-env
+    tmpfs: [/tmp]
+    networks: [edge, backend]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    deploy: { resources: { limits: { cpus: "1.0", memory: 512M } } }
+
+  worker:
+    image: ${YULONA_API_IMAGE:-yulona/api:local}
+    <<: *hardening
+    command: ["bun", "run", "--preload", "./dist/clean-env.js", "dist/worker.js"]
+    environment: *api-env
+    tmpfs: [/tmp]
+    networks: [edge, backend]
+    healthcheck: { disable: true }   # stub worker exposes no port; restart policy covers crashes
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    deploy: { resources: { limits: { cpus: "1.0", memory: 512M } } }
+
+  migrate:
+    image: ${YULONA_API_IMAGE:-yulona/api:local}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    command: ["bun", "run", "dist/migrate.js"]
+    environment:
+      NODE_ENV: production
+      MIGRATION_DATABASE_URL: postgres://yulona_owner:${POSTGRES_PASSWORD:?run deploy/setup.sh}@postgres:5432/yulona
+    tmpfs: [/tmp]
+    networks: [backend]
+    healthcheck: { disable: true }
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # One-shot admin CLI (profile "tools"; owner DB role). deploy/setup.sh runs it for the first tenant:
+  #   docker compose ... run --rm create-tenant --workspace Acme --email admin@acme.com
+  create-tenant:
+    image: ${YULONA_API_IMAGE:-yulona/api:local}
+    profiles: [tools]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    entrypoint: ["bun", "run", "dist/create-tenant.js"]
+    environment:
+      NODE_ENV: production
+      MIGRATION_DATABASE_URL: postgres://yulona_owner:${POSTGRES_PASSWORD:?run deploy/setup.sh}@postgres:5432/yulona
+    tmpfs: [/tmp]
+    networks: [backend]
+    healthcheck: { disable: true }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  # Optional (COMPOSE_PROFILES=minio): S3-compatible object storage on the internal network.
+  # Set S3_ENDPOINT=http://minio:9000, S3_BUCKET=yulona, S3_ACCESS_KEY_ID=$MINIO_ROOT_USER, S3_SECRET_ACCESS_KEY=$MINIO_ROOT_PASSWORD.
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles: [minio]
+    <<: *hardening
+    command: ["server", "/data", "--console-address", "127.0.0.1:9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-yulona}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+    volumes: [miniodata:/data]
+    tmpfs: [/tmp]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy: { resources: { limits: { cpus: "0.5", memory: 512M } } }
+
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    profiles: [minio]
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mc alias set l http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" && mc mb --ignore-existing l/${S3_BUCKET:-yulona}"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-yulona}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+      MC_CONFIG_DIR: /tmp/mc
+    tmpfs: [/tmp]
+    networks: [backend]
+    depends_on:
+      minio: { condition: service_healthy }
+
+  # Optional (COMPOSE_PROFILES=clamav): upload virus scanning. Set CLAMAV_URL=http://clamav:3000
+  # (this REST wrapper in front of clamd); the api also accepts tcp://host:3310 for a plain clamd.
+  clamav:
+    image: benzino77/clamav-rest-api:1.5.1
+    profiles: [clamav]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CLAMD_IP: clamd
+      APPLICATION_PORT: "3000"
+    networks: [backend]
+    depends_on: [clamd]
+    deploy: { resources: { limits: { cpus: "0.25", memory: 128M } } }
+
+  clamd:
+    image: clamav/clamav:1.4
+    profiles: [clamav]
+    restart: unless-stopped
+    volumes: [clamdata:/var/lib/clamav]
+    networks: [backend]
+    deploy: { resources: { limits: { cpus: "1.0", memory: 2G } } }
+
+  dashboard:
+    image: ${YULONA_DASHBOARD_IMAGE:-yulona/dashboard:local}
+    build: { context: .., dockerfile: apps/dashboard/Dockerfile }
+    <<: *hardening
+    environment:
+      API_URL: ${DASHBOARD_API_URL:-}
+    tmpfs: [/tmp]
+    networks: [edge]
+    deploy: { resources: { limits: { cpus: "0.5", memory: 128M } } }
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    <<: *hardening
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]   # entrypoint chowns PGDATA then drops to postgres
+    environment:
+      POSTGRES_DB: yulona
+      POSTGRES_USER: yulona_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run deploy/setup.sh}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?run deploy/setup.sh}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    tmpfs: [/tmp, /var/run/postgresql]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yulona_owner -d yulona"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    shm_size: 128mb
+    stop_grace_period: 30s
+    deploy: { resources: { limits: { cpus: "1.0", memory: 1G } } }
+
+  redis:
+    image: redis:7-alpine
+    <<: *hardening
+    cap_add: [SETUID, SETGID, CHOWN]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?run deploy/setup.sh}", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes: [redisdata:/data]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy: { resources: { limits: { cpus: "0.5", memory: 320M } } }
+
+networks:
+  edge: {}
+  backend:
+    internal: true
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:
+  miniodata:
+  clamdata:

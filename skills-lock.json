@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "skills": {
+    "a2ui-renderer": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/a2ui-renderer/SKILL.md",
+      "computedHash": "e3075082e935a572515f11c812ff2a73d16834b834ccc27369f5aafbc071ac7b"
+    },
+    "copilotkit-agui": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/copilotkit-agui/SKILL.md",
+      "computedHash": "67f23c8448e4b3b2b467ee9ac3659686b3d8315ed2c73a201810018b06947bd7"
+    },
+    "copilotkit-contribute": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/copilotkit-contribute/SKILL.md",
+      "computedHash": "8f64f3215cd93ce0bb82c5e4ea84e616aa96713eb371ed073ae5d2c908f7ecb8"
+    },
+    "copilotkit-debug": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/copilotkit-debug/SKILL.md",
+      "computedHash": "9914101dd1b0ffde2ffbd0fffe235b544034825e8f7e8b0a290d6dfd59937162"
+    },
+    "copilotkit-develop": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/copilotkit-develop/SKILL.md",
+      "computedHash": "f1a42bf48ddcce1a672a9cc375b0ad81a055f9bf96777603ee4228f284dfc817"
+    },
+    "copilotkit-integrations": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/copilotkit-integrations/SKILL.md",
+      "computedHash": "8f2ef23bff9e36d0bdd2da3377fd59511846268a0d434f1927807d5be786362a"
+    },
+    "copilotkit-self-update": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/copilotkit-self-update/SKILL.md",
+      "computedHash": "8ca22cf9c046322676686ba9bf3e3402fe83449943489d401b900cd33617f2e2"
+    },
+    "copilotkit-setup": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/copilotkit-setup/SKILL.md",
+      "computedHash": "5327918aafbf2c5a7befe86b904ffc0f1dd181dc12a795fa5f048678874521c9"
+    },
+    "copilotkit-upgrade": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/copilotkit-upgrade/SKILL.md",
+      "computedHash": "80ba66af791c5aa50eed4267f4f2b4975c8fc84f3c4cec8529a6420299b6623e"
+    },
+    "dce-edge": {
+      "source": "vercel/next.js",
+      "sourceType": "github",
+      "computedHash": "b206f20c17065f4c16711f93e2cfc0bb768fd5765194723867d64aca2b3f78c9"
+    },
+    "design-system": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/design-system/SKILL.md",
+      "computedHash": "c50a1a77394e988b2593ed97f95ae28b5167eb8a826385b5996d67e398d15b6a"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "89496d5dd00f4810205f351759594fc2742bf8eea85a2f2b2d1de59f4bd91576"
+    },
+    "gsap-core": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-core/SKILL.md",
+      "computedHash": "c4a01101d9e1aafbf4b49f75d74f9349790d8741981ba0237c990093863035a6"
+    },
+    "gsap-performance": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-performance/SKILL.md",
+      "computedHash": "863842ac2d7aee53fd4f0025c960173d7ad3e658a5715b89b2211fa280213c1f"
+    },
+    "gsap-plugins": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-plugins/SKILL.md",
+      "computedHash": "791bda0e6e460511fe82a78e745db519b88ffaeeab4d04a74879a03ca4f41740"
+    },
+    "gsap-react": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-react/SKILL.md",
+      "computedHash": "7d3b52822681a4158e371f895c58fb7030ecaf33f585a534b7162f9e92c5d893"
+    },
+    "gsap-scrolltrigger": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-scrolltrigger/SKILL.md",
+      "computedHash": "1cdc5647693783cb7a662d84a5de434c88a051ed56b4d33597c9b5782b5973e6"
+    },
+    "gsap-timeline": {
+      "source": "greensock/gsap-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-timeline/SKILL.md",
+      "computedHash": "54981c2feec5a9c0d57988aeb32315af32bdeadd261550d5e9db7a7b1f08b487"
+    },
+    "industrial-brutalist-ui": {
+      "source": "leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/brutalist-skill/SKILL.md",
+      "computedHash": "8fc355c4aadb7d29c53ca28bc41be3cd6eea765d121e3737c4dc2d0f90a8effa"
+    },
+    "minimalist-ui": {
+      "source": "leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/minimalist-skill/SKILL.md",
+      "computedHash": "08873a3131d3be27bef9bf3304b310b16b44ca6e3561aebe532797be3443f6bd"
+    },
+    "premium-frontend-ui": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/premium-frontend-ui/SKILL.md",
+      "computedHash": "e7f3d02a0233beafdd6fe5335427388109b9699ebcdc6a8782a8bada2826d916"
+    },
+    "react-core": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/react-core/SKILL.md",
+      "computedHash": "fb8fa5239c63cd8316adff911d0d662aa082c3485157ce4cba3ce3bedca61d6d"
+    },
+    "react-vendoring": {
+      "source": "vercel/next.js",
+      "sourceType": "github",
+      "computedHash": "2ed7b7d5b9d5291cff49f048f66cc845349bf3666eab57676283429cd7fddfb6"
+    },
+    "runtime": {
+      "source": "CopilotKit/CopilotKit",
+      "sourceType": "github",
+      "skillPath": "skills/runtime/SKILL.md",
+      "computedHash": "670e8b8f8cdd16fbe82622c56b5f63e48514cca80632dfa8b9225dd7b46f3418"
+    },
+    "runtime-debug": {
+      "source": "vercel/next.js",
+      "sourceType": "github",
+      "computedHash": "5b586e8253016599b85e96707fb84155b2909414ad554f4421b03111e744a124"
+    },
+    "trpc-tanstack-nextjs": {
+      "source": "diegojohnsonl/trpc-tanstack-nextjs",
+      "sourceType": "github",
+      "computedHash": "765637486337d2dde5c23aa319d77c2f08bd06842e3dbc909421e5a53724f9ce"
+    },
+    "ui-styling": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/ui-styling/SKILL.md",
+      "computedHash": "39ad392c96adab936d8d057b66d1d632dd9c3d2b2397ec11bfe0e2a7c1fc975a"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/ui-ux-pro-max/SKILL.md",
+      "computedHash": "27b1e8c953e26f962e3314281601959b04787edf3fd7fccadce176ff844c688d"
+    }
+  }
+}

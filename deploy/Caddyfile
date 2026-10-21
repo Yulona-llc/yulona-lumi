@@ -1,0 +1,29 @@
+# SITE_ADDRESS: your domain (automatic HTTPS via Let's Encrypt), or `localhost` (local CA), or `:80` (plain HTTP, no TLS).
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	request_body {
+		max_size 2MB
+	}
+
+	# WebSocket upgrades (/api/v1/realtime/ws, /ws) pass through reverse_proxy automatically.
+	@api path /api/* /ws /ws/* /healthz /readyz
+	handle @api {
+		reverse_proxy api:3000 {
+			health_uri /healthz
+			health_interval 15s
+			# Caddy sets X-Forwarded-For/Proto itself; api is only reachable via this proxy.
+		}
+	}
+
+	# Everything else -> dashboard (it sets its own CSP / cache headers).
+	handle {
+		reverse_proxy dashboard:8080
+	}
+}

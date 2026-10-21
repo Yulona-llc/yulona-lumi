@@ -1,0 +1,118 @@
+---
+title: Inbox
+description: Find, read and answer customer conversations, take over from the AI, leave internal notes, assign teammates and resolve conversations.
+icon: inbox
+---
+
+The Inbox is where support leads and agents read and answer every conversation from every channel in one place. This guide shows how to find a conversation, tell who said what, reply or take over from the AI, and close the conversation.
+
+**Role needed:** viewers can read the Inbox. Agents, admins and owners can reply, take over, assign and resolve.
+
+## Find a conversation
+
+Open **Inbox** in the left menu. The list on the left shows each conversation with the customer's name (or **Anonymous visitor**), a preview of the last message, how long ago it arrived, a badge and the channel. A small dot marks conversations with a customer message you have not opened yet. Unread dots are remembered per browser.
+
+The badge shows who is answering:
+
+| Badge | Meaning |
+|---|---|
+| **AI** | The AI is answering. |
+| **Human** | A teammate has taken over. |
+| **Needs attention** | The AI stopped and a person should step in. |
+| **Resolved** | The conversation is closed. |
+
+A **Live** indicator at the top of the list tells you the connection is up. If it says **Offline** or **Reconnecting**, new messages may be delayed until it recovers.
+
+### Search and filters
+
+<Steps>
+  <Step title="Search">
+    Type in **Search name, email or message**. It matches the contact's name, email and phone, the last message preview, and the text of messages.
+  </Step>
+  <Step title="Filter">
+    Click the filter button. In **Filter conversations**, pick one option in each group: **Status** (Open, Needs attention, Resolved), **Handled by** (AI, Human), **Channel** (Website chat, WhatsApp, Messenger, Instagram, Telegram, Slack) and **Assignee** (Anyone, Me, Unassigned, or a teammate). Click **Reset** to clear the filters, or the **Show** button to close the panel.
+  </Step>
+  <Step title="Clear">
+    Active filters appear as chips under the search box. Click a chip to remove it, or **Clear all**. Click **Load more** at the bottom of the list for older conversations.
+  </Step>
+</Steps>
+
+### Keyboard shortcuts
+
+| Key | What it does |
+|---|---|
+| `j` | Open the next conversation in the list |
+| `k` | Open the previous conversation |
+| `/` | Jump to the search box |
+| `Ctrl + Enter` (`Cmd + Enter` on Mac) | Send the message you are typing |
+| `/` then a shortcut, inside the message box | Insert a [canned response](/guides/workspace/canned-responses-and-tags) |
+
+`j`, `k` and `/` work when you are not typing in a field.
+
+## Read the thread
+
+Each message is labeled with who sent it:
+
+- **Customer** on the left.
+- **AI assistant** for AI replies.
+- The teammate's name for a human reply.
+- The teammate's name followed by **(internal note)** for a note, drawn with a dashed outline. Notes are never sent to the customer.
+
+Centered lines mark events: "*Name* took over", "Handoff requested" with the reason, and "Message not delivered on *channel*" when a reply could not be sent (for example when the 24-hour reply window of a messaging app has closed). A message that failed to send from the dashboard shows **Not sent** with **Retry**. Click **Load earlier messages** to see older history.
+
+The header shows the current state, such as **The AI is answering**, **Waiting for a person**, "*Name* is handling this" or **Resolved**. Next to the contact name you also see the conversation's stage, for example **Qualified**.
+
+The panel on the right (or the **Contact details** button on narrow screens) shows the contact's email, phone and channels, the **Stage**, any handoff reason, the **Lead card** the AI filled in, **Attributes**, and **Earlier conversations**. Click **Open full profile** to go to the [contact](/guides/workspace/contacts).
+
+## Reply, or leave a note
+
+Under the thread, choose **Reply to customer** or **Internal note**, type your message (up to 4,000 characters) and send it.
+
+- A **reply** goes to the customer. If the AI was answering, sending a reply takes over from the AI. If the conversation had no assignee, you become the assignee.
+- An **internal note** is visible only to your team. Use it to hand context to a colleague.
+
+Type `/` and the start of a shortcut to insert a canned response, or use the **Canned responses** button.
+
+<Warning>
+A resolved conversation cannot be replied to. The box shows "This conversation is resolved. Reopen it to reply." Click **Reopen** first.
+</Warning>
+
+## Take over, hand back, assign and resolve
+
+The buttons above the thread control the conversation:
+
+| Button | What it does |
+|---|---|
+| **Take over** | Stops the AI and assigns the conversation to you. Shown while the AI is answering. |
+| **Return to AI** | Hands the conversation back to the AI and unassigns it. This is the label when it is assigned to you. |
+| **Hand back to AI** | The same action, when the conversation is handled by someone else. |
+| **Assignee** menu | Assign to a teammate or choose **Unassigned**. |
+| **Resolve** | Closes the conversation. The AI stops replying. |
+| **Reopen** | Opens a resolved conversation again. |
+
+If a teammate already owns the conversation, an agent cannot take it over and sees an error. An admin or owner can.
+
+## What you should see
+
+After **Take over**, the AI badge changes to **Human**, a line "*Your name* took over" appears, and the AI stops answering. After **Return to AI**, the AI answers the next customer message.
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| The AI keeps answering after I replied | Check the badge. If it still says **AI**, click **Take over**. |
+| Customer did not receive my WhatsApp reply | Look for a "Message not delivered" line. See [Troubleshooting](/guides/troubleshooting). |
+| I cannot reply | Your role may be **Viewer**, or the conversation is **Resolved**. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Needs attention" icon="triangle-exclamation" href="/guides/workspace/needs-attention">
+    Work the queue of conversations waiting for a person.
+  </Card>
+  <Card title="Canned responses and tags" icon="bolt" href="/guides/workspace/canned-responses-and-tags">
+    Save replies you type often.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/inbox/{ConversationList,ConversationView,Composer,Thread,ContactPanel,format}.tsx; docs/api/conversations.md; apps/api/src/routes/conversations.ts (takeover 409, viewers read-only); packages/channels/src/send-job.ts */}

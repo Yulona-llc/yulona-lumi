@@ -1,0 +1,173 @@
+---
+title: Widget embed
+description: Embed the Yulona chat widget, restrict it to your domains, and build a custom client against the public widget API.
+icon: message
+---
+
+The website widget is a script that adds a chat bubble to your site. This page is for developers who embed it, tighten its security, or write their own chat client against the public widget API. Non-developers can set up the widget from the guide on the [website widget](/guides/channels/website-widget).
+
+## Embed snippet
+
+Create a widget in the dashboard (or `POST /api/v1/widgets`), then get its snippet with `GET /api/v1/widgets/:id/embed`:
+
+```bash
+curl https://YOUR_HOST/api/v1/widgets/WIDGET_ID/embed -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+```json
+{
+  "snippet": "<script>\n  window.YulonaConfig = { widgetKey: \"wk_...\", apiUrl: \"https://YOUR_HOST\" };\n  (function (d, s) {\n    var e = d.createElement(\"script\");\n    e.src = \"/widget.js\"; e.async = true;\n    d.head.appendChild(e);\n  })(document);\n</script>",
+  "widgetKey": "wk_...",
+  "apiUrl": "https://YOUR_HOST",
+  "scriptUrl": "/widget.js"
+}
+```
+
+Paste `snippet` before `</body>`. The script mounts one widget; loading it twice does nothing.
+
+<Note>
+`scriptUrl` comes from the server's `WIDGET_SCRIPT_URL` (default `/widget.js`) and `apiUrl` from `PUBLIC_API_URL`. On a hosted or reverse-proxied install, make sure both are absolute public URLs before copying the snippet to another site.
+</Note>
+
+### `window.YulonaConfig`
+
+<ParamField body="widgetKey" type="string" required>The widget's public key, `wk_` followed by characters. It is public by design; the origin allowlist protects it. Without it the widget logs a warning and does not start.</ParamField>
+<ParamField body="apiUrl" type="string">API origin (`https://YOUR_HOST`) or a full `/api/v1` base. The widget appends `/api/v1` when missing. If omitted, it uses the origin the script was loaded from.</ParamField>
+<ParamField body="apiBase" type="string">Alias of `apiUrl`; if both are set, `apiBase` wins.</ParamField>
+<ParamField body="open" type="boolean">Start with the panel open.</ParamField>
+<ParamField body="primaryColor" type="string">Local fallback only; the server config wins.</ParamField>
+<ParamField body="position" type="string">`right` or `left`; fallback only.</ParamField>
+
+`window.Yulona.destroy()` removes the widget from the page (useful for single-page apps that unmount it). Rotating a key with `POST /api/v1/widgets/:id/rotate-key` makes the old key stop working immediately, so update every page that embeds it.
+
+## Allowed domains and the origin check
+
+Every public widget request must send the widget key and an `Origin` header that matches the widget's `allowedDomains`. Otherwise the API answers `403 forbidden` and does not set CORS headers.
+
+- Patterns: `example.com` (exact host), `*.example.com` (subdomains only, not the apex), optionally with a scheme (`https://app.example.com`) and/or a port.
+- **An empty list denies every origin in production.** Outside production, `localhost` and `127.0.0.1` are allowed when the list is empty.
+- `OPTIONS` preflights are answered for any origin (they cannot carry the key); `Access-Control-Allow-Origin` is only set on responses that passed the check.
+- A disabled widget, an unknown key or a suspended workspace also returns `403`.
+
+Configure it at creation or later: `PATCH /api/v1/widgets/:id` with `{ "allowedDomains": ["example.com", "*.example.com"] }`.
+
+## Pre-chat form
+
+`prechat` is `{ enabled, intro?, fields: [{ name, label, required }] }` with up to three fields, where `name` is `name`, `email` or `phone`. When enabled, `POST /public/widget/conversations` rejects a missing required visitor field with `400 validation_error` and `details[].path` such as `visitor.email`. Values are stored on the contact (existing values are not overwritten).
+
+## Public widget API
+
+Base: `https://YOUR_HOST/api/v1/public/widget`. All calls send `X-Widget-Key: wk_...`; session calls add `Authorization: Bearer <sessionToken>`. Bodies are capped at 16 KB.
+
+| Method and path | Auth | Purpose |
+|---|---|---|
+| `GET /config` | key | Branding, prechat and capabilities. Cached privately for 60 seconds. |
+| `POST /conversations` | key | Start a conversation and receive a session token. |
+| `POST /session/refresh` | key + session | New token, extended session. |
+| `GET /messages` | key + session | History (`before`) or catch-up (`after`), `limit` 1 to 100. |
+| `POST /messages` | key + session | Send a text message. |
+| `POST /ui-events` | key + session | Submit a form, button click or calendar slot. |
+| `POST /typing` | key + session | Typing indicator. |
+| `GET /stream` | key + session | Server-sent events fallback. |
+| `GET /ws?key=wk_...` | first frame | WebSocket. See [Realtime](/developers/realtime). |
+
+### Session flow
+
+<Steps>
+  <Step title="Read the config">
+    ```bash
+    curl https://YOUR_HOST/api/v1/public/widget/config \
+      -H "X-Widget-Key: wk_YOUR_KEY" -H "Origin: https://www.example.com"
+    ```
+    ```json
+    {
+      "widgetId": "9d2e...", "name": "Website chat",
+      "config": { "title": "Chat with us", "primaryColor": "#F97316", "theme": "auto", "position": "right", "welcomeMessage": "Hi! How can we help?" },
+      "prechat": { "enabled": false, "fields": [] },
+      "schemaVersion": 1,
+      "features": { "sse": true, "ws": true }
+    }
+    ```
+    When `welcomeMessage` is empty, a new conversation opens with the agent's `greeting` as its first AI message (published version, else draft); `welcomeMessage` wins when set. `config` may include `title`, `subtitle`, `welcomeMessage`, `primaryColor` (`#rrggbb`), `theme` (`light`, `dark`, `auto`), `position`, `launcherLabel`, `avatarUrl` (https) and `inputPlaceholder`.
+  </Step>
+  <Step title="Start a conversation">
+    ```bash
+    curl -X POST https://YOUR_HOST/api/v1/public/widget/conversations \
+      -H "X-Widget-Key: wk_YOUR_KEY" -H "Origin: https://www.example.com" \
+      -H "Content-Type: application/json" \
+      -d '{"visitor":{"name":"Ada","email":"ada@example.com"},"context":{"pageUrl":"https://www.example.com/pricing","locale":"en"}}'
+    ```
+    `201`:
+    ```json
+    {
+      "sessionToken": "eyJhbGciOi...", "expiresIn": 86400, "visitorId": "1c5d...",
+      "conversation": { "id": "e5d9...", "status": "open", "handler": "ai" },
+      "messages": [{ "id": "a1b2...", "senderType": "ai", "content": "Hi! How can we help?", "ui": { "version": 1, "components": [{ "type": "message", "text": "Hi! How can we help?" }] }, "createdAt": "2026-10-19T09:50:00.000Z" }]
+    }
+    ```
+    Store `visitorId` and the token (the shipped widget uses `localStorage` key `yulona:<widgetKey>`). Reusing `visitorId` links future conversations to the same contact. Limit: 10 starts per 10 minutes per widget and IP.
+  </Step>
+  <Step title="Send messages">
+    ```bash
+    curl -X POST https://YOUR_HOST/api/v1/public/widget/messages \
+      -H "X-Widget-Key: wk_YOUR_KEY" -H "Origin: https://www.example.com" \
+      -H "Authorization: Bearer SESSION_TOKEN" -H "Content-Type: application/json" \
+      -d '{"text":"What are your opening hours?","clientMessageId":"m_01HZX4Q9"}'
+    ```
+    `201` with the message (`200` with the original when `clientMessageId` repeats, so an offline queue can retry safely). `clientMessageId` is required, 8 to 64 characters from `A-Za-z0-9_-`. Limit: 30 per minute per session. The AI reply arrives over the socket, the stream, or `GET /messages?after=<last id>`.
+  </Step>
+  <Step title="Stay in sync">
+    ```javascript
+    const res = await fetch(`${API}/public/widget/messages?after=${lastId}`, {
+      headers: { "X-Widget-Key": KEY, Authorization: `Bearer ${token}` },
+    });
+    const { items, hasMore, conversation } = await res.json();
+    ```
+    If any call returns `401 unauthorized`, the session expired or was revoked: start a new conversation. Refresh before expiry with `POST /session/refresh`.
+  </Step>
+</Steps>
+
+### UI events
+
+`POST /ui-events` handles interactions with rendered components. Common fields: `messageId` (a message of this conversation), `clientMessageId`, optional `componentId`.
+
+| `type` | Extra fields |
+|---|---|
+| `form_submit` | `values`: object of up to 20 string values (each up to 1000 characters) |
+| `button_click` | `value` (up to 200), optional `label` |
+| `calendar_select` | `start`, `end` (ISO datetimes), `timezone` |
+
+The event is stored as a customer message (readable summary in `content`, details in `metadata.uiEvent`) and routed to the AI. Form values for `name`, `email` and `phone` also fill the contact.
+
+## WidgetUISchema
+
+Messages carry plain text in `content` (always present) and optionally `ui`, a `WidgetUISchema`: `{ "version": 1, "components": [...] }` with up to 20 components.
+
+| `type` | Fields |
+|---|---|
+| `message` | `text` (up to 4000) |
+| `buttons` | `buttons`: 1 to 10 of `{ label, value }` |
+| `card` | `title`, optional `body`, `imageUrl`, `actions` (up to 5 of `{ label, value }`) |
+| `form` | `submitLabel`, `fields`: 1 to 20 of `{ name, label, kind, required, options? }`; `kind` is `text`, `email`, `phone`, `textarea` or `select` |
+| `calendar` | `timezone`, `slots`: up to 100 of `{ start, end }` |
+
+Every component may have an optional `id`. **Versioning:** `version` is `1` today and `config.schemaVersion` reports the highest version the server may emit. Custom clients must ignore unknown component types and degrade to `content`. The shipped widget drops what it does not understand, only renders `http` and `https` image URLs, and never executes HTML. Other channels (WhatsApp, Telegram and so on) receive a text rendition: forms and buttons degrade to numbered text.
+
+## Content Security Policy
+
+If your site sends a CSP, allow what the widget needs (derived from how it loads and connects):
+
+| Directive | Allow |
+|---|---|
+| `script-src` | The `scriptUrl` origin, and the inline snippet via a nonce or hash (or load the script tag yourself) |
+| `connect-src` | The API origin for `fetch`, plus its `wss://` form for the WebSocket |
+| `img-src` | `avatarUrl` and card image hosts, if you use them |
+| `style-src` | Normally nothing: styles are applied through a constructable stylesheet inside a Shadow DOM. Browsers without constructable stylesheets fall back to a `<style>` element. |
+
+The widget uses a Shadow DOM, so your page CSS does not leak in or out. If storage is blocked it keeps state in memory.
+
+## Accessibility
+
+The panel is a modal `role="dialog"` with focus moved into it on open, a focus trap, `Escape` to close and focus returned to the launcher. The message list is an `aria-live="polite"` log; the typing indicator and offline banner are `role="status"`; errors are `role="alert"`; form fields expose `aria-invalid` and `aria-describedby`; the launcher has an accessible name (`launcherLabel`) and `aria-expanded`; animations stop under `prefers-reduced-motion`. Custom clients should preserve these behaviors.
+
+{/* source: apps/widget/src/{index.tsx,mount.tsx,types.ts,api.ts,transport.ts,App.tsx,render/normalize.ts}, apps/api/src/routes/public-widget.ts, apps/api/src/routes/widgets.ts, apps/api/src/conversations/origin.ts, packages/shared/src/{widget-ui.ts,conversations.ts}, docs/api/conversations.md */}

@@ -1,0 +1,96 @@
+---
+title: Tickets
+description: Track customer issues on a board or in a table, with priorities, SLA timers, bulk actions and a full activity history on every ticket.
+icon: ticket
+---
+
+**Tickets** are for support leads and agents who need to follow an issue beyond a single chat. Each ticket has a number, a status, a priority, an owner and a deadline (the SLA), and keeps a complete activity history.
+
+**Role needed:** anyone can view tickets. Agents, admins and owners can create and change them. Only admins and owners can delete them.
+
+## Open the Tickets page
+
+Open **Tickets** in the left menu, under **Operations**. A switch at the top right lets you choose **Board** or **Table**. On a phone the board appears as **List**, with one status at a time.
+
+### Board
+
+The board has five columns: **Open**, **In progress**, **Waiting**, **Resolved** and **Closed**. The number on each column is the total of tickets in it, and each column shows the 50 most recently updated. To change a ticket's status, drag its card to another column on a computer, or use the **Move to** menu on the card (this also works on touch screens and with the keyboard). Click a card to open the ticket.
+
+### Table
+
+The table shows **Ticket** (number and title), **Status**, **Priority**, **SLA**, **Assignee** and **Updated**. Click a title to open the ticket and **Load more** for older tickets.
+
+## Create a ticket
+
+<Steps>
+  <Step title="Click New ticket">
+    On the Tickets page click **New ticket**.
+  </Step>
+  <Step title="Fill in the form">
+    Enter a **Title** (required, up to 200 characters), an optional **Description**, a **Priority** (Low, Normal, High or Urgent; Normal by default) and an optional **Assignee**. Click **Create ticket**.
+  </Step>
+</Steps>
+
+The ticket gets the next number for your workspace, such as #1042. An assignee is notified.
+
+## Search and filter
+
+Type in **Search title, description or #number** to search. Use **Priority** and **Assignee** (Anyone, Me, Unassigned, or a teammate) to narrow the list. In the table view you can also filter by **Status**. Switch on **SLA breached only** to see tickets that missed their deadline.
+
+## SLA and priorities
+
+Every ticket gets a deadline when it is created, based on its priority:
+
+| Priority | Default time to resolve |
+|---|---|
+| Urgent | 1 hour |
+| High | 4 hours |
+| Normal | 24 hours |
+| Low | 3 days |
+
+Admins can change these under **Settings**, **Hours and routing**, in **Ticket SLA (minutes to resolve)**. See [Business hours](/guides/workspace/business-hours). Changing a ticket's priority recalculates the deadline from the moment it was created.
+
+A badge shows the state of the timer: green when on track, amber when due within the hour, and **SLA breached** in red once the deadline passes. Resolved and closed tickets stop counting. When a ticket breaches, the assignee is notified. If it has no assignee, every owner and admin is notified.
+
+## Work a ticket
+
+Click a ticket to open the detail panel.
+
+- Change **Status**, **Priority** and **Assignee** with the menus at the top. Each change is saved right away and recorded.
+- Read **SLA due** and **Created**, the contact, and the **Open conversation** link when the ticket is tied to a chat.
+- Type in **Add a comment** and click **Comment** to add a note for your team.
+- The **Timeline** lists every change in order: created, status and priority changes, assignments, comments and SLA breaches, with who did it and when.
+- Admins and owners see **Delete ticket**, which removes the ticket and its history permanently.
+
+## Bulk actions
+
+In the table, tick the boxes next to several tickets (or the box in the header to select all). A bar appears with **Status**, **Priority**, **Assign** and, for admins and owners, **Delete**. Pick a value and it applies to every selected ticket. A message tells you how many were updated and how many were skipped. Click the cross to clear the selection. You can act on up to 100 tickets at once.
+
+<Warning>
+Deleting tickets removes them and their history for good.
+</Warning>
+
+## What you should see
+
+New tickets appear in **Open** with a priority badge and a green SLA badge. When you move one to **Resolved**, its SLA badge disappears.
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| No **New ticket** button | Your role is **Viewer**. |
+| A ticket shows **SLA breached** | The deadline passed while it was open. Resolve it, or ask an admin to adjust the SLA times. Reopening a ticket in time clears the breach. |
+| Cards will not drag | Use the **Move to** menu on the card. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Notifications" icon="bell" href="/guides/workspace/notifications">
+    See how assignments and SLA breaches reach your team.
+  </Card>
+  <Card title="Canned responses and tags" icon="tags" href="/guides/workspace/canned-responses-and-tags">
+    Manage the tag list used to label tickets, contacts and conversations.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/tickets/{TicketsPage,TicketDrawer,parts}.tsx; docs/api/ops.md (Tickets, SLA); packages/db/migrations/0400_ops.sql (sla defaults, ops_sla_scan); apps/api/src/ops/tickets.ts (roles) */}

@@ -1,0 +1,17 @@
+{
+  "name": "@yulona/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts", "./testing": "./src/testing.ts" },
+  "scripts": {
+    "migrate": "bun src/cli.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": { "postgres": "^3.4.5" },
+  "devDependencies": { "@types/bun": "latest", "typescript": "^5.6.0" }
+}

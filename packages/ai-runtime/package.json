@@ -1,0 +1,30 @@
+{
+  "name": "@yulona/ai-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@yulona/crypto": "workspace:*",
+    "@yulona/db": "workspace:*",
+    "@yulona/shared": "workspace:*",
+    "mammoth": "^1.8.0",
+    "unpdf": "^0.12.1",
+    "zod": "^4.1.0",
+    "@yulona/providers": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0",
+    "postgres": "^3.4.5"
+  }
+}

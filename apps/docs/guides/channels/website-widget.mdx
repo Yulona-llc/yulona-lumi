@@ -1,0 +1,102 @@
+---
+title: Website widget
+description: Add a branded chat bubble to your website, choose which sites may show it, and copy the embed code.
+icon: message-square
+---
+
+The website widget is a chat bubble your visitors click to talk to your agent. It needs no extra accounts or approvals, so it is the quickest channel to start with. This page is for admins and owners who set it up, and for whoever adds a snippet to your website.
+
+<Note>
+**Admins and owners** can change the widget. Other roles can open the page and see the settings but cannot edit them. On hosted plans the number of widgets is limited by your plan.
+</Note>
+
+## Before you start
+
+- A [published agent](/guides/agents/publish-and-versions) to answer. If you are not sure, the widget uses your oldest agent unless you choose another.
+- The address of your website, for example `www.mybusiness.com`.
+- Access to edit your website's HTML, or someone who has it.
+
+## Set up the widget
+
+<Steps>
+  <Step title="Create the widget">
+    Go to **Settings**, then **Website widget**. If you have none, click **Create widget**. It is named "Website chat" for now.
+  </Step>
+  <Step title="Brand it">
+    Under **Branding**, set the **Title** and **Subtitle** visitors see, the **Primary color** (a six-digit hex colour such as `#f97316`), the **Launcher label**, **Theme** (**Match visitor**, **Light** or **Dark**), **Position** (**Bottom right** or **Bottom left**), an **Avatar image URL** (must start with https) and the **Input placeholder**. **Widget name (internal)** is only for your team. The **Draft preview** on the right updates as you type.
+  </Step>
+  <Step title="Write the welcome message">
+    **Welcome message** is the first line visitors see when they open the chat. This is the opening line of every new chat, so write it with care. If you leave it empty, the widget opens with the agent's **Greeting** (from the published version, else the saved draft) when the agent has one; otherwise the chat opens empty.
+  </Step>
+  <Step title="Choose the agent">
+    Under **Behaviour**, pick the **Answering agent**. Leave **Default agent** to use your oldest agent. Switch **Widget enabled** off at any time to hide the chat on every site.
+  </Step>
+  <Step title="Allow your website">
+    Under **Allowed domains**, enter one site per line, for example `example.com` or `*.example.com` (all subdomains). You can include `https://` and a port, as in `https://app.example.com:8443`.
+  </Step>
+  <Step title="Save">
+    Click **Save changes** in the bar at the bottom. You see "Widget saved".
+  </Step>
+</Steps>
+
+<Warning>
+An **empty list of allowed domains blocks every site**, so the chat bubble will not appear anywhere until you add your website. Add each domain you use, including both `example.com` and `www.example.com` if both serve your site, or use `*.example.com` for subdomains.
+</Warning>
+
+## Add the widget to your website
+
+<Steps>
+  <Step title="Copy the snippet">
+    In **Embed code**, click **Copy snippet**.
+  </Step>
+  <Step title="Paste it">
+    Paste it into your website's HTML just before the closing `</body>` tag on every page where the chat should appear. Website builders usually have a "custom code" or "footer scripts" box for this.
+  </Step>
+  <Step title="Check it">
+    Load your site. The bubble appears in the corner you chose. The **Live widget** panel in the dashboard also runs the real widget using your saved settings; the dashboard's own address must be in your allowed domains for it to load.
+  </Step>
+</Steps>
+
+Developers who want more control can read the [widget embed reference](/developers/widget-embed).
+
+## Collect details before chatting
+
+Under **Pre-chat form**, switch on **Ask visitors for details before chatting**. Add an **Intro text**, then tick **name**, **email** and/or **phone** and mark each **required** if you want. Visitors fill the form before the first message, and their details are saved on their contact. See [Contacts](/guides/workspace/contacts).
+
+## Rotate the key
+
+The snippet contains a key that identifies your widget. If it was copied somewhere you do not trust, click **Rotate key** in the Embed code section and confirm. The old key stops working immediately, so update the snippet on every site that uses the widget.
+
+## What visitors and your team see
+
+Visitors chat in the bubble. Messages arrive in your [Inbox](/guides/workspace/inbox) as a conversation on the widget channel, and the agent answers. If the agent hands off, your team takes over from the inbox ([Handoffs](/guides/agents/handoffs-and-human-takeover)). Conversations count towards your plan's monthly conversation allowance on hosted plans.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="The bubble does not appear">
+    Check, in order: **Widget enabled** is on; your site's address is in **Allowed domains** (the exact domain, with `www` if used); the snippet is on the page; and you saved. Browser extensions that block scripts can also hide it.
+  </Accordion>
+  <Accordion title="The wrong agent answers">
+    Open the widget settings and choose the **Answering agent** instead of **Default agent**.
+  </Accordion>
+  <Accordion title="Save changes is disabled">
+    A field is invalid: a colour that is not six hex digits, an avatar URL without https, an invalid domain pattern, or more than 50 domains.
+  </Accordion>
+  <Accordion title="Visitors see an error starting a chat">
+    Your plan's monthly conversation limit may be reached. See [Billing and plans](/guides/account/billing-and-plans).
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="WhatsApp" icon="phone" href="/guides/channels/whatsapp">
+    Add another way to reach customers.
+  </Card>
+  <Card title="Inbox" icon="inbox" href="/guides/workspace/inbox">
+    See conversations as they arrive.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/widget-config/WidgetConfigPage.tsx, packages/shared/src/conversations.ts, apps/api/src/routes/public-widget.ts, docs/api/conversations.md, apps/dashboard/src/pages/Shell.tsx */}

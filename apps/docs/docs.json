@@ -1,0 +1,119 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Yulona",
+  "description": "Documentation for Yulona: AI agents that answer customers, qualify leads and book appointments on your website and messaging channels.",
+  "colors": { "primary": "#F97316", "light": "#FB923C", "dark": "#C2410C" },
+  "logo": { "light": "/logo/light.png", "dark": "/logo/dark.png", "href": "https://yulona.co" },
+  "favicon": "/favicon.svg",
+  "appearance": { "default": "system" },
+  "fonts": { "family": "Inter" },
+  "navbar": {
+    "links": [{ "label": "Yulona.co", "href": "https://yulona.co" }],
+    "primary": { "type": "button", "label": "Open dashboard", "href": "https://app.yulona.co" }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          { "group": "Get started", "pages": ["index", "quickstart", "concepts"] },
+          {
+            "group": "Build your agent",
+            "pages": [
+              "guides/agents/create-with-ai",
+              "guides/agents/configure-your-agent",
+              "guides/agents/knowledge-skills",
+              "guides/agents/test-in-sandbox",
+              "guides/agents/publish-and-versions",
+              "guides/agents/handoffs-and-human-takeover"
+            ]
+          },
+          {
+            "group": "Tools and integrations",
+            "pages": ["guides/tools/overview", "guides/tools/build-a-tool", "guides/tools/connections", "guides/tools/calendar-booking"]
+          },
+          {
+            "group": "Channels",
+            "pages": [
+              "guides/channels/website-widget",
+              "guides/channels/whatsapp",
+              "guides/channels/telegram",
+              "guides/channels/messenger-instagram",
+              "guides/channels/slack"
+            ]
+          },
+          {
+            "group": "Run your workspace",
+            "pages": [
+              "guides/workspace/inbox",
+              "guides/workspace/needs-attention",
+              "guides/workspace/contacts",
+              "guides/workspace/tickets",
+              "guides/workspace/bookings",
+              "guides/workspace/transactions",
+              "guides/workspace/canned-responses-and-tags",
+              "guides/workspace/business-hours",
+              "guides/workspace/team-and-roles",
+              "guides/workspace/notifications"
+            ]
+          },
+          { "group": "Account", "pages": ["guides/account/usage-and-credits", "guides/account/billing-and-plans", "guides/account/privacy-and-data"] },
+          { "group": "Help", "pages": ["guides/troubleshooting", "guides/faq"] }
+        ]
+      },
+      {
+        "tab": "Developers",
+        "groups": [
+          { "group": "Foundations", "pages": ["developers/overview", "developers/authentication", "developers/multi-tenancy-and-security", "developers/api-conventions", "developers/errors"] },
+          { "group": "Integrate", "pages": ["developers/public-api", "developers/webhooks", "developers/widget-embed", "developers/realtime"] },
+          { "group": "Connect your backend", "pages": ["developers/custom-tools-backend", "developers/tool-manifest"] },
+          { "group": "AI runtime", "pages": ["developers/ai-runtime", "developers/credits-api", "developers/agent-builder-api"] }
+        ]
+      },
+      {
+        "tab": "API reference",
+        "groups": [
+          { "group": "Introduction", "pages": ["api-reference/introduction"] },
+          { "group": "Endpoints", "openapi": "api-reference/openapi.json" }
+        ]
+      },
+      {
+        "tab": "Self-hosting",
+        "groups": [
+          {
+            "group": "Install and run",
+            "pages": [
+              "self-hosting/overview",
+              "self-hosting/requirements-and-install",
+              "self-hosting/configuration",
+              "self-hosting/ai-providers",
+              "self-hosting/channels-and-integrations-setup"
+            ]
+          },
+          {
+            "group": "Operate",
+            "pages": ["self-hosting/upgrade-backup-restore", "self-hosting/security-hardening", "self-hosting/licensing", "self-hosting/operations-and-monitoring", "self-hosting/troubleshooting"]
+          }
+        ]
+      },
+      {
+        "tab": "Platform admin",
+        "groups": [
+          {
+            "group": "Operate the platform",
+            "pages": [
+              "platform-admin/overview",
+              "platform-admin/plans-credits-and-rates",
+              "platform-admin/providers",
+              "platform-admin/tenants-and-impersonation",
+              "platform-admin/feature-flags"
+            ]
+          }
+        ]
+      },
+      { "tab": "Changelog", "groups": [{ "group": "Releases", "pages": ["changelog"] }] }
+    ]
+  },
+  "footer": { "socials": { "website": "https://yulona.co" } }
+}

@@ -1,0 +1,194 @@
+---
+title: Webhooks
+description: Subscribe to Yulona events, verify the HMAC signature, and handle retries, redelivery and automatic disabling.
+icon: webhook
+---
+
+Outbound webhooks push events from Yulona to an HTTPS endpoint you run: a new message, a handoff, a booking. This page is for developers building that endpoint. Webhooks are managed by workspace admins (minimum role `admin`) and require `ENCRYPTION_KEY` on the server.
+
+## Create a webhook
+
+<CodeGroup>
+```bash curl
+curl -X POST https://YOUR_HOST/api/v1/webhooks \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"CRM sync","url":"https://crm.example.com/hooks/yulona","events":["message.created","handoff.requested"]}'
+```
+
+```javascript fetch
+const res = await fetch("https://YOUR_HOST/api/v1/webhooks", {
+  method: "POST",
+  headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+  body: JSON.stringify({
+    name: "CRM sync",
+    url: "https://crm.example.com/hooks/yulona",
+    events: ["message.created", "handoff.requested"],
+  }),
+});
+const webhook = await res.json(); // webhook.secret is shown once
+```
+</CodeGroup>
+
+`201 Created`:
+
+```json
+{
+  "id": "3f2b9c1e-7d54-4a0b-8e61-0c9d2a4b5f77",
+  "name": "CRM sync",
+  "url": "https://crm.example.com/hooks/yulona",
+  "events": ["message.created", "handoff.requested"],
+  "enabled": true,
+  "disabledReason": null,
+  "consecutiveFailures": 0,
+  "lastSuccessAt": null,
+  "lastFailureAt": null,
+  "createdAt": "2026-10-19T09:40:00.000Z",
+  "updatedAt": "2026-10-19T09:40:00.000Z",
+  "secret": "whsec_k3J...43-char-secret"
+}
+```
+
+<Warning>
+The `whsec_` secret is returned only here and by `POST /api/v1/webhooks/:id/rotate-secret`. Store it securely. After rotation the old secret stops working immediately.
+</Warning>
+
+Limits: 20 webhooks per workspace (`409 conflict` beyond that), 1 to 20 events per webhook, URL up to 2000 characters. `GET /webhooks/events` lists the valid event names. `PATCH /webhooks/:id` accepts `name`, `url`, `events`, `enabled`; `DELETE` removes the webhook and its delivery log.
+
+## Events
+
+| Event | Fires when | `data` |
+|---|---|---|
+| `conversation.created` | A conversation is created on any channel | `{ conversation: { id, contactId, channel, status, handler, widgetId, agentId, createdAt } }` |
+| `message.created` | A `contact`, `ai` or `human` message is stored. Internal notes and system lines are never sent. | `{ message: { id, conversationId, senderType, content, createdAt } }` |
+| `handoff.requested` | The AI hands a conversation to a person | `{ handoff: { id, conversationId, type, reason, summary, leadCard, createdAt } }` |
+| `contact.created` | A contact is created | `{ contact: { id, name, email, phone, customAttributes, createdAt, updatedAt } }` |
+| `contact.updated` | Name, email, phone, custom attributes or merge state changed | same as `contact.created` |
+| `booking.created` | A booking is created | `{ booking: { ...row as camelCased JSON } }` |
+| `ticket.created`, `ticket.updated` | A ticket is created or changed | `{ ticket: { ...row as camelCased JSON } }` |
+| `*` | Subscribe to everything | |
+| `webhook.test` | Sent by the test endpoint, regardless of subscription | `{ message: "Test event from Yulona", webhookId }` |
+
+`booking` and `ticket` payloads are the database row with camelCased keys; columns whose name looks like a token, secret, credential, password or hash are dropped. Their exact fields can grow over time, so read only what you need.
+
+Events are emitted by database triggers inside the writer's transaction, so an event exists if and only if the change committed, whichever component wrote it.
+
+## Payload and headers
+
+Each delivery is a `POST` with `Content-Type: application/json` and this envelope:
+
+```json
+{
+  "id": "6f1c0a52-9b1e-4d0f-8a3e-5c7d2b9e1f40",
+  "type": "message.created",
+  "createdAt": "2026-10-19T09:41:12.345Z",
+  "tenantId": "7c1d2e3f-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+  "data": {
+    "message": {
+      "id": "2b6c8e11-9a0d-4f2a-8c55-7e1d0f3a9b42",
+      "conversationId": "e5d9a0c4-3a77-4c7b-b1e0-5a2f9c8d1b36",
+      "senderType": "contact",
+      "content": "Do you ship to Nairobi?",
+      "createdAt": "2026-10-19T09:41:12.300Z"
+    }
+  }
+}
+```
+
+The envelope `id` is stable per event: it is identical across retries, redeliveries and across webhooks that subscribe to the same event. Use it to de-duplicate.
+
+| Header | Value |
+|---|---|
+| `X-Yulona-Event` | Event type, for example `message.created` |
+| `X-Yulona-Delivery` | Delivery id (differs per webhook and per redelivery) |
+| `X-Yulona-Timestamp` | Unix time in seconds when this attempt was signed |
+| `X-Yulona-Signature` | `v1=` followed by hex `HMAC-SHA256(secret, "<timestamp>.<raw body>")` |
+| `User-Agent` | `Yulona-Webhooks/1.0` |
+
+## Verify the signature
+
+Sign over the **raw request body bytes**, exactly as received. If a framework parses the JSON first, re-serializing can change whitespace and break the signature. Compare in constant time and reject timestamps older than five minutes to stop replays.
+
+<CodeGroup>
+```javascript Node.js (Express)
+import crypto from "node:crypto";
+import express from "express";
+
+const app = express();
+const SECRET = process.env.YULONA_WEBHOOK_SECRET; // whsec_...
+
+app.post("/hooks/yulona", express.raw({ type: "application/json" }), (req, res) => {
+  const timestamp = req.get("X-Yulona-Timestamp") ?? "";
+  const signature = req.get("X-Yulona-Signature") ?? "";
+  const age = Math.abs(Date.now() / 1000 - Number(timestamp));
+  if (!Number.isFinite(age) || age > 300) return res.status(400).send("stale timestamp");
+
+  const expected = "v1=" + crypto.createHmac("sha256", SECRET)
+    .update(`${timestamp}.`).update(req.body).digest("hex");
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signature);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(401).send("bad signature");
+
+  const event = JSON.parse(req.body.toString("utf8"));
+  // de-duplicate on event.id, then enqueue work and return quickly
+  res.sendStatus(200);
+});
+```
+
+```python Python (Flask)
+import hashlib, hmac, os, time
+from flask import Flask, request, abort
+
+app = Flask(__name__)
+SECRET = os.environ["YULONA_WEBHOOK_SECRET"].encode()  # whsec_...
+
+@app.post("/hooks/yulona")
+def yulona_hook():
+    raw = request.get_data()  # raw bytes, before any JSON parsing
+    timestamp = request.headers.get("X-Yulona-Timestamp", "")
+    signature = request.headers.get("X-Yulona-Signature", "")
+    try:
+        if abs(time.time() - int(timestamp)) > 300:
+            abort(400, "stale timestamp")
+    except ValueError:
+        abort(400, "bad timestamp")
+
+    expected = "v1=" + hmac.new(SECRET, timestamp.encode() + b"." + raw, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        abort(401, "bad signature")
+
+    event = request.get_json()
+    # de-duplicate on event["id"], then enqueue work and return quickly
+    return "", 200
+```
+</CodeGroup>
+
+## Delivery, retries and disabling
+
+- **Success** is any `2xx` within 10 seconds. **Redirects are not followed** (a redirect counts as a failure). Respond fast and process asynchronously.
+- **At-least-once.** Expect duplicates; de-duplicate on the envelope `id`.
+- **Retry schedule.** Up to 8 attempts per delivery. The wait after failed attempt N is 30 seconds, 2 minutes, 10 minutes, 1 hour, 3 hours, 12 hours, then 24 hours. Each retry re-signs with a fresh timestamp.
+- **`410 Gone`** disables the webhook immediately (`disabledReason: "Endpoint returned 410 Gone"`).
+- **Auto-disable.** A delivery that exhausts all attempts (or fails permanently, for example on an SSRF block) counts as one consecutive failure; any success resets the counter. After 10 consecutive failed deliveries the webhook is disabled with a `disabledReason`. Re-enabling with `PATCH { "enabled": true }` resets the counter. Pending deliveries for a disabled webhook are cancelled.
+- **Logs.** The response body is kept as a 2 KB snippet in the attempt log. Delivery logs are purged after 30 days by default (configurable with `PUT /retention`, `webhookLogsDays`).
+
+## Test, inspect and redeliver
+
+| Action | Request |
+|---|---|
+| Send a `webhook.test` event | `POST /api/v1/webhooks/:id/test` returns `202 { "deliveryId": "..." }` |
+| List deliveries | `GET /api/v1/webhooks/:id/deliveries?status=failed&limit=30&cursor=...` |
+| Inspect one | `GET /api/v1/webhook-deliveries/:id` (adds `payload` and `attemptLog` with `attempt`, `statusCode`, `error`, `durationMs`, `responseSnippet`, `at`) |
+| Redeliver | `POST /api/v1/webhook-deliveries/:id/redeliver` returns `202`; clones the payload and keeps the event id. `409` if the webhook is disabled. |
+
+Delivery `status` is `pending`, `retrying`, `succeeded`, `failed` or `cancelled`.
+
+## URL rules (SSRF)
+
+- `https` only in production (plain `http` is accepted in development); no credentials in the URL.
+- No `localhost`, `.local`, `.internal`, integer or hex IP forms, or IP literals in private, loopback, link-local or CGNAT ranges.
+- Hostnames are resolved on **every attempt**. If any address is non-public, the attempt fails permanently and no request is sent.
+
+A rejected URL returns `400 validation_error` when you save it. See [Multi-tenancy and security](/developers/multi-tenancy-and-security) for the full SSRF model, and [Errors](/developers/errors) for API error codes.
+
+{/* source: packages/integrations/src/signing.ts, packages/integrations/src/deliver.ts, packages/integrations/src/events.ts, packages/integrations/src/url.ts, apps/api/src/integrations/webhooks.ts, packages/db/migrations/0500_integrations.sql, docs/api/integrations.md */}

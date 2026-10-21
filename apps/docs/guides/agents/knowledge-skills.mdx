@@ -1,0 +1,136 @@
+---
+title: Knowledge and skills
+description: Turn your files, web pages and notes into skills your agent reads to answer customers accurately.
+icon: book-open
+---
+
+Your agent answers customer questions from your own information, not from guesses. Each file, web page or block of text you add becomes a **skill**. This page is for admins and owners who add knowledge, and for support staff who want to understand why the agent answered the way it did.
+
+<Note>
+**Admins and owners** can add, edit, re-read and delete skills. Agents (support staff) can open the **Knowledge** page and look at skills and their sections, but the add and edit controls are hidden. Viewers do not see the Knowledge page.
+</Note>
+
+## How the agent uses your skills
+
+Each skill has a name, a one-line description and a list of numbered, titled **sections**. When a customer asks something, the agent:
+
+1. Answers greetings and thank-yous without looking anything up.
+2. If all your knowledge is short (roughly one page of text in total), reads all of it at once.
+3. Otherwise sees the list of skills with their descriptions, pre-loads the sections that best match the customer's words, and opens more sections or searches by keyword when it needs them.
+4. Answers only from what it read. If the knowledge does not contain the answer, it asks the customer to rephrase, and after the number of misses you set it [hands off to your team](/guides/agents/handoffs-and-human-takeover).
+
+There is nothing to tune: no thresholds and no scores. Clear section titles and a good description are what help the agent most.
+
+<Warning>
+An agent with no skills cannot answer questions. It will ask for clarification and then hand every question to your team. Add at least one skill before you publish.
+</Warning>
+
+## Add a skill
+
+Go to **Knowledge**. At the top you can drop a file anywhere, or use the three buttons.
+
+<Tabs>
+  <Tab title="Upload file">
+    <Steps>
+      <Step title="Click Upload file">
+        Or drag a file onto the page.
+      </Step>
+      <Step title="Choose the file">
+        Supported types: PDF, DOCX, TXT, MD and HTML, up to 10 MB each. Scanned PDFs that contain only pictures have no text to read and will fail with "No text could be extracted from this source".
+      </Step>
+      <Step title="Set the name and who can use it">
+        **Name (optional)** defaults to the file name. **Available to** is **All agents** or one agent.
+      </Step>
+      <Step title="Click Upload">
+        You see a progress bar while it uploads, then "Uploaded. Reading it now."
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Add URL">
+    <Steps>
+      <Step title="Click Add URL">
+        Enter a link that starts with `http://` or `https://`.
+      </Step>
+      <Step title="Choose how many pages to read">
+        **Pages to read (same site)**: 1 reads only that page. A higher number (up to 25) also follows its links on the same site.
+      </Step>
+      <Step title="Click Add">
+        Addresses on private networks are blocked. Each page is read up to 2 MB.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="Add text">
+    <Steps>
+      <Step title="Click Add text">
+        Enter a **Name** (required) and paste your **Text** (up to 900,000 characters).
+      </Step>
+      <Step title="Click Add">
+        Good for policies, price lists and FAQs you keep in a document.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## What happens after you add it
+
+The skill appears with a status badge: **pending** (queued), **processing…** (reading and splitting into sections), **ready**, or **failed**. The page refreshes by itself every few seconds while anything is still working. A failed skill shows the reason in red, for example an unsupported file type, a blocked address or a page that returned an error.
+
+When a skill is **ready** you see its type, number of sections, size and when it was last read. The line `skills/<name>/` is its internal folder name.
+
+## Look at, edit and refresh a skill
+
+- **Sections** opens a panel with each numbered section, its title and size. Click a section to read its text. This is the exact material the agent can open.
+- **Edit** (the pencil next to the description): change the **Name** and the **Description**, then **Save skill**. The description should be one line telling the agent when to open this skill, for example "Opening hours, delivery areas and delivery fees." **Use automatic description** returns to the one Yulona wrote from the first sentence and section titles.
+- **Reingest** (in the actions menu) re-reads the original file, page or text. Use it after a web page changes. It is unavailable while the skill is still processing.
+- **Delete** removes the skill and its sections. Agents stop using it immediately.
+
+## Tips for good knowledge
+
+- **Use headings.** Documents with clear headings are split along them, so each section has a meaningful title. Without headings, text is cut into pieces of around 2,000 characters and titled by its first line.
+- **Keep sections focused.** One topic per heading ("Refund policy", "Delivery times") beats one long page.
+- **Write the way customers ask.** If customers say "price" and your page says "tariff", include both words.
+- **Split by topic into several skills** rather than one giant file, and give each a specific description.
+- **Remove what is out of date.** The agent trusts what it reads.
+- **Use "Available to" wisely.** Knowledge for one product line can be limited to one agent; shared company information should be available to all agents.
+- **Test with real questions** in the [sandbox](/guides/agents/test-in-sandbox), which shows exactly which sections the agent read.
+
+## Limits
+
+| Item | Limit |
+|---|---|
+| File size | 10 MB |
+| File types | PDF, DOCX, TXT, MD, HTML |
+| Pasted text | 900,000 characters |
+| Pages per web address | 1 to 25, same site |
+| Storage | Counts against your plan's storage; at the limit you see an upgrade message |
+
+<Note>
+**Self-hosted:** the server's request size limit (`BODY_LIMIT_BYTES`, 1 MB by default) also caps uploads, so your administrator must raise it to allow the full 10 MB. A virus scanner can be enabled; a flagged file fails with the reason shown. See [Configuration](/self-hosting/configuration).
+</Note>
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="The agent says it cannot find the answer, but it is in my file">
+    Open **Sections** and check the text was actually extracted. Make sure the wording matches how customers ask, add a clearer heading, or improve the skill's description.
+  </Accordion>
+  <Accordion title="My web page skill has only one section">
+    Pages are read as text. Pages that load their content with scripts may be empty. Try pasting the text instead.
+  </Accordion>
+  <Accordion title="Reingest is disabled">
+    The skill is still pending or processing. Wait for it to finish.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Test in the sandbox" icon="flask-conical" href="/guides/agents/test-in-sandbox">
+    See which sections the agent reads.
+  </Card>
+  <Card title="Configure your agent" icon="sliders" href="/guides/agents/configure-your-agent">
+    Set what happens when it cannot answer.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/knowledge/KnowledgePage.tsx, packages/ai-runtime/src/{ingest.ts,sections.ts,extract.ts,turn.ts,knowledge.ts}, docs/api/ai-runtime.md, apps/api/src/routes/knowledge.ts */}

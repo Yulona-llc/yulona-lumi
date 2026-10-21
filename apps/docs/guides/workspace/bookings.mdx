@@ -1,0 +1,86 @@
+---
+title: Bookings
+description: See appointments booked by the AI or your team in a list or calendar, add or cancel bookings, and understand every booking status.
+icon: calendar-days
+---
+
+The **Bookings** page is for support leads, agents and admins who need to see upcoming appointments. It lists everything the AI booked for customers and anything your team added by hand.
+
+**Role needed:** anyone can view bookings. Agents, admins and owners can create and cancel them. Connecting a calendar needs the admin role.
+
+## Open the page
+
+Open **Bookings** in the left menu, under **Operations**. Use the **List** and **Calendar** switch at the top right.
+
+- **List** groups bookings by day. Each row shows the title, a status badge, the time, who it is for (the contact's name, the attendee email, or **No contact**), a **Conversation** link back to the chat it came from, and a link to the calendar event when one exists.
+- **Calendar** shows a month on a computer and a week on a phone. Use the previous and next arrows to move, and click a booking to see its details.
+- The status filter in the list offers **All**, **Booked**, **Cancelled** and **Failed**.
+
+## Booking statuses
+
+| Status | What it means |
+|---|---|
+| **Booked** | The appointment is confirmed. It blocks that time slot for new bookings. |
+| **Cancelled** | The appointment was cancelled by your team. If it was on a connected calendar, the calendar event is cancelled too. |
+| **Failed** | The AI or a teammate tried to book but the calendar did not answer after three attempts. The slot is not blocked, admins are notified, and when the AI was doing the booking it hands the conversation to your team. |
+| **Offered** | Used with Calendly. The AI sent the customer a single-use scheduling link because it could not book directly (for example on the free Calendly plan). Nothing marks it as booked later, and it does not block the slot. It appears under **All**. |
+
+<Note>
+The **Offered** status does not have its own filter button. Choose **All** to see these bookings. A customer who books through the link is not marked **Booked** automatically, so check your Calendly account.
+</Note>
+
+## Add a booking by hand
+
+<Steps>
+  <Step title="Click New booking">
+    On the Bookings page click **New booking**.
+  </Step>
+  <Step title="Fill in the form">
+    Enter a **Title** (optional), the **Start** date and time, a **Duration** (15, 30, 45, 60 or 90 minutes), an **Attendee email** (optional) and **Notes** (optional). Click **Create booking**.
+  </Step>
+</Steps>
+
+If a calendar is connected, Yulona also creates the event there. Without one, the booking is recorded in Yulona only. If the time overlaps an existing **Booked** appointment you see an error and nothing is created.
+
+## Cancel a booking
+
+Click **Cancel** on a booked appointment (or open it from the calendar), optionally write a **Cancellation reason**, and click **Cancel booking**. Click **Keep booking** to back out. Only bookings with the status **Booked** can be cancelled.
+
+## Connect a calendar
+
+The AI can only check availability and book appointments when a calendar is connected and the agent has the **Check calendar availability** and **Book appointments** tools switched on (on the agent's **Tools** tab).
+
+An admin connects a calendar under **Settings**, **Calendar**: click **Connect Google Calendar** (or connect Calendly) and approve access. If both are connected, choose which one the AI uses under **Calendar used by the AI**. For step-by-step instructions see [Calendar and booking](/guides/tools/calendar-booking).
+
+<Note>
+On a self-hosted installation, Google Calendar and Calendly must first be configured by your administrator. If the dashboard says "Google Calendar is not configured on this server", see [Channels and integrations setup](/self-hosting/channels-and-integrations-setup).
+</Note>
+
+When business hours are set, the times the AI offers on Google Calendar stay inside those hours. With Calendly, the event type's own availability is used instead.
+
+## What you should see
+
+After the AI books a time, the booking appears with the status **Booked**, the conversation's stage becomes **Booked** in the [Inbox](/guides/workspace/inbox), and a booking notification is created (see [Notifications](/guides/workspace/notifications)).
+
+## Common problems
+
+| Symptom | Fix |
+|---|---|
+| A booking shows **Failed** | The calendar was unreachable. Check **Settings**, **Calendar**; reconnect if it says **Needs attention**. |
+| The AI never offers times | No calendar connected, or the calendar tools are off for the agent. |
+| The time overlaps error | Another booking already holds that time. Pick another slot. |
+
+See [Troubleshooting](/guides/troubleshooting) for more.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Calendar and booking" icon="calendar-check" href="/guides/tools/calendar-booking">
+    Connect Google Calendar or Calendly.
+  </Card>
+  <Card title="Business hours" icon="clock" href="/guides/workspace/business-hours">
+    Limit the times the AI can offer.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/bookings/{BookingsPage,CalendarSettings,CalendarCard}.tsx; features/agents/AgentEditor.tsx (tools); docs/api/ops.md (Bookings, Calendly section, retry and failed semantics); apps/api/src/ops/bookings.ts (roles) */}

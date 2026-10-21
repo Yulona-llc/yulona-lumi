@@ -1,0 +1,110 @@
+---
+title: Errors
+description: Look up the error envelope and every Yulona error code, with when it occurs and how your client should handle it.
+icon: triangle-exclamation
+---
+
+Every failed request returns the same JSON envelope. This page is for developers who write API clients and want to handle failures correctly. Branch on `error.code`, never on `error.message`, which is human-readable and may change.
+
+## The envelope
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "Invalid request",
+    "requestId": "b1f3c0de-6a1c-4a53-9d24-0a7a1d2f4e11",
+    "details": [{ "path": "email", "message": "Invalid email address" }]
+  }
+}
+```
+
+<ResponseField name="error.code" type="string" required>Stable machine-readable code from the table below.</ResponseField>
+<ResponseField name="error.message" type="string" required>Short human-readable explanation. Safe to log, not to parse.</ResponseField>
+<ResponseField name="error.requestId" type="string" required>Same value as the `X-Request-Id` response header. Quote it when you ask for support.</ResponseField>
+<ResponseField name="error.details" type="unknown">Present only for some codes: an array of `{ path, message }` for `validation_error`, `{ metric, limit, used }` for `plan_limit_exceeded`, `{ remainingMicro }` for `credits_exhausted`.</ResponseField>
+
+## Error codes
+
+| Code | HTTP | When it happens | What to do |
+|---|---|---|---|
+| `validation_error` | 400 | The body or query failed schema validation, including unknown fields; a URL was rejected by SSRF rules; a required prechat field is missing. | Read `details[].path`, fix the request. Do not retry unchanged. |
+| `invalid_json` | 400 | The body is not valid JSON. | Fix serialization. |
+| `unsupported_media_type` | 415 | A JSON endpoint received a `Content-Type` other than `application/json`, or the file upload endpoint did not receive `multipart/form-data`. | Set the correct header. |
+| `payload_too_large` | 413 | The body exceeds the limit (1 MB by default, 16 KB on the public widget API, 11 MB on the file upload route). | Send less data, or ask the operator to raise `BODY_LIMIT_BYTES`. |
+| `unauthorized` | 401 | No credential, a malformed, expired or revoked token or API key, a widget session that is no longer valid, an ended impersonation session, or a suspended or deleted workspace ("Workspace is not active"). The response carries `WWW-Authenticate: Bearer`. | Refresh the access token once and retry; if it still fails, sign in again. For widget sessions, start a new conversation. |
+| `invalid_credentials` | 401 | Login failed. The same code is used for unknown email, wrong password, disabled user, locked account and inactive workspace. | Show a generic message. Do not retry in a loop; logins are rate limited. |
+| `invalid_refresh_token` | 401 | The refresh cookie is missing, expired, revoked, or was reused after rotation (which revokes the whole session family). | Send the user to the sign-in screen. |
+| `csrf_failed` | 403 | `X-CSRF-Token` is missing or does not match the `yl_csrf` cookie on `POST /auth/refresh` or `/auth/logout`. | Re-read the cookie (or call `GET /auth/csrf`) and retry once. |
+| `forbidden` | 403 | The user's role is too low; an API key lacks the required scope; the widget key is invalid, the widget is disabled, or the request `Origin` is not in the allowed domains; a dashboard WebSocket came from an origin outside `CORS_ORIGINS`. | Check the role, scope or allowed domains. Retrying does not help. |
+| `signup_disabled` | 403 | `POST /auth/register` while public sign-up is off (always off on self-hosted). | Use an invitation or ask the operator. |
+| `not_found` | 404 | The resource does not exist, belongs to another tenant, or the route does not exist. Provider webhook receivers also use it for unknown or disabled connections. | Check the id. Cross-tenant ids are indistinguishable from missing ones by design. |
+| `conflict` | 409 | The request clashes with current state: duplicate name or email, last owner, deleting a connection that tools still use, reingesting a source that is processing, booking overlap, webhook limit reached, redelivering to a disabled webhook, a closed builder session. | Read `message`, resolve the state, then retry. |
+| `rate_limited` | 429 | A rate limit was exceeded, or a realtime connection cap or per-session builder cap was reached. Carries `Retry-After` (seconds) on HTTP responses. | Wait `Retry-After` seconds, add jitter, retry. |
+| `service_unavailable` | 503 | `ENCRYPTION_KEY` is not configured for a feature that stores secrets, an upstream dependency is down (AI provider, calendar, payment provider), or the provider does not support the action. | Retry later with backoff. If persistent, the operator must fix configuration. |
+| `plan_limit_exceeded` | 402 | The workspace reached a plan limit (`seats`, `agents`, `widgets`, `api_keys`, `monthly_conversations`, `storage_mb`, `llm_tokens_monthly`). `details` is `{ metric, limit, used }`. | Delete unused items or upgrade the plan. Not retryable as is. |
+| `credits_exhausted` | 402 | SaaS only: the AI credit pool is empty and the call needs the model (sandbox, agent builder). `details` is `{ remainingMicro }`. | Buy a credit pack. See [Credits API](/developers/credits-api). |
+| `tenant_suspended` | not emitted | Reserved in the code list. The current API does not emit it: a suspended workspace gets `401 unauthorized` on Bearer routes and `403 forbidden` on the widget API. | Treat `unauthorized` with "Workspace is not active" as suspension. Handle `tenant_suspended` too for forward compatibility. |
+| `internal_error` | 500 | An unhandled server error. The message is always generic. | Retry idempotent requests with backoff, then report the `requestId`. |
+
+<Note>
+`upgrade_required` is not in the shared error catalog and is returned only by the realtime endpoint: calling `GET /api/v1/realtime/ws` without an `Upgrade: websocket` header returns `426` with `code: "upgrade_required"`. See [Realtime](/developers/realtime).
+</Note>
+
+## Retry guidance
+
+| Class | Retry? |
+|---|---|
+| 400, 402, 403, 404, 409, 413, 415 | No. Change the request or the state first. |
+| 401 | Once, after refreshing credentials. |
+| 429 | Yes, after `Retry-After`. |
+| 500, 503 | Yes, with exponential backoff and jitter, only for idempotent calls or calls guarded by `clientMessageId`. See [API conventions](/developers/api-conventions). |
+
+## Handling errors in a client
+
+<CodeGroup>
+```bash curl
+curl -i -X POST https://YOUR_HOST/api/v1/public-api/contacts \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ada"}'
+# HTTP/2 403
+# {"error":{"code":"forbidden","message":"API key lacks scope contacts:write","requestId":"..."}}
+```
+
+```javascript fetch
+export class YulonaError extends Error {
+  constructor(status, body, retryAfter) {
+    super(body.error.message);
+    this.status = status;
+    this.code = body.error.code;
+    this.requestId = body.error.requestId;
+    this.details = body.error.details;
+    this.retryAfter = retryAfter;
+  }
+}
+
+export async function yulona(path, init = {}) {
+  const res = await fetch(`https://YOUR_HOST/api/v1${path}`, init);
+  if (res.ok) return res.json();
+  const body = await res.json().catch(() => ({ error: { code: "internal_error", message: res.statusText, requestId: "" } }));
+  throw new YulonaError(res.status, body, Number(res.headers.get("Retry-After")) || undefined);
+}
+
+try {
+  await yulona("/public-api/contacts", { method: "POST", headers: { /* ... */ }, body: "{}" });
+} catch (e) {
+  if (e.code === "rate_limited") await new Promise((r) => setTimeout(r, e.retryAfter * 1000));
+  else if (e.code === "plan_limit_exceeded") console.warn("Limit reached", e.details);
+  else throw e;
+}
+```
+</CodeGroup>
+
+## Errors that are not HTTP errors
+
+- **Tool test results.** `POST /api/v1/tools/test` and `POST /api/v1/tool-connections/:id/test` answer `200` even when your backend fails, with `ok: false` and `error.code` such as `timeout` or `http_error`. See [Custom tools backend](/developers/custom-tools-backend).
+- **WebSocket closes.** Close codes: `4401` unauthorized, `4408` no auth frame within 5 seconds, `4429` connection limit, `1009` frame too large. In-band failures arrive as `{ "type": "error", "code", "message" }` frames.
+- **Webhook delivery failures** are visible in `GET /api/v1/webhooks/:id/deliveries`. See [Webhooks](/developers/webhooks).
+
+{/* source: packages/shared/src/errors.ts, apps/api/src/errors.ts, apps/api/src/http.ts, apps/api/src/middleware.ts, apps/api/src/app.ts, apps/api/src/impersonation-guard.ts, apps/api/src/platform/limits.ts, apps/api/src/routes/public-widget.ts, apps/api/src/routes/realtime.ts, apps/api/src/realtime/ws.ts, apps/api/src/routes/knowledge.ts, apps/api/src/agent-builder/engine.ts */}

@@ -1,0 +1,96 @@
+---
+title: Telegram
+description: Connect a Telegram bot so customers can chat with your agent in Telegram, with no business verification and no reply window.
+icon: send
+---
+
+Telegram is the easiest messaging channel to set up: you create a free bot, give Yulona its token and tell Telegram where to send messages. This page is for admins and owners. You need a Telegram account and about ten minutes.
+
+<Note>
+Only **admins and owners** can connect channels. The bot talks to people in **private chats**. Messages in groups are ignored.
+</Note>
+
+## Before you start
+
+- A [published agent](/guides/agents/publish-and-versions). Only published agents appear in the **Answering agent** list.
+- A Telegram account on your phone or computer.
+- **Self-hosted:** your server must be reachable from the internet over https, and have its public address and encryption key set. See [Channels and integrations setup](/self-hosting/channels-and-integrations-setup).
+
+## Connect Telegram
+
+<Steps>
+  <Step title="Create the bot">
+    In Telegram, open the chat with **@BotFather** and send `/newbot`. Choose a name and a username ending in "bot". BotFather replies with a **bot token**, a long text such as `123456:ABC...`. Treat it like a password.
+  </Step>
+  <Step title="Open Channels">
+    In the dashboard go to **Channels** and click the **Telegram** tile.
+  </Step>
+  <Step title="Fill in the form">
+    Enter a **Connection name** (for example "Telegram"), choose the **Answering agent** (or **Default agent**) and paste the **Bot token**. Leave **Webhook secret token** empty and Yulona generates one. Click **Connect**.
+  </Step>
+  <Step title="Copy the webhook values">
+    The panel says "Shown only once" and shows the **Webhook URL** and the **Webhook secret token**. Copy both.
+  </Step>
+  <Step title="Tell Telegram where to send messages">
+    Telegram needs to be told your Webhook URL once. Open this address in your browser, after replacing the three parts in capitals with your own values, and look for `"ok":true` in the reply:
+
+    `https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook?url=YOUR_WEBHOOK_URL&secret_token=YOUR_WEBHOOK_SECRET`
+
+    This step is called "setWebhook". The secret token makes sure only Telegram can post messages to your connection.
+  </Step>
+  <Step title="Test it">
+    In Yulona click **Test connection**. A healthy result reads "Connection OK. Bot @yourbotname". Click **I have saved these**. Then open your bot in Telegram, press **Start**, and send a message. It should appear in the [Inbox](/guides/workspace/inbox) and the agent should reply.
+  </Step>
+</Steps>
+
+<Warning>
+**Test connection** only checks that Telegram accepts your bot token. It cannot tell you whether the webhook was registered. Always finish by sending a real message to the bot.
+</Warning>
+
+## What customers experience
+
+- They find your bot by its username (share the link `t.me/yourbotname` on your website or business card).
+- There is **no reply window**: you can answer a conversation at any time, unlike WhatsApp.
+- Messages are text. Photos and files from customers arrive as a short text placeholder instead of the file.
+- The agent can use all its tools, but forms and buttons turn into plain text, because Telegram messages from Yulona are text-only.
+
+## Manage the connection
+
+Each connection under **Connected** shows its health (**Connected**, **Needs attention**, **Error**, **Paused** or **Not tested yet**), when it was last checked, the masked token and the Webhook URL.
+
+- **Test connection**: a live check.
+- **Edit**: rename, change the answering agent or rotate the token or secret. Leave a field empty to keep it.
+- **Disable** / **Enable**: pause the bot without deleting it.
+- **Delete**: removes the connection. Existing conversations keep their history, but replies can no longer be sent.
+
+If a token was shared by mistake, ask BotFather to revoke it, create a new token and enter it under **Edit**.
+
+## Common problems
+
+<AccordionGroup>
+  <Accordion title="The bot does not answer">
+    Check that you completed the setWebhook step and saw `"ok":true`. Check the connection is not **Paused**, the agent is published, and on the hosted version that you still have AI credits.
+  </Accordion>
+  <Accordion title="Test connection says it failed">
+    The bot token is wrong or was revoked. Copy it again from BotFather and use **Edit**.
+  </Accordion>
+  <Accordion title="Messages stopped after I changed the secret">
+    If you rotate the **Webhook secret token** in Yulona, run the setWebhook address again with the new secret.
+  </Accordion>
+  <Accordion title="Group messages are ignored">
+    This is expected. Only private chats are supported.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Slack" icon="hash" href="/guides/channels/slack">
+    Another no-reply-window channel.
+  </Card>
+  <Card title="Handoffs" icon="hand" href="/guides/agents/handoffs-and-human-takeover">
+    What happens when the agent needs a person.
+  </Card>
+</CardGroup>
+
+{/* source: apps/dashboard/src/features/channels/{ChannelsPage.tsx,guides.ts,api.ts}, packages/channels/src/telegram.ts, docs/api/channels.md */}
