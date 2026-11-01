@@ -1,6 +1,7 @@
 import { allowedNextStages, canTransition, type ConversionStage } from "@yulona/shared";
 import type { Tx } from "@yulona/db";
 import type { Lead } from "./types";
+import { onLeadStage } from "./crm-hook";
 
 export const BUILTIN_TOOLS = ["qualify_lead", "collect_contact", "escalate_to_human"] as const;
 export type BuiltinTool = (typeof BUILTIN_TOOLS)[number];
@@ -10,11 +11,11 @@ export type BuiltinTool = (typeof BUILTIN_TOOLS)[number];
  * "answer_from_knowledge" is the plain grounded-answer action; the rest are tool names.
  */
 export const STAGE_ACTIONS: Readonly<Record<ConversionStage, readonly string[]>> = {
-  visitor: ["answer_from_knowledge", "collect_contact", "escalate_to_human"],
-  engaged: ["answer_from_knowledge", "collect_contact", "qualify_lead", "escalate_to_human"],
-  qualified: ["answer_from_knowledge", "collect_contact", "qualify_lead", "escalate_to_human"],
-  booking_offered: ["answer_from_knowledge", "collect_contact", "escalate_to_human"],
-  booked: ["answer_from_knowledge", "escalate_to_human"],
+  visitor: ["answer_from_knowledge", "collect_contact", "escalate_to_human", "flag_abuse"],
+  engaged: ["answer_from_knowledge", "collect_contact", "qualify_lead", "escalate_to_human", "flag_abuse"],
+  qualified: ["answer_from_knowledge", "collect_contact", "qualify_lead", "escalate_to_human", "flag_abuse"],
+  booking_offered: ["answer_from_knowledge", "collect_contact", "escalate_to_human", "flag_abuse"],
+  booked: ["answer_from_knowledge", "escalate_to_human", "flag_abuse"],
   handoff_requested: [],
 };
 
@@ -59,6 +60,7 @@ export async function transitionStage(
   await tx`
     INSERT INTO stage_transitions (tenant_id, conversation_id, from_stage, to_stage, reason)
     VALUES (${tenantId}, ${conversationId}, ${row.stage}, ${to}, ${reason})`;
+  await onLeadStage(tx, tenantId, conversationId, to);
   return to;
 }
 

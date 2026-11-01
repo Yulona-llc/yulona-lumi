@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import {
-  CreditsExhaustedError, KnowledgeRepository, MAX_FILE_BYTES, SsrfError, UnsupportedFileError, VirusFoundError, assertSafeUrl, createLlmResolver, detectFileKind,
-  portsFromResolver, runSandbox, scanUpload, type AiPorts, type SourceRow,
+  CreditsExhaustedError, DEFAULT_CRAWL_DEPTH, DEFAULT_CRAWL_PAGES, KnowledgeRepository, MAX_CRAWL_DEPTH, MAX_CRAWL_PAGES, MAX_FILE_BYTES, SsrfError, UnsupportedFileError, VirusFoundError, assertSafeUrl, createLlmResolver, detectFileKind,
+  normalizeInline, portsFromResolver, resolveCrawlConfig, runSandbox, scanUpload, type AiPorts, type SourceRow,
 } from "@yulona/ai-runtime";
 import { AuditLogRepository, withTenant, type Db } from "@yulona/db";
 import { enqueue } from "@yulona/queue";
@@ -29,22 +29,29 @@ const uuid = z.string().uuid();
 const MAX_TEXT_CHARS = 900_000;
 
 export const createTextSourceSchema = z.strictObject({
-  name: z.string().trim().min(1).max(200),
+  name: z.string().trim().min(1).max(200).transform(normalizeInline),
   text: z.string().min(1).max(MAX_TEXT_CHARS),
-  description: z.string().trim().min(1).max(500).optional(),
+  description: z.string().trim().min(1).max(500).transform(normalizeInline).optional(),
   agentId: uuid.optional(),
 });
 export const updateSourceSchema = z.strictObject({
-  name: z.string().trim().min(1).max(200).optional(),
+  name: z.string().trim().min(1).max(200).transform(normalizeInline).optional(),
   /** one line the agent sees in its skill index; null restores the automatic description */
-  description: z.string().trim().min(1).max(500).nullable().optional(),
+  description: z.string().trim().min(1).max(500).transform(normalizeInline).nullable().optional(),
 }).refine((b) => b.name !== undefined || b.description !== undefined, { message: "Nothing to update" });
 export const createUrlSourceSchema = z.strictObject({
-  name: z.string().trim().min(1).max(200).optional(),
+  name: z.string().trim().min(1).max(200).transform(normalizeInline).optional(),
   url: z.string().url().max(2048),
-  description: z.string().trim().min(1).max(500).optional(),
+  description: z.string().trim().min(1).max(500).transform(normalizeInline).optional(),
   agentId: uuid.optional(),
-  maxPages: z.number().int().min(1).max(25).default(1),
+  /** pages to read in total (the first page counts); 1 reads only the page you gave */
+  maxPages: z.number().int().min(1).max(MAX_CRAWL_PAGES).default(DEFAULT_CRAWL_PAGES),
+  /** follow links to other pages of the same site; defaults to true when maxPages > 1 */
+  followLinks: z.boolean().optional(),
+  /** how many link-clicks away from the first page to go (1 to 5) */
+  maxDepth: z.number().int().min(1).max(MAX_CRAWL_DEPTH).default(DEFAULT_CRAWL_DEPTH),
+  /** also read pages on subdomains (blog.example.com for example.com) */
+  includeSubdomains: z.boolean().default(false),
 });
 export const listSourcesQuery = z.strictObject({
   agentId: uuid.optional(),
@@ -71,7 +78,10 @@ export function toSourceDto(s: SourceRow) {
   return {
     id: s.id, agentId: s.agentId, type: s.type, name: s.name, skill: s.slug, description: s.description, status: s.status, error: s.error, sourceUrl: s.sourceUrl,
     fileName: s.fileName, sizeBytes: Number(s.sizeBytes), chunkCount: s.chunkCount, attempts: s.attempts,
-    maxPages: s.type === "url" ? (s.crawlConfig.maxPages ?? 1) : undefined,
+    ...(s.type === "url" ? (() => {
+      const c = resolveCrawlConfig(s.crawlConfig);
+      return { maxPages: c.maxPages, maxDepth: c.maxDepth, followLinks: c.followLinks, includeSubdomains: c.includeSubdomains, crawlProgress: s.crawlConfig.progress ?? null };
+    })() : {}),
     lastIngestedAt: s.lastIngestedAt ? new Date(s.lastIngestedAt).toISOString() : null,
     createdAt: new Date(s.createdAt).toISOString(), updatedAt: new Date(s.updatedAt).toISOString(),
   };
@@ -166,7 +176,7 @@ export function knowledgeRoutes(deps: KnowledgeDeps) {
       if (e instanceof SsrfError) throw Errors.validation([{ path: "url", message: e.message }]);
       throw e;
     }
-    return createAndQueue(c, { type: "url", name: b.name ?? new URL(b.url).hostname, sourceUrl: b.url, crawlConfig: { maxPages: b.maxPages }, agentId: b.agentId, description: b.description });
+    return createAndQueue(c, { type: "url", name: b.name ?? new URL(b.url).hostname, sourceUrl: b.url, crawlConfig: { maxPages: b.maxPages, maxDepth: b.maxDepth, followLinks: b.followLinks ?? b.maxPages > 1, includeSubdomains: b.includeSubdomains }, agentId: b.agentId, description: b.description });
   });
 
   r.post("/knowledge/sources/file", writer, async (c) => {
@@ -183,7 +193,7 @@ export function knowledgeRoutes(deps: KnowledgeDeps) {
     const file = form.file;
     if (!(file instanceof File)) throw Errors.validation([{ path: "file", message: "A single file is required" }]);
     if (file.size > MAX_FILE_BYTES) throw new AppError(413, "payload_too_large", `File exceeds ${MAX_FILE_BYTES / 1024 / 1024} MB`);
-    const meta = z.strictObject({ name: z.string().trim().min(1).max(200).optional(), agentId: uuid.optional(), description: z.string().trim().min(1).max(500).optional() })
+    const meta = z.strictObject({ name: z.string().trim().min(1).max(200).optional(), agentId: uuid.optional(), description: z.string().trim().min(1).max(500).transform(normalizeInline).optional() })
       .safeParse({ name: typeof form.name === "string" ? form.name : undefined, agentId: typeof form.agentId === "string" ? form.agentId : undefined, description: typeof form.description === "string" && form.description ? form.description : undefined });
     if (!meta.success) throw Errors.validation(meta.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })));
     const bytes = new Uint8Array(await file.arrayBuffer());

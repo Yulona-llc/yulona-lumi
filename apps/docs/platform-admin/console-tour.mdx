@@ -1,0 +1,31 @@
+---
+title: Admin console tour
+description: Learn the layout of the platform admin web app, the command palette, and which parts each role can use.
+icon: layout-dashboard
+---
+
+This page is for platform admins who sign in to the admin web app (`apps/admin-web`, its own site and bundle, separate from the customer dashboard). Sign in with your operator account; workspace accounts do not work. The web app talks only to the admin service described in [Platform admin overview](/platform-admin/overview).
+
+## Layout
+
+- **Sidebar.** Overview, Customers, Needs attention, Operations, Billing and credits, Feature flags, Audit log and Admins. Collapse it with the button at the bottom; on a phone it opens as a drawer from the menu button. The Needs attention item shows how many customers are on watch or at risk.
+- **Header.** The search box, your name and role, a menu with Password and two-factor and the theme (light, dark, system), and Sign out.
+- **Reload keeps you signed in.** The console restores the session from a secure cookie. Nothing secret is stored in the browser storage.
+
+## Search and the command palette
+
+Press `Ctrl+K` (`Cmd+K` on a Mac) or select the search box. Type at least two characters to find customers by name, ID or any member's email, and users by email. Pages and actions (export customers, invite an admin if you are an owner, switch theme, sign out) are filtered as you type. Selecting a customer or user opens the customer.
+
+## Overview
+
+KPI tiles show customers, MRR, customers active in the last 7 days, new customers, suspended customers and credits used, each with the change against the previous period and a trend line. Below are customers by health bucket and plan, the customers that need attention now with the main reason, growth and usage charts (7, 14 or 30 days) and the platform health card (database, worker heartbeat, queue, dead jobs).
+
+## What your role can do
+
+Buttons you cannot use stay visible but disabled, with a tooltip naming the roles that can. The API enforces the same rules. See [Roles and two-factor authentication](/platform-admin/roles-and-2fa).
+
+## Next steps
+
+- [Customers and the health score](/platform-admin/customers-and-health-score)
+- [Support playbook](/platform-admin/support-playbook)
+- [Operations](/platform-admin/operations)

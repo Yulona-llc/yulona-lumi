@@ -165,7 +165,7 @@ export default function ConversationList({ activeId }: { activeId?: string }) {
                       <time className="shrink-0 text-xs tabular-nums text-muted-foreground" dateTime={c.lastMessageAt}>{timeAgo(c.lastMessageAt)}</time>
                     </span>
                     <span className={cn("mt-0.5 block truncate text-sm", unread ? "text-foreground" : "text-muted-foreground")}>{c.lastMessagePreview ?? "No messages"}</span>
-                    <span className="mt-1.5 flex items-center gap-2"><StatusBadge c={c} /><span className="flex items-center gap-1 text-xs text-muted-foreground"><ChannelGlyph channel={c.channel} className="size-3" />{CHANNEL_LABEL[c.channel] ?? c.channel}</span></span>
+                    <span className="mt-1.5 flex items-center gap-2"><StatusBadge c={c} />{c.contact.blockedAt && <Badge variant="destructive">Blocked</Badge>}<span className="flex items-center gap-1 text-xs text-muted-foreground"><ChannelGlyph channel={c.channel} className="size-3" />{CHANNEL_LABEL[c.channel] ?? c.channel}</span></span>
                   </span>
                 </button>
               </motion.li>

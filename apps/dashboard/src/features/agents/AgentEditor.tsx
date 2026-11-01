@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { Link, useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, FolderOpen, Rocket, RotateCcw, Save, Undo2 } from "lucide-react";
-import { CONVERSION_STAGES, STAGE_TRANSITIONS, type AgentConfig } from "@yulona/shared";
+import { CONVERSION_STAGES, DEFAULT_ABUSE_CONFIG, STAGE_TRANSITIONS, type AgentConfig } from "@yulona/shared";
 import { ag, errMsg, type Agent } from "../common/api";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/sonner";
 import { Spinner } from "../../components/ui";
-import { Badge, ConfirmModal, ErrorState, fmtDate, Loading, RoleNotice, TextArea, TextField, useRole } from "../common/ui";
+import { Badge, ConfirmModal, ErrorState, fmtDate, Loading, RoleNotice, Select, TextArea, TextField, useRole } from "../common/ui";
 import { DirtyDot, FormSection, StickyBar } from "../settings/parts";
+import { ChipInput, WordSlider } from "../common/inputs";
 import { SandboxConsole } from "./SandboxConsole";
 import { CustomToolsPanel } from "../tools/ToolsPanel";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,26 @@ const BUILTIN = [
 const STAGE_ACTIONS: Record<string, string> = {
   visitor: "collect_contact, escalate_to_human", engaged: "+ qualify_lead", qualified: "+ qualify_lead", booking_offered: "collect_contact, escalate_to_human", booked: "escalate_to_human", handoff_requested: "none (AI paused)",
 };
+function PhrasesField({ value, onChange, disabled }: { value: string[]; onChange: (v: string[]) => void; disabled: boolean }) {
+  return <ChipInput label="Blocked phrases" hint="Type a word or phrase and press Enter. A message containing one counts as a strike (not case sensitive)." values={value} onChange={onChange} disabled={disabled} max={100} placeholder="Add a phrase" />;
+}
+const tempWord = (t: number) => (t <= 0.4 ? "Precise" : t <= 1.0 ? "Balanced" : t <= 1.5 ? "Creative" : "Very creative");
+
+/** Model picker: the platform's enabled models in SaaS, a free-text field when the workspace runs its own provider. */
+function ModelField({ value, onChange, disabled }: { value: string | undefined; onChange: (v: string | undefined) => void; disabled: boolean }) {
+  const q = useQuery({ queryKey: ["models"], queryFn: () => ag.models(), staleTime: 5 * 60_000 });
+  const list = q.data?.models ?? [];
+  if (q.data?.mode === "saas" || (q.data && list.length)) {
+    return (
+      <Select label="Model" hint="Which AI model writes the replies. The default suits most teams." value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)} disabled={disabled}>
+        <option value="">Workspace default</option>
+        {value && !list.includes(value) && <option value={value}>{value} (not currently offered)</option>}
+        {list.map((m) => <option key={m} value={m}>{m}</option>)}
+      </Select>
+    );
+  }
+  return <TextField label="Model" hint="Leave empty to use your provider's default model. Otherwise type the model name exactly as your provider lists it." value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)} disabled={disabled} maxLength={100} />;
+}
 const TABS = ["Persona", "Knowledge", "Escalation", "Tools", "Versions", "Sandbox"] as const;
 type Tab = (typeof TABS)[number];
 type Confirm = { kind: "publish" } | { kind: "rollback"; v: number } | null;
@@ -125,8 +146,8 @@ function Editor({ agent, tab, setTab }: { agent: Agent; tab: Tab; setTab: (t: Ta
           <div className="grid max-w-4xl gap-5 xl:grid-cols-2">
             <FormSection title="How it reads your knowledge" description="No embeddings and nothing to tune.">
               <p className="text-sm text-muted-foreground">Each source you add becomes a skill. The agent sees the list of skills, opens the sections it needs, and answers from them. Clear section titles and a good one-line description in <Link to="/knowledge" className="font-medium text-accent-foreground underline underline-offset-4">Knowledge</Link> help it most.</p>
-              <TextField label="Model" hint="Leave empty for the workspace default." value={cfg.model ?? ""} onChange={(e) => set("model", e.target.value || undefined)} disabled={ro} maxLength={100} />
-              <TextField label="Temperature" type="number" step={0.1} min={0} max={2} value={cfg.temperature ?? ""} onChange={(e) => set("temperature", e.target.value === "" ? undefined : Math.min(2, Math.max(0, Number(e.target.value))))} disabled={ro} />
+              <ModelField value={cfg.model} onChange={(v) => set("model", v)} disabled={ro} />
+              <WordSlider label="Reply style" hint="Precise sticks to your knowledge and gives steady answers. Creative sounds more varied." value={cfg.temperature} onChange={(v) => set("temperature", v)} left="Precise" right="Creative" describe={tempWord} disabled={ro} />
             </FormSection>
             <SkillsAvailable agentId={agent.id} />
           </div>
@@ -135,9 +156,8 @@ function Editor({ agent, tab, setTab }: { agent: Agent; tab: Tab; setTab: (t: Ta
         <TabsContent value="Escalation">
           <div className="grid gap-5 xl:grid-cols-2">
             <FormSection title="Hand off to a person" description="When the agent steps back and your team takes over.">
-              <TextArea label="Escalation keywords" hint="One per line. A visitor message containing one hands off to your team." rows={6} disabled={ro}
-                value={cfg.escalationRules.keywords.join("\n")}
-                onChange={(e) => set("escalationRules", { ...cfg.escalationRules, keywords: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 50) })} />
+              <ChipInput label="Words that call a person" hint="Type a word or phrase and press Enter. When a visitor's message contains one, your team takes over." values={cfg.escalationRules.keywords} disabled={ro} max={50} placeholder="For example: refund, complaint"
+                onChange={(keywords) => set("escalationRules", { ...cfg.escalationRules, keywords })} />
               <TextField label="Hand off after unanswered questions" hint="The agent asks the customer to rephrase first; it hands off after this many questions in a row it cannot answer. Customers who ask for a person are handed off at once." type="number" min={1} max={20} value={cfg.escalationRules.maxUnansweredTurns} disabled={ro}
                 onChange={(e) => set("escalationRules", { ...cfg.escalationRules, maxUnansweredTurns: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })} />
               <TextField label="Resume keyword" hint='While waiting for a person, customers can reply with this word to go back to the AI instead of waiting (for example "AI"). Leave empty to disable.' value={cfg.escalationRules.resumeKeyword} disabled={ro} maxLength={40}
@@ -146,6 +166,28 @@ function Editor({ agent, tab, setTab }: { agent: Agent; tab: Tab; setTab: (t: Ta
                 <Switch id="handoff-qualified" checked={cfg.handoffAtQualified} onCheckedChange={(v) => set("handoffAtQualified", v)} disabled={ro} />
                 <label htmlFor="handoff-qualified" className="text-sm"><span className="font-medium">Hand off qualified leads</span><span className="block text-muted-foreground">When a lead has shared what they need and a budget or timeline, pass the conversation to a person with a lead card.</span></label>
               </div>
+            </FormSection>
+            <FormSection title="Safety" description="Block visitors who keep sending abuse, spam or floods. On by default for every agent.">
+              {(() => {
+                const ab = cfg.abuse ?? DEFAULT_ABUSE_CONFIG;
+                const setAb = (p: Partial<typeof ab>) => set("abuse", { ...ab, ...p });
+                return <>
+                  <div className="flex items-start gap-3">
+                    <Switch id="abuse-enabled" checked={ab.enabled} onCheckedChange={(v) => setAb({ enabled: v })} disabled={ro} />
+                    <label htmlFor="abuse-enabled" className="text-sm"><span className="font-medium">Block abusive visitors</span><span className="block text-muted-foreground">After the strike limit the agent says goodbye, the conversation is closed, the visitor is blocked and your owners and admins are notified. Only a person can unblock.</span></label>
+                  </div>
+                  {ab.enabled && <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <TextField label="Strikes before blocking" hint="Abusive, spam or flooding messages in one conversation." type="number" min={1} max={10} value={ab.maxStrikes} disabled={ro}
+                        onChange={(e) => setAb({ maxStrikes: Math.min(10, Math.max(1, Number(e.target.value) || 1)) })} />
+                      <TextField label="Messages per minute" hint="More than this in a minute counts as a strike." type="number" min={2} max={60} value={ab.maxMessagesPerMinute} disabled={ro}
+                        onChange={(e) => setAb({ maxMessagesPerMinute: Math.min(60, Math.max(2, Number(e.target.value) || 2)) })} />
+                    </div>
+                    <PhrasesField value={ab.blockedPhrases} onChange={(v) => setAb({ blockedPhrases: v })} disabled={ro} />
+                    <TextArea label="Farewell message" hint="The last message the visitor sees." rows={2} value={ab.farewellMessage} onChange={(e) => setAb({ farewellMessage: e.target.value })} disabled={ro} maxLength={500} />
+                  </>}
+                </>;
+              })()}
             </FormSection>
             <FormSection title="Stage rules" description="The funnel is fixed. The agent can only use these actions at each stage.">
               <ul className="-my-1 divide-y">
@@ -272,7 +314,14 @@ function ArchiveBar({ agent, onDone }: { agent: Agent; onDone: () => void }) {
   const archived = agent.status === "archived";
   const m = useMutation({
     mutationFn: () => (archived ? ag.unarchive(agent.id) : ag.archive(agent.id)),
-    onSuccess: () => { setOpen(false); onDone(); toast.success(archived ? "Unarchived" : "Archived"); },
+    onSuccess: (r) => {
+      setOpen(false); onDone(); toast.success(archived ? "Unarchived" : "Archived");
+      const w = (r as { warning?: { widgets: { name: string }[]; channels: { name: string }[] } } | undefined)?.warning;
+      if (w) {
+        const names = [...w.widgets.map((x) => `widget "${x.name}"`), ...w.channels.map((x) => `channel "${x.name}"`)].join(", ");
+        toast.warning(`Still attached to ${names}. Visitors there get a "not available" reply until you attach another agent.`);
+      }
+    },
     onError: (e) => toast.error(errMsg(e)),
   });
   return (

@@ -1,6 +1,6 @@
 ---
 title: Widget embed
-description: Embed the Yulona chat widget, restrict it to your domains, and build a custom client against the public widget API.
+description: Embed the Lumi chat widget, restrict it to your domains, and build a custom client against the public widget API.
 icon: message
 ---
 
@@ -29,7 +29,9 @@ Paste `snippet` before `</body>`. The script mounts one widget; loading it twice
 `scriptUrl` comes from the server's `WIDGET_SCRIPT_URL` (default `/widget.js`) and `apiUrl` from `PUBLIC_API_URL`. On a hosted or reverse-proxied install, make sure both are absolute public URLs before copying the snippet to another site.
 </Note>
 
-### `window.YulonaConfig`
+### `window.YulonaConfig` (alias `window.LumiConfig`)
+
+The widget reads `window.LumiConfig` first, then `window.YulonaConfig`; both take the same options. The snippet the API returns still uses `window.YulonaConfig`, which keeps working.
 
 <ParamField body="widgetKey" type="string" required>The widget's public key, `wk_` followed by characters. It is public by design; the origin allowlist protects it. Without it the widget logs a warning and does not start.</ParamField>
 <ParamField body="apiUrl" type="string">API origin (`https://YOUR_HOST`) or a full `/api/v1` base. The widget appends `/api/v1` when missing. If omitted, it uses the origin the script was loaded from.</ParamField>
@@ -38,7 +40,7 @@ Paste `snippet` before `</body>`. The script mounts one widget; loading it twice
 <ParamField body="primaryColor" type="string">Local fallback only; the server config wins.</ParamField>
 <ParamField body="position" type="string">`right` or `left`; fallback only.</ParamField>
 
-`window.Yulona.destroy()` removes the widget from the page (useful for single-page apps that unmount it). Rotating a key with `POST /api/v1/widgets/:id/rotate-key` makes the old key stop working immediately, so update every page that embeds it.
+`window.Lumi.destroy()` (also available as `window.Yulona.destroy()`) removes the widget from the page (useful for single-page apps that unmount it). Rotating a key with `POST /api/v1/widgets/:id/rotate-key` makes the old key stop working immediately, so update every page that embeds it.
 
 ## Allowed domains and the origin check
 
@@ -55,14 +57,57 @@ Configure it at creation or later: `PATCH /api/v1/widgets/:id` with `{ "allowedD
 
 `prechat` is `{ enabled, intro?, fields: [{ name, label, required }] }` with up to three fields, where `name` is `name`, `email` or `phone`. When enabled, `POST /public/widget/conversations` rejects a missing required visitor field with `400 validation_error` and `details[].path` such as `visitor.email`. Values are stored on the contact (existing values are not overwritten).
 
+## Bot protection and blocked visitors
+
+Each widget has a `config.protection` object (set with `PATCH /api/v1/widgets/:id`, admin or owner):
+
+```json
+{
+  "config": {
+    "protection": {
+      "honeypot": true,
+      "turnstile": { "enabled": true, "siteKey": "0x4AAAAAAA...", "theme": "auto", "size": "normal", "appearance": "always", "action": "chat_start" }
+    }
+  },
+  "turnstileSecret": "0x4AAAAAAA..."
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `honeypot` | Default `true`. Public requests may carry `hp`, a field real users never fill. A non-empty `hp` on `POST /conversations` or `POST /messages` gets a plausible `201` and nothing is stored (the fake session token opens nothing). Repeated hits from one IP are rate limited (20 per 10 minutes per widget). |
+| `turnstile.enabled` | Default `false`. When `true`, `POST /conversations` must carry `turnstileToken`. |
+| `turnstile.siteKey` | Your public Cloudflare Turnstile site key. It is part of `GET /config`, so the widget can render the challenge. |
+| `turnstile.theme`, `size`, `appearance`, `action` | Passed to Cloudflare as render options: `theme` is `auto`, `light` or `dark`; `size` is `normal`, `compact` or `flexible`; `appearance` is `always` or `interaction-only`; `action` is up to 32 letters, digits, `-` and `_`. |
+| `turnstileSecret` (top level) | Your Turnstile secret key. Write-only: encrypted at rest (AES-GCM, needs `ENCRYPTION_KEY`), never returned, never in audit logs. Send `null` to remove it. Widget objects expose only `hasTurnstileSecret`. |
+
+You cannot enable Turnstile without a site key and a stored secret (`400 validation_error`). The server calls Cloudflare's siteverify endpoint with the secret, the token and the visitor IP, with a 5 second timeout, and **fails closed**: a missing token, a rejection, a timeout or any error returns `403 turnstile_failed` and nothing is created. Siteverify calls are limited to 30 per 10 minutes per widget and IP. Tokens are single use, so the widget gets a new token for every start.
+
+```bash
+curl -X POST https://YOUR_HOST/api/v1/public/widget/conversations \
+  -H "X-Widget-Key: wk_YOUR_KEY" -H "Origin: https://www.example.com" \
+  -H "Content-Type: application/json" \
+  -d '{"turnstileToken":"TOKEN_FROM_THE_CHALLENGE","hp":""}'
+```
+
+`403` when the check fails:
+
+```json
+{ "error": { "code": "turnstile_failed", "message": "Verification failed. Reload the page and try again.", "requestId": "...", "details": { "reason": "siteverify_rejected" } } }
+```
+
+The shipped widget loads `https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit` only when Turnstile is enabled, so add `https://challenges.cloudflare.com` to `script-src`, `frame-src` and `connect-src` on pages with a strict CSP. For tests, use Cloudflare's dummy keys (site key `1x00000000000000000000AA` with secret `1x0000000000000000000000000000000AA` always passes; `2x00000000000000000000AB` with `2x0000000000000000000000000000000AA` always fails).
+
+**Blocked visitors.** When a contact is blocked, every public call returns `403 contact_blocked` (`POST /conversations` for the same `visitorId`, or for a new visitor from an IP that had a contact blocked in the last 24 hours; `POST /messages` and `POST /ui-events` on a session that is still valid). Their widget sessions are revoked, so existing tokens also return `401 unauthorized`. A message to a resolved conversation never reopens it for a blocked contact. See [AI runtime](/developers/ai-runtime#abuse-flagging).
+
 ## Public widget API
 
 Base: `https://YOUR_HOST/api/v1/public/widget`. All calls send `X-Widget-Key: wk_...`; session calls add `Authorization: Bearer <sessionToken>`. Bodies are capped at 16 KB.
 
 | Method and path | Auth | Purpose |
 |---|---|---|
-| `GET /config` | key | Branding, prechat and capabilities. Cached privately for 60 seconds. |
-| `POST /conversations` | key | Start a conversation and receive a session token. |
+| `GET /config` | key | Branding, prechat, capabilities and `unavailable` (`true` when the widget's agent is not published, is archived or is unassigned; the widget then shows an offline notice). Cached privately for 60 seconds. |
+| `POST /conversations` | key | Start a conversation and receive a session token. Carries `turnstileToken` and `hp` when [bot protection](#bot-protection-and-blocked-visitors) is on. |
 | `POST /session/refresh` | key + session | New token, extended session. |
 | `GET /messages` | key + session | History (`before`) or catch-up (`after`), `limit` 1 to 100. |
 | `POST /messages` | key + session | Send a text message. |
@@ -88,7 +133,7 @@ Base: `https://YOUR_HOST/api/v1/public/widget`. All calls send `X-Widget-Key: wk
       "features": { "sse": true, "ws": true }
     }
     ```
-    When `welcomeMessage` is empty, a new conversation opens with the agent's `greeting` as its first AI message (published version, else draft); `welcomeMessage` wins when set. `config` may include `title`, `subtitle`, `welcomeMessage`, `primaryColor` (`#rrggbb`), `theme` (`light`, `dark`, `auto`), `position`, `launcherLabel`, `avatarUrl` (https) and `inputPlaceholder`.
+    When `welcomeMessage` is empty, a new conversation opens with the agent's `greeting` as its first AI message (published version only; a draft or archived agent gives no greeting); `welcomeMessage` wins when set. `config` may include `protection` (the honeypot flag and the public Turnstile options), `title`, `subtitle`, `welcomeMessage`, `appearance` (`{ "mode": "solid" | "gradient", "color": "#rrggbb", "color2": "#rrggbb", "angle": 135 }`; optional, older widgets only have `primaryColor`, which is always the first colour), `primaryColor` (`#rrggbb`), `theme` (`light`, `dark`, `auto`), `position`, `launcherLabel`, `avatarUrl` and `inputPlaceholder`. When an avatar was uploaded, `avatarUrl` is the absolute address of `/api/v1/public/widgets/{key}/avatar?v={version}` and wins over a stored https link. The widget paints the brand fill from `appearance` (a CSS `linear-gradient` for two colours) and picks dark or light text from the middle colour; with no `appearance` it uses `primaryColor` as a solid colour.
   </Step>
   <Step title="Start a conversation">
     ```bash
@@ -100,12 +145,12 @@ Base: `https://YOUR_HOST/api/v1/public/widget`. All calls send `X-Widget-Key: wk
     `201`:
     ```json
     {
-      "sessionToken": "eyJhbGciOi...", "expiresIn": 86400, "visitorId": "1c5d...",
+      "sessionToken": "eyJhbGciOi...", "expiresIn": 86400, "visitorId": "1c5d...", "unavailable": false,
       "conversation": { "id": "e5d9...", "status": "open", "handler": "ai" },
       "messages": [{ "id": "a1b2...", "senderType": "ai", "content": "Hi! How can we help?", "ui": { "version": 1, "components": [{ "type": "message", "text": "Hi! How can we help?" }] }, "createdAt": "2026-10-19T09:50:00.000Z" }]
     }
     ```
-    Store `visitorId` and the token (the shipped widget uses `localStorage` key `yulona:<widgetKey>`). Reusing `visitorId` links future conversations to the same contact. Limit: 10 starts per 10 minutes per widget and IP.
+    Store `visitorId` and the token (the shipped widget uses `localStorage` key `yulona:<widgetKey>`). Reusing `visitorId` links future conversations to the same contact. `unavailable` is `true` when the agent is not live: the conversation still opens, there is no AI greeting, and the first message gets "This assistant is not available right now. A team member will reply." with a needs attention handoff. Limit: 10 starts per 10 minutes per widget and IP.
   </Step>
   <Step title="Send messages">
     ```bash
@@ -153,6 +198,35 @@ Messages carry plain text in `content` (always present) and optionally `ui`, a `
 
 Every component may have an optional `id`. **Versioning:** `version` is `1` today and `config.schemaVersion` reports the highest version the server may emit. Custom clients must ignore unknown component types and degrade to `content`. The shipped widget drops what it does not understand, only renders `http` and `https` image URLs, and never executes HTML. Other channels (WhatsApp, Telegram and so on) receive a text rendition: forms and buttons degrade to numbered text.
 
+## Appearance and avatar
+
+Appearance and the uploaded avatar are managed with the dashboard API (a signed-in owner or admin; see [Authentication](/developers/authentication)). Set colours through `PATCH /api/v1/widgets/{id}`:
+
+```bash
+curl -X PATCH https://YOUR_HOST/api/v1/widgets/WIDGET_ID \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"config":{"appearance":{"mode":"gradient","color":"#f97316","color2":"#ec4899","angle":135}}}'
+```
+
+`mode` is `solid` or `gradient`; `color` and `color2` are `#rrggbb`; `angle` is whole degrees from 0 to 360 (default 135). The server keeps `primaryColor` equal to `appearance.color`, so older clients still see a colour. Configs saved before `appearance` existed stay valid.
+
+Upload the avatar as multipart with the field `file`:
+
+```bash
+curl -X POST https://YOUR_HOST/api/v1/widgets/WIDGET_ID/avatar \
+  -H "Authorization: Bearer $TOKEN" -F "file=@logo.png"
+```
+
+The image must be PNG, JPEG or WebP, identified by its first bytes (the declared type is ignored, SVG is refused), at most 512 KB, and passes the antivirus scan used for knowledge files when `CLAMAV_URL` is set. A bad file returns `400 validation_error` and an oversized one `413 payload_too_large`. The response is the widget, with `hasAvatar: true` and an `avatarVersion` that changes on every upload. `GET /api/v1/widgets/{id}/avatar` returns the stored bytes to any signed-in role, and `DELETE` (owner or admin) removes it. Uploads and removals are recorded in the audit log as `widget.avatar.upload` and `widget.avatar.remove`.
+
+Visitors load the image from the public route:
+
+```bash
+curl -i https://YOUR_HOST/api/v1/public/widgets/wk_YOUR_KEY/avatar -H "Origin: https://www.example.com"
+```
+
+It sends `ETag`, `Cache-Control: public, max-age=3600`, `X-Content-Type-Options: nosniff` and `Cross-Origin-Resource-Policy: cross-origin`, and answers `304` to a matching `If-None-Match`. It returns `404` for an unknown key, a disabled widget, a suspended workspace or a widget without an upload. Because an `<img>` tag sends no widget-key header, the key is in the path. When the browser sends an `Origin` or `Referer`, it must match the allowed domains, otherwise `403`; with neither, the image is still served because it is the public face of your chat.
+
 ## Content Security Policy
 
 If your site sends a CSP, allow what the widget needs (derived from how it loads and connects):
@@ -161,7 +235,7 @@ If your site sends a CSP, allow what the widget needs (derived from how it loads
 |---|---|
 | `script-src` | The `scriptUrl` origin, and the inline snippet via a nonce or hash (or load the script tag yourself) |
 | `connect-src` | The API origin for `fetch`, plus its `wss://` form for the WebSocket |
-| `img-src` | `avatarUrl` and card image hosts, if you use them |
+| `img-src` | The API origin (for the uploaded avatar), any `avatarUrl` host and card image hosts, if you use them |
 | `style-src` | Normally nothing: styles are applied through a constructable stylesheet inside a Shadow DOM. Browsers without constructable stylesheets fall back to a `<style>` element. |
 
 The widget uses a Shadow DOM, so your page CSS does not leak in or out. If storage is blocked it keeps state in memory.

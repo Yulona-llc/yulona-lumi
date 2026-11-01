@@ -7,7 +7,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Yulona design tokens, taken from yulona.co: Ember orange #f97316 on Midnight navy #0f1a2f, Mist #aebcd0 for quiet text.
+ * Lumi design tokens, taken from yulona.co: Ember orange #f97316 on Midnight navy #0f1a2f, Mist #aebcd0 for quiet text.
  * shadcn semantic variables first; the legacy names (ink, paper, line, brand...) alias them so older pages inherit the system.
  */
 :root {

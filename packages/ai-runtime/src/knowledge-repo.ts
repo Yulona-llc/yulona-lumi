@@ -1,4 +1,5 @@
 import { TenantRepository, type Tx } from "@yulona/db";
+import type { CrawlConfig, CrawlProgress } from "./crawl";
 import { slugify } from "./sections";
 
 export type SourceStatus = "pending" | "processing" | "ready" | "failed";
@@ -17,7 +18,7 @@ export interface SourceRow {
   fileName: string | null;
   mimeType: string | null;
   sizeBytes: number;
-  crawlConfig: { maxPages?: number };
+  crawlConfig: Partial<CrawlConfig> & { progress?: CrawlProgress };
   attempts: number;
   chunkCount: number;
   lastIngestedAt: Date | null;
@@ -90,6 +91,14 @@ export class KnowledgeRepository extends TenantRepository {
   async markFailed(id: string, error: string): Promise<void> {
     await this.tx`UPDATE knowledge_sources SET status = 'failed', error = ${error.slice(0, 500)}, updated_at = now() WHERE tenant_id = ${this.tenantId} AND id = ${id}`;
   }
+  /** Crawl progress for the UI. Also a heartbeat: it bumps `updated_at` so a long crawl is not reclaimed as stale. */
+  async setCrawlProgress(id: string, progress: CrawlProgress | null): Promise<void> {
+    await this.tx`
+      UPDATE knowledge_sources SET updated_at = now(),
+        crawl_config = CASE WHEN ${progress === null} THEN crawl_config - 'progress'
+                            ELSE jsonb_set(crawl_config, '{progress}', ${JSON.stringify(progress)}::text::jsonb) END
+      WHERE tenant_id = ${this.tenantId} AND id = ${id}`;
+  }
   async requeue(id: string): Promise<boolean> {
     const rows = await this.tx`
       UPDATE knowledge_sources SET status = 'pending', error = NULL, updated_at = now()
@@ -116,8 +125,8 @@ export class KnowledgeRepository extends TenantRepository {
     return rows.length > 0;
   }
   async listChunks(sourceId: string, limit: number, offset: number) {
-    return this.tx<{ id: string; chunkIndex: number; title: string; content: string; tokenCount: number }[]>`
-      SELECT id, chunk_index, title, content, token_count FROM knowledge_chunks
+    return this.tx<{ id: string; chunkIndex: number; title: string; content: string; tokenCount: number; url: string | null }[]>`
+      SELECT id, chunk_index, title, content, token_count, metadata->>'url' AS url FROM knowledge_chunks
       WHERE tenant_id = ${this.tenantId} AND source_id = ${sourceId} ORDER BY chunk_index LIMIT ${limit} OFFSET ${offset}`;
   }
 }

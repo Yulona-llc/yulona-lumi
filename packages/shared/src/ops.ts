@@ -7,11 +7,8 @@ export type TicketStatus = z.infer<typeof ticketStatusSchema>;
 export const TICKET_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 export const ticketPrioritySchema = z.enum(TICKET_PRIORITIES);
 export type TicketPriority = z.infer<typeof ticketPrioritySchema>;
-export const TRANSACTION_STATUSES = ["pending", "completed", "failed", "refunded"] as const;
-export const transactionStatusSchema = z.enum(TRANSACTION_STATUSES);
-export type TransactionStatus = z.infer<typeof transactionStatusSchema>;
 export const BOOKING_STATUSES = ["booked", "cancelled", "failed", "offered"] as const;
-export const HANDOFF_TYPES = ["uncertainty", "stage", "system_failure"] as const;
+export const HANDOFF_TYPES = ["uncertainty", "stage", "system_failure", "abuse"] as const;
 export const AVAILABILITY_STATUSES = ["online", "away", "offline"] as const;
 export const availabilityStatusSchema = z.enum(AVAILABILITY_STATUSES);
 export const OUT_OF_HOURS_MODES = ["ai_only", "message", "queue"] as const;
@@ -67,61 +64,6 @@ export const bulkTicketsSchema = z.strictObject({
   value: z.string().max(40).nullable().optional(),
 });
 
-// ---------- transactions ----------
-const currency = z.string().regex(/^[A-Za-z]{3}$/).transform((s) => s.toUpperCase());
-const amountCents = z.number().int().min(-1_000_000_000_000).max(1_000_000_000_000);
-export const createTransactionSchema = z.strictObject({
-  amountCents,
-  currency,
-  status: transactionStatusSchema.optional(),
-  description: z.string().max(1000).optional(),
-  externalId: z.string().min(1).max(200).optional(),
-  contactId: z.uuid().nullable().optional(),
-  conversationId: z.uuid().nullable().optional(),
-  occurredAt: z.iso.datetime().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
-export const updateTransactionSchema = z
-  .strictObject({
-    amountCents,
-    status: transactionStatusSchema,
-    description: z.string().max(1000).nullable(),
-    contactId: z.uuid().nullable(),
-    conversationId: z.uuid().nullable(),
-    occurredAt: z.iso.datetime(),
-    metadata: z.record(z.string(), z.unknown()),
-  })
-  .partial()
-  .refine((v) => Object.keys(v).length > 0, "At least one field is required");
-export const transactionFilterSchema = z.strictObject({
-  status: csv(TRANSACTION_STATUSES).optional(),
-  contactId: z.uuid().optional(),
-  conversationId: z.uuid().optional(),
-  source: z.enum(["manual", "webhook"]).optional(),
-  currency: currency.optional(),
-  from: z.iso.datetime().optional(),
-  to: z.iso.datetime().optional(),
-  minAmountCents: z.coerce.number().int().optional(),
-  maxAmountCents: z.coerce.number().int().optional(),
-  q: z.string().trim().min(1).max(200).optional(),
-});
-export const listTransactionsQuerySchema = transactionFilterSchema.extend({ limit: opsLimitSchema, cursor });
-export const transactionWebhookBodySchema = z.strictObject({
-  externalId: z.string().min(1).max(200),
-  amountCents,
-  currency,
-  status: transactionStatusSchema.optional(),
-  description: z.string().max(1000).optional(),
-  contactEmail: z.string().email().max(254).optional(),
-  occurredAt: z.iso.datetime().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
-export const createWebhookEndpointSchema = z.strictObject({ name: z.string().trim().min(1).max(100) });
-export const updateWebhookEndpointSchema = z
-  .strictObject({ name: z.string().trim().min(1).max(100), enabled: z.boolean() })
-  .partial()
-  .refine((v) => Object.keys(v).length > 0, "At least one field is required");
-
 // ---------- bookings ----------
 export const createBookingSchema = z
   .strictObject({
@@ -134,6 +76,8 @@ export const createBookingSchema = z
     attendeeEmail: z.string().email().max(254).optional(),
     timezone: z.string().max(64).optional(),
     notes: z.string().max(2000).optional(),
+    /** Force one connected calendar (default: the workspace's default calendar). */
+    provider: z.enum(["google", "calendly"]).optional(),
   })
   .refine((v) => !(v.endAt && v.durationMinutes), "Provide endAt or durationMinutes, not both");
 export const cancelBookingSchema = z.strictObject({ reason: z.string().max(500).optional() });
@@ -151,6 +95,7 @@ export const availabilityQuerySchema = z.strictObject({
   to: z.iso.datetime(),
   durationMinutes: z.coerce.number().int().min(5).max(480).default(30),
   timezone: z.string().max(64).optional(),
+  provider: z.enum(["google", "calendly"]).optional(),
 });
 export const CALENDAR_PROVIDERS = ["google", "calendly"] as const;
 export const setCalendlyEventTypeSchema = z.strictObject({ eventTypeUri: z.string().trim().url().max(300) });

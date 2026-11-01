@@ -19,7 +19,6 @@ const BillingPage = lazy(() => import("./features/billing/BillingPage"));
 const WebhooksPage = lazy(() => import("./features/integrations-ui/WebhooksPage"));
 const DataPage = lazy(() => import("./features/integrations-ui/DataPage"));
 const TicketsPage = lazy(() => import("./features/tickets/TicketsPage"));
-const TransactionsPage = lazy(() => import("./features/transactions/TransactionsPage"));
 const BookingsPage = lazy(() => import("./features/bookings/BookingsPage"));
 const CalendarSettings = lazy(() => import("./features/bookings/CalendarSettings"));
 const AttentionPage = lazy(() => import("./features/attention/AttentionPage"));
@@ -41,7 +40,6 @@ export const featureRoutes = (
     <Route path="knowledge" element={<KnowledgePage />} />
     <Route path="channels" element={<ChannelsPage />} />
     <Route path="tickets" element={<TicketsPage />} />
-    <Route path="transactions" element={<TransactionsPage />} />
     <Route path="bookings" element={<BookingsPage />} />
     <Route path="attention" element={<AttentionPage />} />
     <Route path="settings" element={<SettingsLayout />}>

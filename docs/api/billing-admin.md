@@ -1,3 +1,5 @@
+> Wave 6: the platform-admin routes in this document moved to `apps/admin-api` (`docs/api/platform-admin.md`). Impersonation now issues a one-time code redeemed at `POST /api/v1/auth/impersonation/exchange`.
+
 # Billing, plan enforcement, super-admin ops API contract (Phase 7 backend)
 
 Base `/api/v1`. Same conventions as `platform.md` (strict bodies, error envelope, tenant from JWT only). Migration range 0700-0799 (`0700_billing_admin.sql`).

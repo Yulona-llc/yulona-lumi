@@ -42,6 +42,8 @@ export const contactRefSchema = z.object({
   name: z.string().nullable(),
   email: z.string().nullable(),
   phone: z.string().nullable(),
+  /** ISO time when the contact was blocked for abuse; null/absent otherwise. */
+  blockedAt: z.string().nullable().optional(),
 });
 export type ContactRef = z.infer<typeof contactRefSchema>;
 
@@ -69,6 +71,11 @@ export const contactSchema = z.object({
   phone: z.string().nullable(),
   customAttributes: z.record(z.string(), z.unknown()),
   identities: z.array(z.object({ channel: channelSchema, externalId: z.string() })),
+  /** Set when the contact is blocked (abuse). A blocked contact cannot start, reopen or resume a conversation. */
+  blockedAt: z.string().nullable().default(null),
+  blockedReason: z.string().nullable().default(null),
+  /** User who blocked the contact; null when the AI/rules did. */
+  blockedBy: z.uuid().nullable().default(null),
   firstSeenAt: z.string(),
   lastSeenAt: z.string(),
   createdAt: z.string(),
@@ -82,6 +89,8 @@ export const pageSchema = <T extends z.ZodType>(item: T) =>
 // ---------- dashboard inputs (all strict) ----------
 const limitParam = z.coerce.number().int().min(1).max(100).default(30);
 const cursorParam = z.string().max(200).optional();
+
+export const blockContactSchema = z.strictObject({ reason: z.string().trim().max(500).optional() });
 
 export const listConversationsQuerySchema = z.strictObject({
   status: conversationStatusSchema.optional(),
@@ -146,16 +155,40 @@ export const mergeContactSchema = z.strictObject({ sourceContactId: z.uuid() });
 
 // ---------- widgets ----------
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+/** Brand colours: solid, or a two-stop linear gradient. `primaryColor` stays as the derived single colour for older clients. */
+export const widgetAppearanceSchema = z.strictObject({
+  mode: z.enum(["solid", "gradient"]).default("solid"),
+  color: hex,
+  color2: hex.optional(),
+  /** Gradient direction in degrees (0 = up, 90 = right, 135 = down-right, 180 = down). */
+  angle: z.number().int().min(0).max(360).default(135),
+});
+export type WidgetAppearance = z.infer<typeof widgetAppearanceSchema>;
+
 export const widgetConfigSchema = z.strictObject({
   title: z.string().trim().max(60).optional(),
   subtitle: z.string().trim().max(120).optional(),
   welcomeMessage: z.string().trim().max(500).optional(),
   primaryColor: hex.optional(),
+  appearance: widgetAppearanceSchema.optional(),
   theme: z.enum(["light", "dark", "auto"]).optional(),
   position: z.enum(["right", "left"]).optional(),
   launcherLabel: z.string().trim().max(40).optional(),
   avatarUrl: z.url({ protocol: /^https$/ }).max(500).optional(),
   inputPlaceholder: z.string().trim().max(80).optional(),
+  protection: z.strictObject({
+    /** Hidden field that real visitors never fill; a filled value is silently dropped. */
+    honeypot: z.boolean().default(true),
+    turnstile: z.strictObject({
+      enabled: z.boolean().default(false),
+      /** Public Cloudflare Turnstile site key (the secret is write-only, see `turnstileSecret`). */
+      siteKey: z.string().trim().max(100).regex(/^[A-Za-z0-9_-]*$/, "Invalid site key").default(""),
+      theme: z.enum(["auto", "light", "dark"]).default("auto"),
+      size: z.enum(["normal", "compact", "flexible"]).default("normal"),
+      appearance: z.enum(["always", "interaction-only"]).default("always"),
+      action: z.string().trim().max(32).regex(/^[A-Za-z0-9_-]*$/, "Use letters, digits, - and _").optional(),
+    }).optional(),
+  }).optional(),
 });
 export type WidgetConfig = z.infer<typeof widgetConfigSchema>;
 
@@ -183,8 +216,12 @@ export const allowedDomainSchema = z
   .regex(/^(https?:\/\/)?(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/, "Invalid domain pattern")
   .max(253);
 
+/** Write-only Cloudflare Turnstile secret key. `null` removes it on update. */
+const turnstileSecret = z.string().trim().min(8).max(200);
+
 export const createWidgetSchema = z.strictObject({
   name: z.string().trim().min(1).max(100),
+  turnstileSecret: turnstileSecret.optional(),
   agentId: z.uuid().nullable().optional(),
   enabled: z.boolean().optional(),
   config: widgetConfigSchema.optional(),
@@ -199,6 +236,7 @@ export const updateWidgetSchema = z
     config: widgetConfigSchema,
     prechat: prechatSchema,
     allowedDomains: z.array(allowedDomainSchema).max(50),
+    turnstileSecret: turnstileSecret.nullable(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: "No changes supplied" });
@@ -212,6 +250,11 @@ export const widgetSchema = z.object({
   config: widgetConfigSchema,
   prechat: prechatSchema,
   allowedDomains: z.array(z.string()),
+  /** The Turnstile secret is never returned; this says whether one is stored. */
+  hasTurnstileSecret: z.boolean(),
+  /** True when an avatar image was uploaded (it wins over `config.avatarUrl`); `avatarVersion` changes with every upload. */
+  hasAvatar: z.boolean().default(false),
+  avatarVersion: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -225,7 +268,13 @@ const visitorFields = z.strictObject({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)).optional(),
   phone: z.string().trim().min(3).max(40).optional(),
 });
+/** Honeypot (must stay empty) and Cloudflare Turnstile response token (when the widget has Turnstile enabled). */
+const botFields = {
+  hp: z.string().max(200).optional(),
+  turnstileToken: z.string().max(2048).optional(),
+};
 export const startConversationSchema = z.strictObject({
+  ...botFields,
   /** Stable anonymous id previously returned by this API (kept in the widget's localStorage). */
   visitorId: z.uuid().optional(),
   visitor: visitorFields.optional(),
@@ -241,6 +290,7 @@ export const startConversationSchema = z.strictObject({
 export type StartConversationInput = z.input<typeof startConversationSchema>;
 
 export const publicSendMessageSchema = z.strictObject({
+  hp: botFields.hp,
   text: z.string().trim().min(1).max(4000),
   /** Idempotency key: a retried send with the same id returns the original message. */
   clientMessageId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/),

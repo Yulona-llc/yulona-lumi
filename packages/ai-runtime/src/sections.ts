@@ -1,3 +1,5 @@
+import { normalizeInline, normalizeWs } from "./extract";
+
 /**
  * Splits extracted text into titled sections, the unit an agent reads. No tokenizer and no embeddings: markdown
  * headings (and `htmlToText`'s heading markers) give natural boundaries, otherwise paragraphs are grouped.
@@ -22,7 +24,7 @@ export const slugify = (s: string): string =>
   s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "skill";
 
 const firstLine = (s: string, n = 60) => {
-  const l = s.split("\n").find((x) => x.trim())?.trim() ?? "";
+  const l = normalizeInline(s.split("\n").find((x) => x.trim()) ?? "");
   return l.length > n ? l.slice(0, n - 1).trimEnd() + "…" : l;
 };
 
@@ -62,7 +64,7 @@ export function sectionize(text: string, o: SectionOptions = {}): Section[] {
   const max = o.maxChars ?? 3000;
   const min = o.minChars ?? 500;
   const fallback = o.fallbackTitle ?? "Overview";
-  const src = text.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").trim();
+  const src = normalizeWs(text);
   if (!src) return [];
 
   // 1) blocks by heading, title = heading path
@@ -78,7 +80,7 @@ export function sectionize(text: string, o: SectionOptions = {}): Section[] {
       if (cur.body.trim() || blocks.length === 0 && cur.title !== fallback) blocks.push(cur);
       const depth = m[1]!.length;
       path.length = depth - 1;
-      path[depth - 1] = m[2]!.trim();
+      path[depth - 1] = normalizeInline(m[2]!);
       cur = { title: path.filter(Boolean).slice(-2).join(" › "), body: "" };
     } else cur.body += line + "\n";
   }
@@ -103,15 +105,16 @@ export function sectionize(text: string, o: SectionOptions = {}): Section[] {
       parts.forEach((p, i) => out.push({ title: parts.length > 1 ? `${b.title} (part ${i + 1})` : b.title, content: p }));
     }
   }
-  return out.filter((s) => s.content.trim()).map((s, index) => ({ index, title: s.title.slice(0, 200), content: s.content }));
+  return out.filter((s) => s.content.trim()).map((s, index) => ({ index, title: normalizeInline(s.title).slice(0, 200), content: s.content }));
 }
 
 /** Deterministic one-line description of a skill (no AI): the operator can overwrite it. */
 export function describeSkill(sections: Section[], sourceName: string): string {
   const first = sections[0];
-  if (!first) return sourceName;
-  const sentence = /^(.{20,200}?[.!?])(\s|$)/s.exec(first.content.replace(/\s+/g, " ").trim())?.[1] ?? first.content.replace(/\s+/g, " ").trim().slice(0, 160);
-  const titles = sections.slice(0, 6).map((s) => s.title).filter((t) => t && t !== "Overview");
+  if (!first) return normalizeInline(sourceName);
+  const flat = normalizeInline(first.content);
+  const sentence = /^(.{20,200}?[.!?])(\s|$)/s.exec(flat)?.[1] ?? flat.slice(0, 160);
+  const titles = sections.slice(0, 6).map((s) => normalizeInline(s.title)).filter((t) => t && t !== "Overview");
   const topics = titles.length > 1 ? ` Covers: ${titles.join("; ")}.` : "";
-  return `${sentence}${topics}`.slice(0, 500);
+  return normalizeInline(`${sentence}${topics}`).slice(0, 500);
 }

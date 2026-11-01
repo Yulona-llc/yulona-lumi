@@ -9,3 +9,5 @@ export * from "./logger";
 export * from "./conversations";
 export * from "./agent";
 export * from "./ops";
+export * from "./hubspot";
+export * from "./copilot";

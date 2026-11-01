@@ -1,10 +1,10 @@
 ---
 title: Requirements and install
-description: Prepare a Linux host and install Yulona with one command, then sign in to your first workspace.
+description: Prepare a Linux host and install Lumi with one command, then sign in to your first workspace.
 icon: terminal
 ---
 
-This page is for operators installing Yulona for the first time. By the end you will have a running stack behind HTTPS and an admin account for your single workspace.
+This page is for operators installing Lumi for the first time. By the end you will have a running stack behind HTTPS and an admin account for your single workspace.
 
 ## Requirements
 
@@ -149,9 +149,26 @@ docker compose -f deploy/docker-compose.dev.yml up -d postgres redis
 By default the images are built from the repository. To skip building, set pinned registry images in `deploy/.env`:
 
 ```bash
-YULONA_API_IMAGE=ghcr.io/your-org/yulona-api:1.0.0
-YULONA_DASHBOARD_IMAGE=ghcr.io/your-org/yulona-dashboard:1.0.0
+YULONA_API_IMAGE=ghcr.io/your-org/yulona/api:main
+YULONA_DASHBOARD_IMAGE=ghcr.io/your-org/yulona/dashboard:main
 ```
+
+For continuous deploys of the API and worker with no downtime, install once under `/opt/yulona`, then use `deploy/rollout.sh` (and the `deploy-backend` GitHub Actions workflow with a self-hosted runner labelled `yulona-vpc`). See [Upgrade, backup and restore](/self-hosting/upgrade-backup-restore#zero-downtime-backend-rollout).
+
+## Dashboard and admin web on Vercel
+
+The tenant dashboard and platform admin web are static SPAs. You can host them on Vercel while the API, worker, Postgres and Redis stay on the VM.
+
+1. Create two Vercel projects from this repository. Set **Root Directory** to `apps/dashboard` and `apps/admin-web`.
+2. Production env: `VITE_API_URL=https://api.example.com` on the dashboard project, and `VITE_ADMIN_API_URL=https://admin-api.example.com` (or your admin API origin) on the admin project. Do not add a Vercel rewrite of `/api` to the VM: chat and WebSockets must go straight to the API host.
+3. On the VM set `CORS_ORIGINS` to those exact origins, `PUBLIC_API_URL` to the API origin, and `WIDGET_SCRIPT_URL` to `https://app.example.com/widget.js` (the dashboard project serves the widget bundle). If the dashboard and API are different sites (not subdomains of one domain), set `CROSS_SITE_COOKIES=true`.
+4. Use `deploy/Caddyfile.api` on the VM so Caddy serves only the API (and optional admin host). For the admin API host copy `deploy/admin-site/admin-api-only.caddy.example` to `deploy/admin-site/admin.caddy`.
+5. In each Vercel project, keep **Include source files outside of the Root Directory** enabled (the build installs the whole monorepo). Each project's `vercel.json` sets an `ignoreCommand` (`scripts/vercel-ignore.sh`), so Vercel skips a deployment when nothing the project is built from changed: the dashboard rebuilds for `apps/dashboard`, `apps/widget` and `packages/shared`, and the admin web only for `apps/admin-web`. A change to `bun.lock`, the root `package.json` or `tsconfig.base.json` rebuilds both.
+6. Use custom domains under one parent domain, for example `app.example.com`, `admin.example.com`, `api.example.com` and `admin-api.example.com`. The admin refresh cookie is `SameSite=Strict`, so an admin web on `*.vercel.app` talking to your own API domain would sign admins out on every reload.
+
+`deploy/.env.backend.example` lists every VM variable for this layout, including the Vercel variables (`VITE_API_URL`, `VITE_ADMIN_API_URL`) and the GitHub variable that switches backend deploys on.
+
+Each page view that loads `widget.js` counts as a Vercel CDN request. After the script loads, open chats use WebSocket, SSE or polling against `apiUrl` on the VM and do not add Vercel requests. Hobby is for personal, non-commercial use; a product workspace belongs on Pro.
 
 ## Common problems
 
@@ -170,4 +187,4 @@ YULONA_DASHBOARD_IMAGE=ghcr.io/your-org/yulona-dashboard:1.0.0
   </Card>
 </CardGroup>
 
-{/* source: deploy/setup.sh, deploy/docker-compose.yml, deploy/docker-compose.dev.yml, deploy/Caddyfile, deploy/postgres/init-roles.sh, apps/api/scripts/create-tenant.ts, docs/self-hosting.md */}
+{/* source: deploy/setup.sh, deploy/docker-compose.yml, deploy/docker-compose.backend.yml, deploy/docker-compose.dev.yml, deploy/Caddyfile, deploy/Caddyfile.api, deploy/admin-site/admin-api-only.caddy.example, deploy/.env.backend.example, deploy/rollout.sh, deploy/rollout-admin-api.sh, deploy/postgres/init-roles.sh, apps/api/scripts/create-tenant.ts, apps/dashboard/vercel.json, apps/admin-web/vercel.json, scripts/vercel-ignore.sh, .github/workflows/deploy-backend.yml, docs/self-hosting.md */}

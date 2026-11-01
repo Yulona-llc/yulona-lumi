@@ -1,6 +1,6 @@
 # Dashboard UI system (read before touching `apps/dashboard`)
 
-Brand source: yulona.co. **Ember** `#f97316` (action, active, focus), **Midnight** `#0f1a2f` (sidebar, ink), **Mist** `#aebcd0` (quiet text on navy), WhatsApp green `#25d366` only for "live/online/delivered". Logo = the Yulona drop + thin wordmark (`src/components/Logo.tsx`, assets in `public/brand/`).
+Brand source: yulona.co. **Ember** `#f97316` (action, active, focus), **Midnight** `#0f1a2f` (sidebar, ink), **Mist** `#aebcd0` (quiet text on navy), WhatsApp green `#25d366` only for "live/online/delivered". Logo = the Lumi drop + thin wordmark (`src/components/Logo.tsx`, assets in `public/brand/`).
 
 ## Stack
 React 19, Tailwind v4 (`src/styles.css` holds every token), shadcn/ui components in `src/components/ui/*` (Radix + cva + `cn()` from `@/lib/utils`), `lucide-react` icons, `motion` (`motion/react`) for animation, `sonner` toasts, `cmdk`. Path alias `@/` = `src/`.

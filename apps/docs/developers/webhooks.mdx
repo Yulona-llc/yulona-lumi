@@ -1,10 +1,10 @@
 ---
 title: Webhooks
-description: Subscribe to Yulona events, verify the HMAC signature, and handle retries, redelivery and automatic disabling.
+description: Subscribe to Lumi events, verify the HMAC signature, and handle retries, redelivery and automatic disabling.
 icon: webhook
 ---
 
-Outbound webhooks push events from Yulona to an HTTPS endpoint you run: a new message, a handoff, a booking. This page is for developers building that endpoint. Webhooks are managed by workspace admins (minimum role `admin`) and require `ENCRYPTION_KEY` on the server.
+Outbound webhooks push events from Lumi to an HTTPS endpoint you run: a new message, a handoff, a booking. This page is for developers building that endpoint. Webhooks are managed by workspace admins (minimum role `admin`) and require `ENCRYPTION_KEY` on the server.
 
 ## Create a webhook
 
@@ -13,7 +13,7 @@ Outbound webhooks push events from Yulona to an HTTPS endpoint you run: a new me
 curl -X POST https://YOUR_HOST/api/v1/webhooks \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"CRM sync","url":"https://crm.example.com/hooks/yulona","events":["message.created","handoff.requested"]}'
+  -d '{"name":"CRM sync","url":"https://crm.example.com/hooks/lumi","events":["message.created","handoff.requested"]}'
 ```
 
 ```javascript fetch
@@ -22,7 +22,7 @@ const res = await fetch("https://YOUR_HOST/api/v1/webhooks", {
   headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
   body: JSON.stringify({
     name: "CRM sync",
-    url: "https://crm.example.com/hooks/yulona",
+    url: "https://crm.example.com/hooks/lumi",
     events: ["message.created", "handoff.requested"],
   }),
 });
@@ -36,7 +36,7 @@ const webhook = await res.json(); // webhook.secret is shown once
 {
   "id": "3f2b9c1e-7d54-4a0b-8e61-0c9d2a4b5f77",
   "name": "CRM sync",
-  "url": "https://crm.example.com/hooks/yulona",
+  "url": "https://crm.example.com/hooks/lumi",
   "events": ["message.created", "handoff.requested"],
   "enabled": true,
   "disabledReason": null,
@@ -65,9 +65,10 @@ Limits: 20 webhooks per workspace (`409 conflict` beyond that), 1 to 20 events p
 | `contact.created` | A contact is created | `{ contact: { id, name, email, phone, customAttributes, createdAt, updatedAt } }` |
 | `contact.updated` | Name, email, phone, custom attributes or merge state changed | same as `contact.created` |
 | `booking.created` | A booking is created | `{ booking: { ...row as camelCased JSON } }` |
+| `lead.qualified` | A conversation reaches the qualified stage (once per conversation) | `{ conversationId, contactId, agentId, lead: { name?, email?, phone?, need?, budget?, timeline?, score? } }` |
 | `ticket.created`, `ticket.updated` | A ticket is created or changed | `{ ticket: { ...row as camelCased JSON } }` |
 | `*` | Subscribe to everything | |
-| `webhook.test` | Sent by the test endpoint, regardless of subscription | `{ message: "Test event from Yulona", webhookId }` |
+| `webhook.test` | Sent by the test endpoint, regardless of subscription | `{ message: "Test event from Lumi", webhookId }` |
 
 `booking` and `ticket` payloads are the database row with camelCased keys; columns whose name looks like a token, secret, credential, password or hash are dropped. Their exact fields can grow over time, so read only what you need.
 
@@ -99,11 +100,15 @@ The envelope `id` is stable per event: it is identical across retries, redeliver
 
 | Header | Value |
 |---|---|
-| `X-Yulona-Event` | Event type, for example `message.created` |
-| `X-Yulona-Delivery` | Delivery id (differs per webhook and per redelivery) |
-| `X-Yulona-Timestamp` | Unix time in seconds when this attempt was signed |
-| `X-Yulona-Signature` | `v1=` followed by hex `HMAC-SHA256(secret, "<timestamp>.<raw body>")` |
-| `User-Agent` | `Yulona-Webhooks/1.0` |
+| `X-Lumi-Event` | Event type, for example `message.created` |
+| `X-Lumi-Delivery` | Delivery id (differs per webhook and per redelivery) |
+| `X-Lumi-Timestamp` | Unix time in seconds when this attempt was signed |
+| `X-Lumi-Signature` | `v1=` followed by hex `HMAC-SHA256(secret, "<timestamp>.<raw body>")` |
+| `User-Agent` | `Lumi-Webhooks/1.0` |
+
+<Note>
+Every request also carries the same four values under the older `X-Yulona-Event`, `X-Yulona-Delivery`, `X-Yulona-Timestamp` and `X-Yulona-Signature` names, from before the product was renamed to Lumi. Existing receivers keep working; new receivers should read the `X-Lumi-*` headers. Both signatures are identical. See [name and compatibility](/concepts#name-and-compatibility).
+</Note>
 
 ## Verify the signature
 
@@ -115,11 +120,11 @@ import crypto from "node:crypto";
 import express from "express";
 
 const app = express();
-const SECRET = process.env.YULONA_WEBHOOK_SECRET; // whsec_...
+const SECRET = process.env.LUMI_WEBHOOK_SECRET; // whsec_...
 
-app.post("/hooks/yulona", express.raw({ type: "application/json" }), (req, res) => {
-  const timestamp = req.get("X-Yulona-Timestamp") ?? "";
-  const signature = req.get("X-Yulona-Signature") ?? "";
+app.post("/hooks/lumi", express.raw({ type: "application/json" }), (req, res) => {
+  const timestamp = req.get("X-Lumi-Timestamp") ?? "";
+  const signature = req.get("X-Lumi-Signature") ?? "";
   const age = Math.abs(Date.now() / 1000 - Number(timestamp));
   if (!Number.isFinite(age) || age > 300) return res.status(400).send("stale timestamp");
 
@@ -140,13 +145,13 @@ import hashlib, hmac, os, time
 from flask import Flask, request, abort
 
 app = Flask(__name__)
-SECRET = os.environ["YULONA_WEBHOOK_SECRET"].encode()  # whsec_...
+SECRET = os.environ["LUMI_WEBHOOK_SECRET"].encode()  # whsec_...
 
-@app.post("/hooks/yulona")
-def yulona_hook():
+@app.post("/hooks/lumi")
+def lumi_hook():
     raw = request.get_data()  # raw bytes, before any JSON parsing
-    timestamp = request.headers.get("X-Yulona-Timestamp", "")
-    signature = request.headers.get("X-Yulona-Signature", "")
+    timestamp = request.headers.get("X-Lumi-Timestamp", "")
+    signature = request.headers.get("X-Lumi-Signature", "")
     try:
         if abs(time.time() - int(timestamp)) > 300:
             abort(400, "stale timestamp")

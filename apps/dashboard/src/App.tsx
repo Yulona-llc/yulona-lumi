@@ -12,8 +12,9 @@ const AcceptInvite = lazy(() => import("./pages/AcceptInvite"));
 const Shell = lazy(() => import("./pages/Shell"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Placeholder = lazy(() => import("./pages/Placeholder"));
-const AdminRoutes = lazy(() => import("./features/admin/AdminRoutes"));
+const ImpersonatePage = lazy(() => import("./features/impersonation/ImpersonatePage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const OnboardingPage = lazy(() => import("./features/onboarding/OnboardingPage"));
 
 function RequireAuth() {
   const { status } = useAuth();
@@ -41,13 +42,14 @@ export function App() {
         </Route>
         <Route path="/accept-invite" element={<AcceptInvite />} />
         <Route element={<RequireAuth />}>
+          <Route path="onboarding" element={<OnboardingPage />} />
           <Route element={<Shell />}>
             <Route index element={<Navigate to="/overview" replace />} />
             {featureRoutes}
             <Route path="profile" element={<Profile />} />
           </Route>
         </Route>
-        <Route path="admin/*" element={<AdminRoutes />} />
+        <Route path="impersonate" element={<ImpersonatePage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Suspense>

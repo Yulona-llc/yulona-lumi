@@ -11,12 +11,13 @@ import { toast } from "@/components/ui/sonner";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { errMsg } from "../common/api";
 import { Empty, ErrorState, PageHeader, RoleNotice, useRole } from "../common/ui";
-import { BarSeries } from "../admin/charts";
+import { BarSeries } from "../common/charts";
 import { Breakdown } from "./Breakdown";
 import { BuyCreditsDialog } from "./BuyCreditsDialog";
+import { copilotApi, remainingText } from "../copilot/api";
 import { CreditAlerts } from "./CreditAlerts";
 import { Gauge } from "./Gauge";
-import { creditKeys, creditsApi, fmtCredits, fmtNum, nextReset, rangeFor, toCredits, type GroupBy } from "./api";
+import { creditKeys, creditsApi, fmtCredits, fmtNum, messagesLeftText, nextReset, rangeFor, toCredits, type GroupBy } from "./api";
 import { useCredits } from "./hooks";
 
 const RANGES = [7, 30, 90] as const;
@@ -31,6 +32,21 @@ function Fact({ label, value, hint }: { label: string; value: string; hint?: str
       <dd className="font-display text-xl font-semibold tabular-nums">{value}</dd>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
+  );
+}
+
+/** The Ask Lumi copilot's own monthly allowance (separate from chat credits). Admins on SaaS only. */
+function CopilotAllowanceCard() {
+  const q = useQuery({ queryKey: ["copilot", "status"], queryFn: copilotApi.status, retry: false, staleTime: 30_000 });
+  const a = q.data;
+  if (!a || a.selfHosted) return null;
+  const locked = a.access === "locked";
+  return (
+    <Card className="gap-1.5 p-5" data-testid="copilot-allowance">
+      <h2 className="font-display text-lg font-semibold">Ask Lumi</h2>
+      {locked ? <p className="text-sm text-muted-foreground">Ask Lumi is included in paid plans. <Link to="/settings/billing" className="font-medium text-foreground underline underline-offset-4">See plans</Link></p>
+        : <><p className="text-sm font-medium">{remainingText(a.allowance)}</p><p className="text-sm text-muted-foreground">Ask Lumi has its own monthly allowance, so it never uses the credits for your customer chats. It resets on {new Date(a.allowance.resetsAt).toLocaleDateString(undefined, { dateStyle: "medium" })}.</p></>}
+    </Card>
   );
 }
 
@@ -64,6 +80,8 @@ export default function UsagePage() {
 
       {saas && <CreditAlerts showUsageLink={false} showBuy={false} />}
 
+      {saas && isAdmin && <StaggerItem><CopilotAllowanceCard /></StaggerItem>}
+
       {saas && c ? (
         <StaggerItem>
           <Card className="gap-6 p-5 sm:p-7 md:grid md:grid-cols-[17rem_minmax(0,1fr)] md:items-center md:gap-10" data-testid="credits-hero">
@@ -72,6 +90,14 @@ export default function UsagePage() {
               <div>
                 <h2 className="font-display text-lg font-semibold">This month</h2>
                 <p className="text-sm text-muted-foreground">{c.unlimited ? "Your plan has no credit limit." : <>Your allowance resets on {nextReset(c.period)}. Top-ups carry over.</>}</p>
+                {messagesLeftText(c.estimatedMessages) && (
+                  <p className="mt-2 text-sm font-medium" data-testid="messages-left">
+                    {messagesLeftText(c.estimatedMessages)}
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      {c.estimateBasis === "usage" ? `Based on your last 30 days, about ${c.creditsPerMessage} credits per message.` : `Estimate for a typical message (about ${c.creditsPerMessage} credits); it adjusts once your assistants have answered more.`}
+                    </span>
+                  </p>
+                )}
               </div>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-4">
                 {!c.unlimited && <Fact label="Monthly allowance" value={fmtCredits(c.allowanceMicro)} />}
@@ -84,7 +110,7 @@ export default function UsagePage() {
       ) : (
         <StaggerItem>
           <Alert variant="info"><Server /><AlertTitle>Usage on your own provider key is not charged</AlertTitle>
-            <AlertDescription>This workspace runs on your own AI provider account, so Yulona does not meter credits. Your provider bills you directly; the token counts below help you estimate that.</AlertDescription></Alert>
+            <AlertDescription>This workspace runs on your own AI provider account, so Lumi does not meter credits. Your provider bills you directly; the token counts below help you estimate that.</AlertDescription></Alert>
         </StaggerItem>
       )}
 

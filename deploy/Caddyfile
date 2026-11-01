@@ -16,8 +16,12 @@
 	@api path /api/* /ws /ws/* /healthz /readyz
 	handle @api {
 		reverse_proxy api:3000 {
-			health_uri /healthz
-			health_interval 15s
+			# Short active checks so a stopped container is dropped quickly during blue/green rollouts
+			# (deploy/rollout.sh). /readyz also requires Postgres and Redis.
+			health_uri /readyz
+			health_interval 2s
+			health_timeout 2s
+			health_fails 2
 			# Caddy sets X-Forwarded-For/Proto itself; api is only reachable via this proxy.
 		}
 	}
@@ -27,3 +31,7 @@
 		reverse_proxy dashboard:8080
 	}
 }
+
+# Optional platform-admin host: copy deploy/admin-site/admin.caddy.example to deploy/admin-site/admin.caddy to enable.
+# A glob that matches no file imports nothing, so the default install serves no admin host.
+import /etc/caddy/admin/*.caddy

@@ -58,6 +58,7 @@ export interface ConversationRow {
   contactName: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  contactBlockedAt?: Date | string | null;
   cursorTs?: string;
 }
 export function toConversationSummary(r: ConversationRow): ConversationSummary {
@@ -69,7 +70,7 @@ export function toConversationSummary(r: ConversationRow): ConversationSummary {
     assignedUserId: r.assignedUserId,
     agentId: r.agentId,
     widgetId: r.widgetId,
-    contact: { id: r.contactId, name: r.contactName, email: r.contactEmail, phone: r.contactPhone },
+    contact: { id: r.contactId, name: r.contactName, email: r.contactEmail, phone: r.contactPhone, blockedAt: iso(r.contactBlockedAt) },
     lastMessageAt: isoReq(r.lastMessageAt),
     lastMessagePreview: r.lastMessagePreview,
     lastCustomerMessageAt: iso(r.lastCustomerMessageAt),
@@ -85,6 +86,9 @@ export interface ContactRow {
   phone: string | null;
   customAttributes: Record<string, unknown>;
   identities: { channel: ContactDto["identities"][number]["channel"]; externalId: string }[];
+  blockedAt?: Date | string | null;
+  blockedReason?: string | null;
+  blockedBy?: string | null;
   firstSeenAt: Date | string;
   lastSeenAt: Date | string;
   createdAt: Date | string;
@@ -95,6 +99,7 @@ export function toContactDto(r: ContactRow): ContactDto {
     id: r.id, name: r.name, email: r.email, phone: r.phone,
     customAttributes: r.customAttributes ?? {},
     identities: r.identities ?? [],
+    blockedAt: iso(r.blockedAt), blockedReason: r.blockedReason ?? null, blockedBy: r.blockedBy ?? null,
     firstSeenAt: isoReq(r.firstSeenAt), lastSeenAt: isoReq(r.lastSeenAt),
     createdAt: isoReq(r.createdAt), updatedAt: isoReq(r.updatedAt),
   };

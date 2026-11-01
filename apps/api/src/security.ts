@@ -33,11 +33,11 @@ export function safeEqual(a: string, b: string): boolean {
 
 export async function signAccessToken(
   secret: string,
-  p: { userId: string; tenantId: string; role: Role; ttlSeconds: number; impersonation?: { adminId: string; sessionId: string } },
+  p: { userId: string; tenantId: string; role: Role; ttlSeconds: number; impersonation?: { adminId: string; sessionId: string; readOnly?: boolean } },
 ): Promise<string> {
   const iat = Math.floor(Date.now() / 1000);
   const claims: AccessClaims = { sub: p.userId, tid: p.tenantId, role: p.role, iat, exp: iat + p.ttlSeconds, jti: crypto.randomUUID(),
-    ...(p.impersonation ? { imp: p.impersonation.adminId, ims: p.impersonation.sessionId } : {}) };
+    ...(p.impersonation ? { imp: p.impersonation.adminId, ims: p.impersonation.sessionId, ...(p.impersonation.readOnly ? { ro: true } : {}) } : {}) };
   return sign(claims, secret, "HS256");
 }
 

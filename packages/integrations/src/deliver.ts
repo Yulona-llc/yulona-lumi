@@ -1,7 +1,7 @@
 import { assertSafeUrl, SsrfError, type Resolver } from "@yulona/ai-runtime";
 import { assertUuid, type Tx } from "@yulona/db";
 import { enqueue, type JobContext, type JobHandler } from "@yulona/queue";
-import { DELIVERY_HEADER, EVENT_HEADER, openSecret, SIGNATURE_HEADER, signWebhook, TIMESTAMP_HEADER } from "./signing";
+import { DELIVERY_HEADER, EVENT_HEADER, LUMI_DELIVERY_HEADER, LUMI_EVENT_HEADER, LUMI_SIGNATURE_HEADER, LUMI_TIMESTAMP_HEADER, openSecret, SIGNATURE_HEADER, signWebhook, TIMESTAMP_HEADER } from "./signing";
 
 /** Seconds to wait after failed attempt N (index N-1). 8 attempts total, last retry after 24 h. */
 export const RETRY_SCHEDULE_SEC = [30, 120, 600, 3600, 10_800, 43_200, 86_400] as const;
@@ -94,11 +94,15 @@ export function createWebhookDeliverHandler(opts: DeliverOptions = {}): JobHandl
         body,
         headers: {
           "content-type": "application/json",
-          "user-agent": "Yulona-Webhooks/1.0",
+          "user-agent": "Lumi-Webhooks/1.0",
           [EVENT_HEADER]: row.eventType,
           [DELIVERY_HEADER]: row.id,
           [TIMESTAMP_HEADER]: String(ts),
           [SIGNATURE_HEADER]: signWebhook(secret, ts, body),
+          [LUMI_EVENT_HEADER]: row.eventType,
+          [LUMI_DELIVERY_HEADER]: row.id,
+          [LUMI_TIMESTAMP_HEADER]: String(ts),
+          [LUMI_SIGNATURE_HEADER]: signWebhook(secret, ts, body),
         },
       });
       statusCode = res.status;

@@ -1,4 +1,4 @@
-# Self-hosting Yulona
+# Self-hosting Lumi
 
 ## Requirements
 - Linux host, 2 vCPU / 4 GB RAM / 20 GB disk minimum.
@@ -57,7 +57,8 @@ docker compose -f deploy/docker-compose.yml ps
 docker compose -f deploy/docker-compose.yml logs -f api
 curl https://app.example.com/readyz
 ```
-**Upgrade:** `deploy/upgrade.sh` (pre-upgrade `pg_dump`, pulls/builds, migrates, restarts service by service, prints rollback steps; a failed migration leaves the running services untouched). Use `--no-git` when deploying registry images (`YULONA_API_IMAGE` / `YULONA_DASHBOARD_IMAGE` in `.env`).
+**Upgrade (full stack):** `deploy/upgrade.sh` (pre-upgrade `pg_dump`, pulls/builds, migrates, restarts service by service, prints rollback steps; a failed migration leaves the running services untouched). Use `--no-git` when deploying registry images (`YULONA_API_IMAGE` / `YULONA_DASHBOARD_IMAGE` in `.env`).
+**Zero-downtime API/worker:** `deploy/rollout.sh <image>` with `deploy/docker-compose.backend.yml` (blue/green on the existing Docker networks; gates on `/readyz` and worker startup). The `deploy-backend` workflow builds to GHCR on GitHub-hosted runners and runs the rollout on a self-hosted runner labelled `yulona-vpc` (install under `/opt/yulona`). Migrations applied while the old API is live must be backward compatible.
 
 **Backup:** `deploy/backup.sh` writes `deploy/backups/yulona-<ts>.sql.gz` (verified with `gzip -t`, keeps the newest 14). Cron it (`17 3 * * * /opt/yulona/deploy/backup.sh`) and copy files off-host. Also back up `deploy/.env` (**`ENCRYPTION_KEY` is required to read stored channel/OAuth credentials**) and your S3/MinIO bucket.
 **Restore:** `deploy/restore.sh <file.sql.gz>` (asks for confirmation; stops api/worker, replaces the schema, re-runs migrations, restarts). Test restores on a scratch host periodically.
@@ -72,16 +73,22 @@ The `worker` and `api` join the `edge` network so they can call LLM/SMTP/Stripe/
 `scripts/load-test.ts` (Bun fetch, no deps): `BASE_URL=... ADMIN_EMAIL=... ADMIN_PASSWORD=... bun scripts/load-test.ts --duration 15 --concurrency 20`. `scripts/smoke-stack.ts` runs the functional end-to-end check against a running stack. Reference run (MacBook, Docker Desktop VM, mock AI provider, Caddy local TLS, load generator on the same machine, 20 connections, 10 s): `/healthz` about 6,400 req/s (p50 2 ms, p95 7 ms); authenticated reads about 4,800 req/s of which almost all were answered 429 by the built-in rate limiter (300 req/min/IP global), accepted reads p50 2.6 ms; widget conversation start 429s after a handful of requests (per-widget/IP limit). Conclusion: a single IP cannot overload the API because the limiter engages first; to measure raw capacity run the generator from several IPs or temporarily raise `rateLimits` in `apps/api/src/config.ts`. LLM latency, not the API, dominates real conversation time.
 
 ## Split deployment (api and dashboard on separate hosts)
-The two images share nothing except the HTTP API.
+The two images share nothing except the HTTP API. Preferred layout for CI: API/worker/Postgres/Redis on a VPC VM (`deploy/rollout.sh`), tenant dashboard and admin web as static Vercel projects (`apps/dashboard/vercel.json`, `apps/admin-web/vercel.json`).
 
-**API host** (`api.example.com`): run the api image plus Postgres/Redis (you can reuse `docker-compose.yml`, removing the `dashboard` service and the Caddy dashboard route, or put your own TLS proxy in front of `api:3000`). Required env:
+**API host** (`api.example.com`): run the api image plus Postgres/Redis. Use `deploy/Caddyfile.api` (API routes only) or put your own TLS proxy in front of `api:3000`. Required env:
 ```
 CORS_ORIGINS=https://app.example.com      # exact dashboard origin(s), comma-separated; credentials are allowed
+PUBLIC_API_URL=https://api.example.com
+WIDGET_SCRIPT_URL=https://app.example.com/widget.js   # when the dashboard (Vercel) serves the widget bundle
 CROSS_SITE_COOKIES=true                   # only if the two hosts are different SITES (not subdomains of one domain)
 ```
 If both are subdomains of the same registrable domain (`app.` / `api.example.com`), leave `CROSS_SITE_COOKIES=false` (SameSite=Strict still works for same-site requests). The API must be served over HTTPS (cookies are `Secure`).
 
-**Dashboard host** (`app.example.com`): only the static image:
+**Dashboard on Vercel** (`app.example.com`): Root Directory `apps/dashboard`, env `VITE_API_URL=https://api.example.com`. The build copies `widget.js` into the output. Do not rewrite `/api` through Vercel (WebSockets and chat must hit the API host). Widget page views download the script from Vercel; open chats talk only to the API.
+
+**Admin web on Vercel**: Root Directory `apps/admin-web`, env `VITE_ADMIN_API_URL` to the admin API origin. Keep `admin-api` on the VM (Compose profile `admin`) with `ADMIN_ALLOWED_CIDRS` as needed.
+
+**Dashboard as a container** (alternative to Vercel):
 ```bash
 docker run -d --name yulona-dashboard --restart unless-stopped \
   --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \

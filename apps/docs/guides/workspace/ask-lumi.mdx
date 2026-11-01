@@ -1,0 +1,47 @@
+---
+title: Ask Lumi
+description: Use the Ask Lumi assistant to change your agent, chat window, business hours, goals and website knowledge by describing what you want.
+icon: sparkles
+---
+
+Ask Lumi is an assistant built into the dashboard. You tell it what you want in plain words and it makes the change for you, so you do not have to find the right settings page. This page is for workspace owners and admins.
+
+<Note>
+Ask Lumi is included in **paid plans**. On Free and trial workspaces the drawer shows an upgrade card instead of the chat. On a self-hosted installation Ask Lumi is always available and never charged. Only **owners and admins** see the **Ask Lumi** button.
+</Note>
+
+## Open Ask Lumi
+
+Click **Ask Lumi** in the top bar. A drawer opens on the right (full width on a phone). Type a request such as "Make my greeting friendlier" and press Enter, or click one of the suggested replies. At the bottom the drawer shows how much of your monthly allowance is left, for example "148 of 150 credits left this month".
+
+## What Lumi can do
+
+| Ask for | What happens |
+|---|---|
+| Change the greeting, persona, fallback message or handover words of an agent | Lumi edits the **draft** and shows what changed. |
+| Change the chat window title, welcome message, colour, position or launcher label | Lumi updates your widget and shows what changed. |
+| "Add my website" | Lumi starts reading the site (up to 25 pages, 3 levels deep). Up to two websites per conversation. |
+| Set business hours | Lumi saves the days and times you describe. |
+| Set your goals | Lumi updates the goals that drive your Overview. |
+| "What should I do next?" | Lumi shows a checklist of your setup and quick replies. |
+| Publish an agent | Lumi **asks you to confirm** (see below). |
+
+Lumi cannot read your customers' conversations or your knowledge text, cannot see passwords or API keys, and cannot delete or disconnect anything. Everything it changes is recorded in the audit log as done through Ask Lumi.
+
+## Confirm before anything goes live
+
+When you ask Lumi to publish, it shows a card, **Publish ... ?**, with **Confirm** and **Not now**. Nothing is published until you press **Confirm**. The card expires after 15 minutes, works once, and only you can press it: Lumi itself can never confirm.
+
+## Limits and your allowance
+
+- Ask Lumi has **its own monthly credit allowance** per plan. It never uses the credits for customer chats, and running out of Ask Lumi credits does not pause your agent.
+- When the allowance is used up, Ask Lumi says so and is available again next month. See the allowance on [Usage](/guides/account/usage-and-credits#ask-lumi-allowance).
+- Each conversation allows 40 of your messages; start a new one when you reach the limit. There are also per-minute and per-month limits per workspace.
+
+## Common problems
+
+- **"Ask Lumi is included in paid plans".** Upgrade under **Settings**, **Billing**. See [Billing and plans](/guides/account/billing-and-plans).
+- **"Lumi is still answering the previous message".** Wait a moment and send again.
+- **"Lumi is unavailable right now".** The AI service did not answer. Try again shortly.
+
+{/* source: apps/dashboard/src/features/copilot/*, apps/api/src/copilot/*, docs/api/copilot.md */}

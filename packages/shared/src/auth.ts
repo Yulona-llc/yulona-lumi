@@ -59,6 +59,8 @@ export const accessClaimsSchema = z.object({
   /** Present only on impersonation tokens: platform admin id + impersonation session id. */
   imp: z.uuid().optional(),
   ims: z.uuid().optional(),
+  /** Read-only impersonation (platform support): the API rejects every non-GET/HEAD request. */
+  ro: z.boolean().optional(),
 });
 export type AccessClaims = z.infer<typeof accessClaimsSchema>;
 

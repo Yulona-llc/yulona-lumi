@@ -1,8 +1,13 @@
+import { createDb, type Db } from "@yulona/db";
 import { setupTestDb, testUrls } from "@yulona/db/testing";
 import { createLogger } from "@yulona/shared";
 import { createApp, type AppDeps } from "../apps/api/src/app";
 import { loadConfig, type Config } from "../apps/api/src/config";
 import { MemoryRateLimiter } from "../apps/api/src/ratelimit";
+import { createAdminApp } from "../apps/admin-api/src/app";
+import { loadConfig as loadAdminConfig } from "../apps/admin-api/src/config";
+import { MemoryRateLimiter as AdminLimiter } from "../apps/admin-api/src/ratelimit";
+import { signAdminToken } from "../apps/admin-api/src/security";
 import { signAccessToken } from "../apps/api/src/security";
 
 export const hasDb = !!testUrls();
@@ -69,3 +74,30 @@ export function cookiesOf(res: Response): Record<string, string> {
   }
   return out;
 }
+
+// ---------------------------------------------------------------- the separate platform-admin service (apps/admin-api)
+export const ADMIN_SECRET = "Zq8Lw3RtYb4NhGd8MfUa6CeQ1VoTi5SxEz0Wk3Jv9sXp";
+export const ADMIN_ORIGIN = "http://localhost:5180";
+
+/** Admin API on the same database as `b`, connected as the real `yulona_admin` role (no table grants). */
+export async function bootAdminOn(b: Booted, env: Record<string, string> = {}) {
+  await b.owner.unsafe(`ALTER ROLE yulona_admin LOGIN PASSWORD 'yulona_admin'`);
+  const u = new URL(testUrls()!.owner);
+  u.username = "yulona_admin"; u.password = "yulona_admin";
+  const db: Db = createDb(u.toString(), { max: 4 });
+  const limiter = new AdminLimiter();
+  const cfg = loadAdminConfig({ NODE_ENV: "test", ADMIN_JWT_SECRET: ADMIN_SECRET, ADMIN_DB_URL: u.toString(), ADMIN_WEB_ORIGIN: ADMIN_ORIGIN, ENCRYPTION_KEY: ENC_KEY, LOG_LEVEL: "silent",
+    ADMIN_CUSTOMER_APP_URL: "https://app.example.test", ADMIN_RATE_READ: "100000", ADMIN_RATE_WRITE: "100000", ...env });
+  const app = createAdminApp({ cfg, db, limiter, log: createLogger({ level: "silent" }) });
+  const admin = async (role: "owner" | "support" | "billing" = "owner") => {
+    const email = `${role}-${crypto.randomUUID().slice(0, 8)}@admin.example.test`;
+    const [a] = await b.owner<{ id: string }[]>`INSERT INTO platform_admins (email, name, role, password_hash) VALUES (${email}, ${role}, ${role}, 'x') RETURNING id`;
+    const [s] = await b.owner<{ f: string }[]>`SELECT sa_admin_session_create(${a!.id}, ${crypto.randomUUID()}, now() + interval '1 day', '127.0.0.1', 'test') AS f`;
+    const token = await signAdminToken(cfg.adminJwtSecret, { sub: a!.id, typ: "sa", sid: s!.f }, 900);
+    return { id: a!.id, email, token, h: { authorization: `Bearer ${token}` } };
+  };
+  const call = (method: string, path: string, h: Record<string, string> | null, body?: unknown) =>
+    app.request(`/api/v1${path}`, { method, headers: { ...(h ?? {}), ...(body !== undefined ? { "content-type": "application/json" } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  return { app, cfg, db, admin, call, close: async () => { limiter.close(); await db.end({ timeout: 2 }); } };
+}
+export type AdminBooted = Awaited<ReturnType<typeof bootAdminOn>>;

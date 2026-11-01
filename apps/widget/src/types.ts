@@ -27,12 +27,21 @@ export interface WidgetRuntimeConfig {
   title: string;
   subtitle?: string;
   primaryColor: string;
+  /** Solid or two-stop gradient brand fill; absent for older widget configs (then `primaryColor` is used). */
+  appearance?: { mode: "solid" | "gradient"; color: string; color2?: string; angle: number };
   logoUrl?: string;
   position: "right" | "left";
   theme: "light" | "dark" | "auto";
   placeholder?: string;
   launcherLabel?: string;
   preChat?: { enabled: boolean; intro?: string; fields: PreChatField[] };
+  /** The widget's agent is not live (draft-only, archived, unassigned): show an offline notice; a team member replies. */
+  unavailable?: boolean;
+  /** Bot protection from the widget settings (honeypot field, Cloudflare Turnstile). */
+  protection?: {
+    honeypot: boolean;
+    turnstile?: { siteKey: string; theme: "auto" | "light" | "dark"; size: "normal" | "compact" | "flexible"; appearance: "always" | "interaction-only"; action?: string };
+  };
   /** Highest WidgetUISchema version the server may emit. */
   schemaVersion?: number;
 }

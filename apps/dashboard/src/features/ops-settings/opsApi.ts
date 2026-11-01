@@ -2,11 +2,18 @@ import { z } from "zod";
 import { request as rawRequest, getAccessToken, ApiError, type Opts } from "../../api/client";
 import { apiBase } from "../../config";
 
-/** Typed client for `docs/api/ops.md`. Shared by tickets / transactions / bookings / attention / ops-settings. */
+/** Typed client for `docs/api/ops.md`. Shared by tickets / bookings / attention / ops-settings. */
 /** Typed-by-assertion wrapper: the client only parses JSON when given a schema. */
 const request = <T,>(path: string, o: Opts<T> = {}) => rawRequest<T>(path, { ...o, schema: z.any() as z.ZodType<T> });
 const A = { auth: true } as const;
 const j = (method: string, body?: unknown) => ({ method, auth: true as const, body });
+
+export interface HubSpotMapping {
+  properties: { need?: string; budget?: string; timeline?: string; score?: string; conversationLink?: string; source?: string };
+  sourceValue: string; lifecycleStage?: string; syncOnBooked: boolean;
+}
+export interface HubSpotSyncRow { id: string; trigger: "qualified" | "booked" | "test"; status: "pending" | "ok" | "failed" | "skipped"; action: "created" | "updated" | null; hubspotId: string | null; error: string | null; conversationId: string | null; createdAt: string; syncedAt: string | null }
+export interface HubSpotStatus { configured: boolean; connected: boolean; status: "active" | "error" | null; lastError: string | null; lastSyncAt: string | null; connectedAt: string | null; mapping: HubSpotMapping; recent: HubSpotSyncRow[] }
 
 export type Page<T> = { items: T[]; nextCursor: string | null };
 export const qs = (p: Record<string, string | number | boolean | undefined | null>) => {
@@ -30,16 +37,6 @@ export interface TicketEvent { id: string; ticketId: string; actorUserId: string
 export interface TicketFilters { q?: string; priority?: string; assignee?: string; slaBreached?: boolean; status?: string }
 export interface Board { columns: Record<TicketStatus, Ticket[]>; totals: Record<TicketStatus, number> }
 
-export const TXN_STATUSES = ["pending", "completed", "failed", "refunded"] as const;
-export type TxnStatus = (typeof TXN_STATUSES)[number];
-export interface Transaction {
-  id: string; externalId: string | null; source: "manual" | "webhook"; amountCents: number; currency: string; status: TxnStatus; description: string | null;
-  contactId: string | null; contactName: string | null; conversationId: string | null; metadata: Record<string, unknown>; occurredAt: string; createdAt: string; updatedAt: string;
-}
-export interface TxnFilters { status?: string; q?: string; from?: string; to?: string; currency?: string; source?: string }
-export interface TxnPage extends Page<Transaction> { summary: { count: number; totalCents: number | null; byCurrency?: Array<{ currency: string; count: number; totalCents: number }> | Record<string, number> } }
-export interface WebhookEndpoint { id: string; name: string; url: string; enabled?: boolean; secret?: string; createdAt?: string }
-
 export interface Booking {
   id: string; status: "booked" | "cancelled" | "failed" | "offered"; title: string; startAt: string; endAt: string; timezone: string | null; contactId: string | null; contactName: string | null;
   conversationId: string | null; attendeeEmail: string | null; notes: string | null; provider: "google" | "calendly" | null; externalEventId: string | null; eventUrl: string | null;
@@ -51,17 +48,21 @@ export type CalendarProviderKey = "google" | "calendly";
 export interface CalendarProviderState {
   provider: CalendarProviderKey; configured: boolean; connected: boolean; accountEmail?: string | null; calendarId?: string; eventTypeSelected?: boolean;
   status?: "active" | "error"; lastError?: string | null; isDefault?: boolean; connectedAt?: string | null;
+  /** Calendly only: the exact OAuth redirect URL sent to Calendly, where it came from, and the pre-flight verdict. */
+  redirectUri?: string; redirectSource?: "CALENDLY_REDIRECT_URI" | "PUBLIC_API_URL" | "localhost_fallback" | "configured";
+  redirectWarning?: string | null; redirectError?: string | null;
 }
+export interface BookingSlot { start: string; end: string }
 export interface CalendlyEventTypeOption { uri: string; name: string; durationMinutes: number; schedulingUrl: string | null; selected: boolean }
 
-export type HandoffType = "uncertainty" | "stage" | "system_failure";
+export type HandoffType = "uncertainty" | "stage" | "system_failure" | "abuse";
 export interface HandoffItem {
   id: string; type: HandoffType; reason: string; summary: string | null; leadCard: Record<string, unknown> | null; outOfHours: boolean; state: "open" | "claimed" | "resolved";
   assignedUserId: string | null; assignedUserName: string | null; claimedAt: string | null; resolvedAt: string | null; resolutionNote: string | null; createdAt: string;
   conversation: { id: string; status: string; handler: string; channel: string; assignedUserId: string | null; lastMessagePreview: string | null; lastMessageAt: string };
   contact: { id: string; name: string | null; email: string | null; phone: string | null };
 }
-export interface HandoffCounts { uncertainty: number; stage: number; system_failure: number; total: number; mine: number }
+export interface HandoffCounts { uncertainty: number; stage: number; system_failure: number; abuse: number; total: number; mine: number }
 
 export type Availability = "online" | "away" | "offline";
 export interface TeamAvailability { userId: string; name: string; role: string; status: Availability; updatedAt: string | null; openConversations: number }
@@ -85,20 +86,9 @@ export const ops = {
   comment: (id: string, text: string) => request<TicketEvent>(`/tickets/${id}/comments`, j("POST", { text })),
   bulk: (b: { ids: string[]; action: "set_status" | "set_priority" | "assign" | "delete"; value?: string | null }) => request<{ updated: number; skipped: number }>("/tickets/bulk", j("POST", b)),
 
-  // transactions
-  txns: (f: TxnFilters, cursor?: string) => request<TxnPage>(`/transactions${qs({ ...f, limit: 50, cursor })}`, A),
-  createTxn: (b: { amountCents: number; currency: string; status?: TxnStatus; description?: string; externalId?: string; occurredAt?: string }) => request<Transaction>("/transactions", j("POST", b)),
-  patchTxn: (id: string, b: Record<string, unknown>) => request<Transaction>(`/transactions/${id}`, j("PATCH", b)),
-  deleteTxn: (id: string) => request<void>(`/transactions/${id}`, j("DELETE")),
-  endpoints: () => request<{ items: WebhookEndpoint[] }>("/transactions/webhook-endpoints", A).then((r) => r.items),
-  createEndpoint: (name: string) => request<WebhookEndpoint>("/transactions/webhook-endpoints", j("POST", { name })),
-  rotateEndpoint: (id: string) => request<{ secret: string }>(`/transactions/webhook-endpoints/${id}/rotate-secret`, j("POST", {})),
-  patchEndpoint: (id: string, b: { name?: string; enabled?: boolean }) => request<WebhookEndpoint>(`/transactions/webhook-endpoints/${id}`, j("PATCH", b)),
-  deleteEndpoint: (id: string) => request<void>(`/transactions/webhook-endpoints/${id}`, j("DELETE")),
-
   // bookings + calendar
   bookings: (f: { status?: string; from?: string; to?: string }, cursor?: string) => request<Page<Booking>>(`/bookings${qs({ ...f, limit: 100, cursor })}`, A),
-  createBooking: (b: { startAt: string; durationMinutes?: number; title?: string; attendeeEmail?: string; notes?: string }) => request<Booking>("/bookings", j("POST", b)),
+  createBooking: (b: { startAt: string; durationMinutes?: number; title?: string; attendeeEmail?: string; notes?: string; timezone?: string; provider?: CalendarProviderKey }) => request<Booking>("/bookings", j("POST", b)),
   cancelBooking: (id: string, reason?: string) => request<Booking>(`/bookings/${id}/cancel`, j("POST", reason ? { reason } : {})),
   calendar: () => request<CalendarConnection>("/calendar/connection", A),
   connectCalendar: () => request<{ url: string }>("/calendar/google/connect", j("POST", {})),
@@ -106,10 +96,18 @@ export const ops = {
   disconnectCalendar: () => request<void>("/calendar/connection", j("DELETE")),
   calendars: () => request<{ items: CalendarProviderState[]; default: CalendarProviderKey | null }>("/calendar/connections", A),
   setDefaultCalendar: (provider: CalendarProviderKey) => request<{ default: CalendarProviderKey }>("/calendar/default", j("POST", { provider })),
-  connectCalendly: () => request<{ url: string }>("/calendar/calendly/connect", j("POST", {})),
+  bookingSlots: (q: { from: string; to: string; provider: CalendarProviderKey; durationMinutes?: number; timezone?: string }) => request<{ slots: BookingSlot[]; source: CalendarProviderKey }>(`/bookings/availability${qs(q)}`, A),
+  connectCalendly: () => request<{ url: string; redirectUri?: string; warning?: string | null }>("/calendar/calendly/connect", j("POST", {})),
   calendlyEventTypes: () => request<{ items: CalendlyEventTypeOption[] }>("/calendar/calendly/event-types", A).then((r) => r.items),
   setCalendlyEventType: (eventTypeUri: string) => request<{ eventTypeUri: string; name: string; durationMinutes: number }>("/calendar/calendly/event-type", j("PATCH", { eventTypeUri })),
   disconnectCalendly: () => request<void>("/calendar/calendly/connection", j("DELETE")),
+
+  // HubSpot CRM (docs/api/ops.md "HubSpot")
+  hubspot: () => request<HubSpotStatus>("/crm/hubspot", A),
+  connectHubspot: (token: string, mapping?: HubSpotMapping) => request<{ connected: true }>("/crm/hubspot/connection", j("PUT", { token, ...(mapping ? { mapping } : {}) })),
+  saveHubspotMapping: (mapping: HubSpotMapping) => request<{ mapping: HubSpotMapping }>("/crm/hubspot/mapping", j("PATCH", { mapping })),
+  disconnectHubspot: () => request<void>("/crm/hubspot/connection", j("DELETE")),
+  hubspotTestContact: (email: string, name?: string) => request<{ id: string; action: "created" | "updated" }>("/crm/hubspot/test-contact", j("POST", { email, ...(name ? { name } : {}) })),
 
   // needs attention
   attention: (f: { state?: string; type?: string; assignee?: string }, cursor?: string) => request<Page<HandoffItem>>(`/needs-attention${qs({ ...f, limit: 50, cursor })}`, A),

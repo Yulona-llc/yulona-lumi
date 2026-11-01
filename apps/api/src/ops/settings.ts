@@ -1,18 +1,39 @@
 import { Hono } from "hono";
-import { withTenant } from "@yulona/db";
+import { withTenant, type Tx } from "@yulona/db";
 import { opsSettingsUpdateSchema, setAvailabilitySchema } from "@yulona/shared";
+import type { z } from "zod";
 import type { AppEnv } from "../context";
 import { Errors } from "../errors";
 import { parseBody } from "../http";
 import { audit } from "../platform/util";
 import { guard, type OpsDeps } from "./common";
 
+type OpsSettingsUpdate = z.output<typeof opsSettingsUpdateSchema>;
 const DEFAULT_SLA = { urgent: 60, high: 240, normal: 1440, low: 4320 };
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-const minutes = (s: string) => (s === "24:00" ? 1440 : Number(s.slice(0, 2)) * 60 + Number(s.slice(3)));
-const validTz = (tz: string) => {
+export const minutes = (s: string) => (s === "24:00" ? 1440 : Number(s.slice(0, 2)) * 60 + Number(s.slice(3)));
+export const validTz = (tz: string) => {
   try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; }
 };
+
+/** Writes the supplied ops settings fields (shared by PUT /ops/settings, onboarding and the copilot). Validate with opsSettingsUpdateSchema first. */
+export async function saveOpsSettings(tx: Tx, tenantId: string, b: OpsSettingsUpdate): Promise<void> {
+  await tx`INSERT INTO ops_settings (tenant_id) VALUES (${tenantId}) ON CONFLICT (tenant_id) DO NOTHING`;
+  if (b.timezone !== undefined) await tx`UPDATE ops_settings SET timezone = ${b.timezone}, updated_at = now() WHERE tenant_id = ${tenantId}`;
+  if (b.slaMinutes) await tx`UPDATE ops_settings SET sla_minutes = ${tx.json(b.slaMinutes as never)}, updated_at = now() WHERE tenant_id = ${tenantId}`;
+  if (b.outOfHours) {
+    await tx`UPDATE ops_settings SET out_of_hours_mode = ${b.outOfHours.mode},
+               out_of_hours_message = ${b.outOfHours.message ?? null}, updated_at = now() WHERE tenant_id = ${tenantId}`;
+  }
+  if (b.assignment) await tx`UPDATE ops_settings SET assignment_mode = ${b.assignment.mode}, updated_at = now() WHERE tenant_id = ${tenantId}`;
+  if (b.holidays) await tx`UPDATE ops_settings SET holidays = ${tx.array([...new Set(b.holidays)])}::date[], updated_at = now() WHERE tenant_id = ${tenantId}`;
+  if (b.businessHours) {
+    await tx`DELETE FROM business_hours WHERE tenant_id = ${tenantId}`;
+    for (const h of b.businessHours) {
+      await tx`INSERT INTO business_hours (tenant_id, weekday, start_minute, end_minute) VALUES (${tenantId}, ${h.weekday}, ${minutes(h.start)}, ${minutes(h.end)})`;
+    }
+  }
+}
 
 export function settingsRoutes({ cfg, db }: OpsDeps) {
   const r = new Hono<AppEnv>();
@@ -45,21 +66,7 @@ export function settingsRoutes({ cfg, db }: OpsDeps) {
       if (minutes(h.start) >= minutes(h.end)) throw Errors.validation([{ path: `businessHours.${i}`, message: "start must be before end" }]);
     }
     await withTenant(db, tenantId, async (tx) => {
-      await tx`INSERT INTO ops_settings (tenant_id) VALUES (${tenantId}) ON CONFLICT (tenant_id) DO NOTHING`;
-      if (b.timezone !== undefined) await tx`UPDATE ops_settings SET timezone = ${b.timezone}, updated_at = now() WHERE tenant_id = ${tenantId}`;
-      if (b.slaMinutes) await tx`UPDATE ops_settings SET sla_minutes = ${tx.json(b.slaMinutes as never)}, updated_at = now() WHERE tenant_id = ${tenantId}`;
-      if (b.outOfHours) {
-        await tx`UPDATE ops_settings SET out_of_hours_mode = ${b.outOfHours.mode},
-                   out_of_hours_message = ${b.outOfHours.message ?? null}, updated_at = now() WHERE tenant_id = ${tenantId}`;
-      }
-      if (b.assignment) await tx`UPDATE ops_settings SET assignment_mode = ${b.assignment.mode}, updated_at = now() WHERE tenant_id = ${tenantId}`;
-      if (b.holidays) await tx`UPDATE ops_settings SET holidays = ${tx.array([...new Set(b.holidays)])}::date[], updated_at = now() WHERE tenant_id = ${tenantId}`;
-      if (b.businessHours) {
-        await tx`DELETE FROM business_hours WHERE tenant_id = ${tenantId}`;
-        for (const h of b.businessHours) {
-          await tx`INSERT INTO business_hours (tenant_id, weekday, start_minute, end_minute) VALUES (${tenantId}, ${h.weekday}, ${minutes(h.start)}, ${minutes(h.end)})`;
-        }
-      }
+      await saveOpsSettings(tx, tenantId, b);
       await audit(tx, c, "ops_settings.update", "ops_settings", tenantId, { fields: Object.keys(b) });
     });
     return c.json(await load(tenantId));

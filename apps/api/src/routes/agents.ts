@@ -67,6 +67,12 @@ export class AgentsRepository extends TenantRepository {
       SELECT config FROM agent_versions WHERE tenant_id = ${this.tenantId} AND agent_id = ${id} AND version = ${version}`;
     return r;
   }
+  /** Widgets and channel connections that still point at this agent (customers there get the "not available" reply once it is archived). */
+  async attachments(id: string) {
+    const widgets = await this.tx<{ id: string; name: string }[]>`SELECT id, name FROM widgets WHERE tenant_id = ${this.tenantId} AND agent_id = ${id} ORDER BY name`;
+    const channels = await this.tx<{ id: string; name: string; channel: string }[]>`SELECT id, name, channel FROM channel_connections WHERE tenant_id = ${this.tenantId} AND agent_id = ${id} ORDER BY name`;
+    return { widgets, channels };
+  }
   async archive(id: string, archived: boolean) {
     const [r] = await this.tx<AgentRow[]>`
       UPDATE agents SET status = CASE WHEN ${archived} THEN 'archived' WHEN published_version IS NOT NULL THEN 'published' ELSE 'draft' END, updated_at = now()
@@ -188,9 +194,13 @@ export function agentRoutes({ cfg, db }: { cfg: Config; db: Db }) {
       if (!archived) await assertWithinLimit(tx, tenantId, "agents");
       const res = await repo.archive(id, archived);
       await audit(tx, c, archived ? "agent.archived" : "agent.unarchived", "agent", id);
-      return res!;
+      const used = archived ? await repo.attachments(id) : null;
+      const warning = used && (used.widgets.length || used.channels.length)
+        ? { code: "agent_in_use", message: "This agent is still attached to a widget or channel. Visitors there get a \"not available\" reply and a team member is notified until you attach another agent.", ...used }
+        : undefined;
+      return { res: res!, warning };
     });
-    return c.json(dto(a));
+    return c.json({ ...dto(a.res), ...(a.warning ? { warning: a.warning } : {}) });
   };
   r.delete("/agents/:id", requireMinRole("admin"), setArchived(true));
   r.post("/agents/:id/unarchive", requireMinRole("admin"), setArchived(false));

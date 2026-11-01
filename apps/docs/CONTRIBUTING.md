@@ -1,4 +1,4 @@
-# Writing and maintaining the Yulona docs
+# Writing and maintaining the Lumi docs
 
 Site: Mintlify (`docs.json` + MDX). Preview: `bun run docs:dev` (needs Node for the `mint` CLI). Check before committing: `bun run docs:check` (validates config and OpenAPI, finds broken links) and `bun test tests/docs`.
 

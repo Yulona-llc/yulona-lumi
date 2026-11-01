@@ -3,7 +3,9 @@ import { contactFormBlock, formatForChannel, isWindowExpired, messageBlock } fro
 import type { AiPorts, ChatMessage } from "./ports";
 import { buildSystemPrompt, escapeData, wrapUserMessage } from "./prompt";
 import type { KnowledgePort, SkillSection, SkillSummary } from "./knowledge";
+import { detectAbuse, type AbuseContext, type AbuseHit } from "./abuse";
 import { wantsHuman } from "./intent";
+import { estimateTokens, turnLimits } from "./limits";
 import { isSmallTalk } from "./smalltalk";
 import { shortestPath } from "./stage";
 import { executeTool, resolveTools, toolSpecsForStage, type ExternalToolProvider, type ToolEffects } from "./tools";
@@ -32,6 +34,10 @@ export interface TurnInput {
   handoffNotice?: string;
   /** SaaS credit gate tripped: skip the model, raise a system_failure handoff (reason ai_credits_exhausted) with this customer notice */
   creditsExhausted?: { message: string };
+  /** abuse protection context (strikes so far, message rate); the real runtime supplies it, the sandbox does not */
+  abuse?: AbuseContext;
+  /** the conversation's agent is not live (draft-only/archived/missing): skip the model, raise a system_failure handoff (reason agent_unavailable) with this notice */
+  unavailable?: { message: string };
   resolver?: Resolver;
   fetchImpl?: typeof fetch;
   /** resolves tool connections for manifest-v2 tools (server-side only) */
@@ -44,11 +50,7 @@ export interface TurnOutcome extends TurnResult {
   leadPatch: Lead;
 }
 
-const MAX_TOOL_ROUNDS = 4;
-/** Whole knowledge base at most this many characters => put it all in the prompt (no tools, one LLM call). */
-const INLINE_ALL_CHARS = 9000;
-const PRELOAD_SECTIONS = 4;
-const READ_CAP_CHARS = 8000;
+// Cost controls (tool rounds, token budget, inline/preload/read caps, history, output cap) live in ./limits and are env-tunable.
 
 export const KNOWLEDGE_TOOLS = ["search_skills", "read_skill"] as const;
 const knowledgeToolSpecs = () => [
@@ -95,6 +97,9 @@ const isQualified = (l: Lead) => !!l.need && !!(l.budget || l.timeline);
  */
 export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOutcome> {
   const { agent, capability } = input;
+  const lim = turnLimits();
+  // Only the last few messages, each cut short: history is resent on every model call of the turn.
+  const history: TurnMessage[] = input.history.slice(-lim.historyMessages).map((m) => (m.content.length > lim.historyChars ? { ...m, content: `${m.content.slice(0, lim.historyChars)}…` } : m));
   const usage = { promptTokens: 0, completionTokens: 0 };
   let llmMeta: { model?: string; profileId?: string | null; modelFallback?: { requested: string; used: string } } = {};
   const toolRuns: ToolRun[] = [];
@@ -110,6 +115,14 @@ export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOut
       lead = { ...lead, ...clean };
       leadPatch = { ...leadPatch, ...clean };
     }
+  };
+
+  // abuse protection: strikes accumulate per conversation; at `maxStrikes` the turn ends with the farewell and the runtime blocks the visitor
+  let abuseStrikes = input.abuse?.strikes ?? 0;
+  let abuseFlag: TurnResult["abuse"];
+  const finishAbuse = (hit: AbuseHit, source: "rule" | "model"): TurnOutcome => {
+    abuseFlag = { reason: hit.reason, source, kind: hit.kind };
+    return finish({ components: [messageBlock(agent.abuse.farewellMessage)] });
   };
 
   const finish = (o: { components: WidgetUIComponent[]; handoff?: HandoffRecord; guard?: boolean; advance?: boolean; unanswered?: number }): TurnOutcome => {
@@ -133,12 +146,25 @@ export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOut
     return {
       ui, text, stageBefore: input.stage, stageAfter: handoff?.alreadyRaised ? "handoff_requested" : (stagePlan[stagePlan.length - 1] ?? input.stage),
       retrieved, guardTriggered: !!o.guard, unansweredAfter: o.unanswered ?? input.unansweredTurns ?? 0, handoff, toolRuns, lead, leadPatch, stagePlan, usage, ...llmMeta,
+      ...(input.abuse ? { abuseStrikesAfter: abuseStrikes } : {}), ...(abuseFlag ? { abuse: abuseFlag } : {}),
       windowExpired: isWindowExpired(capability, input.lastCustomerMessageAt ?? null) || undefined,
     };
   };
 
+  if (input.unavailable) {
+    return finish({ components: [], handoff: makeHandoff({ type: "system_failure", reason: "agent_unavailable", input, stage: input.stage, lead, message: input.unavailable.message }) });
+  }
   if (input.creditsExhausted) {
     return finish({ components: [], handoff: makeHandoff({ type: "system_failure", reason: "ai_credits_exhausted", input, stage: input.stage, lead, message: input.creditsExhausted.message }) });
+  }
+
+  // ---- abuse rules (blocked phrases, message flood, repeats, gibberish); structured form submissions are exempt
+  if (input.abuse && agent.abuse.enabled && !input.uiEvent) {
+    const hit = detectAbuse(agent.abuse, input.userText, input.history.filter((m) => m.role === "user").map((m) => m.content), input.abuse);
+    if (hit) {
+      abuseStrikes += 1;
+      if (abuseStrikes >= agent.abuse.maxStrikes) return finishAbuse(hit, "rule");
+    }
   }
 
   // ---- structured widget submissions bypass the LLM (deterministic, no hallucination surface)
@@ -180,13 +206,13 @@ export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOut
   if (!smallTalk) {
     skills = await input.knowledge.index();
     const total = skills.reduce((a, s) => a + s.chars, 0);
-    if (skills.length && total <= INLINE_ALL_CHARS) {
-      retrieved = (await input.knowledge.all(INLINE_ALL_CHARS)).map(toChunk); // tiny knowledge base: everything is in the prompt
+    if (skills.length && total <= lim.inlineAllChars) {
+      retrieved = (await input.knowledge.all(lim.inlineAllChars)).map(toChunk); // tiny knowledge base: everything is in the prompt
     } else if (skills.length) {
       toolsMode = true;
-      const lastUser = [...input.history].reverse().find((m) => m.role === "user")?.content ?? "";
-      let found = await input.knowledge.search(input.userText, { limit: PRELOAD_SECTIONS });
-      if (found.length < 2 && lastUser) found = [...found, ...(await input.knowledge.search(`${lastUser} ${input.userText}`, { limit: PRELOAD_SECTIONS }))].slice(0, PRELOAD_SECTIONS);
+      const lastUser = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
+      let found = lim.preloadSections ? await input.knowledge.search(input.userText, { limit: lim.preloadSections }) : [];
+      if (lim.preloadSections && found.length < 2 && lastUser) found = [...found, ...(await input.knowledge.search(`${lastUser} ${input.userText}`, { limit: lim.preloadSections }))].slice(0, lim.preloadSections);
       retrieved = [...new Map(found.map((f) => [`${f.skill}#${f.section}`, f])).values()].map(toChunk);
     }
   }
@@ -209,8 +235,8 @@ export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOut
 
   // ---- LLM loop
   const messages: ChatMessage[] = [
-    { role: "system", content: buildSystemPrompt({ agent, stage: input.stage, lead, chunks: retrieved, capability, smallTalk, clarify, skills: toolsMode ? skills : undefined, customToolNames: [...tools.values()].filter((t) => t.custom).map((t) => t.manifest.name) }) },
-    ...input.history.map((m): ChatMessage => (m.role === "user" ? { role: "user", content: wrapUserMessage(m.content) } : { role: "assistant", content: m.content })),
+    { role: "system", content: buildSystemPrompt({ agent, stage: input.stage, lead, chunks: retrieved, capability, smallTalk, clarify, skills: toolsMode ? skills : undefined, abuseStrikes, customToolNames: [...tools.values()].filter((t) => t.custom).map((t) => t.manifest.name) }) },
+    ...history.map((m): ChatMessage => (m.role === "user" ? { role: "user", content: wrapUserMessage(m.content) } : { role: "assistant", content: m.content })),
     { role: "user", content: wrapUserMessage(input.userText) },
   ];
   const specs = smallTalk || clarify ? [] : [...toolSpecsForStage(tools, input.stage), ...(toolsMode ? knowledgeToolSpecs() : [])];
@@ -231,7 +257,7 @@ export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOut
         const hits = query.trim() ? await input.knowledge.search(query, { skill: typeof args.skill === "string" ? args.skill : undefined, limit: 6 }) : [];
         remember(hits);
         text = hits.length
-          ? hits.map((h) => `[${h.skill}#${h.section}] ${h.skillName} › ${h.title}\n${h.content.replace(/\s+/g, " ").slice(0, 240)}`).join("\n\n")
+          ? hits.map((h) => `[${h.skill}#${h.section}] ${h.skillName} › ${h.title}\n${h.content.replace(/\s+/g, " ").slice(0, lim.searchSnippetChars)}`).join("\n\n")
           : "No sections matched. Try other keywords (synonyms, singular/plural) or open a skill from the list with read_skill.";
       } else {
         const sec = Number.isInteger(args.section) ? (args.section as number) : undefined;
@@ -241,7 +267,7 @@ export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOut
         else if (!r.sections.length) text = "No such section.";
         else {
           remember(r.sections);
-          text = r.sections.map((x) => `# ${x.skillName} › ${x.title}\n${x.content}`).join("\n\n").slice(0, READ_CAP_CHARS);
+          text = r.sections.map((x) => `# ${x.skillName} › ${x.title}\n${x.content}`).join("\n\n").slice(0, lim.readCapChars);
         }
       }
     } catch (e) {
@@ -254,30 +280,52 @@ export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOut
     return `<knowledge_result>\n${escapeData(text)}\n</knowledge_result>`;
   };
 
-  const callLlm = async () => {
+  /** Final answer round: no tools, so the model must answer with what it has. */
+  const FINAL_NOTE = "Answer the customer now using only what you have already read. Do not call tools.";
+  const callLlm = async (withTools: boolean) => {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await ports.llm.chat({ model: agent.model, messages, tools: specs.length ? specs : undefined, temperature: 0.2, maxTokens: 700 });
+        return await ports.llm.chat({
+          model: agent.model, messages, tools: withTools && specs.length ? specs : undefined, temperature: 0.2, maxTokens: lim.maxOutputTokens,
+          ...(lim.reasoningEffort ? { reasoningEffort: lim.reasoningEffort } : {}),
+        });
       } catch (e) {
+        // A timed-out / 5xx first attempt may still have been billed by the provider: count its prompt (estimate) so usage is not understated.
+        const status = (e as { status?: number }).status;
+        if (attempt === 0 && (status === undefined || status >= 500)) usage.promptTokens += estimateTokens(messages.reduce((n, m) => n + m.content.length, 0));
         if (attempt >= 1) throw e;
       }
     }
   };
+  /** Earlier tool results the model has already acted on are cut to a short stub so they are not resent in full every call. */
+  const stubConsumed = (keepFrom: number) => {
+    for (let k = 0; k < keepFrom; k++) {
+      const m = messages[k]!;
+      if (m.role !== "tool" || m.content.startsWith("[earlier result")) continue;
+      if (m.content.length <= lim.staleToolResultChars) continue;
+      messages[k] = { ...m, content: `[earlier result, shortened] ${m.content.replace(/\s+/g, " ").slice(0, lim.staleToolResultChars)}…` };
+    }
+  };
 
-  for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+  // Up to `maxToolRounds` rounds where the model may call tools, then one tool-free call. The token budget can end the tool phase earlier.
+  for (let round = 0; ; round++) {
+    const spent = usage.promptTokens + usage.completionTokens;
+    const finalRound = round >= lim.maxToolRounds || spent >= lim.turnTokenBudget;
+    if (finalRound && round > 0 && messages[messages.length - 1]!.role === "tool") messages.push({ role: "user", content: FINAL_NOTE });
     let res;
     try {
-      res = await callLlm();
+      res = await callLlm(!finalRound);
     } catch (e) {
       return finish({ components: [], handoff: makeHandoff({ type: "system_failure", reason: `LLM unavailable: ${(e as Error).message.slice(0, 200)}`, input, stage: input.stage, lead }) });
     }
     usage.promptTokens += res.usage.promptTokens;
     usage.completionTokens += res.usage.completionTokens;
     llmMeta = { model: res.model ?? llmMeta.model, profileId: res.profileId ?? llmMeta.profileId, modelFallback: res.modelFallback ?? llmMeta.modelFallback };
-    if (!res.toolCalls.length || round === MAX_TOOL_ROUNDS) {
+    if (!res.toolCalls.length || finalRound) {
       finalText = (res.content ?? "").trim();
       break;
     }
+    const roundStart = messages.length;
     messages.push({ role: "assistant", content: res.content ?? "", toolCalls: res.toolCalls });
     for (const call of res.toolCalls) {
       if (toolsMode && (call.name === "search_skills" || call.name === "read_skill")) {
@@ -293,6 +341,10 @@ export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOut
       }
       if (ex.kind === "ok") {
         applyEffects(ex.effects);
+        if (ex.effects.abuse && input.abuse) {
+          abuseStrikes += 1;
+          if (abuseStrikes >= agent.abuse.maxStrikes) return finishAbuse({ kind: "model", reason: ex.effects.abuse.reason }, "model");
+        }
         ex.effects.ask?.forEach((f) => ask.add(f));
         if (ex.effects.escalate) {
           return finish({ components: [], handoff: makeHandoff({ ...ex.effects.escalate, input, stage: input.stage, lead }) });
@@ -300,6 +352,7 @@ export async function runTurn(ports: AiPorts, input: TurnInput): Promise<TurnOut
       }
       messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: ex.modelResult });
     }
+    stubConsumed(roundStart); // results from before this round have been consumed by the model's last reply
   }
 
   // The model judged that the excerpts do not contain the answer: same path as a retrieval miss.

@@ -4,7 +4,7 @@ description: Match what you are seeing to its cause and fix, for handoffs, missi
 icon: wrench
 ---
 
-This page is for owners, admins and support leads who hit a problem. Find your symptom in the tables, read the likely cause, and follow the fix. If you still cannot solve it, note the time, the conversation, and any message you saw, and contact your administrator or Yulona support.
+This page is for owners, admins and support leads who hit a problem. Find your symptom in the tables, read the likely cause, and follow the fix. If you still cannot solve it, note the time, the conversation, and any message you saw, and contact your administrator or Lumi support.
 
 ## The AI hands off too often, or always
 
@@ -37,7 +37,7 @@ In the Inbox thread you see a line starting "Message not delivered on whatsapp" 
 
 | Cause | Fix |
 |---|---|
-| Your WhatsApp app at Meta is still in development or test mode, and Meta only lets it message numbers on an allowed list | In the Meta developer console, add the customer's number to the allowed recipients and verify it, or move the app to live mode with a verified business. This is a Meta restriction, not a Yulona one. |
+| Your WhatsApp app at Meta is still in development or test mode, and Meta only lets it message numbers on an allowed list | In the Meta developer console, add the customer's number to the allowed recipients and verify it, or move the app to live mode with a verified business. This is a Meta restriction, not a Lumi one. |
 
 Other WhatsApp delivery lines:
 
@@ -68,7 +68,7 @@ See [Usage and credits](/guides/account/usage-and-credits).
 
 | What you see | Cause | Fix |
 |---|---|---|
-| The AI never offers times | No calendar connected, or the calendar tools are switched off | Connect a calendar under **Settings**, **Calendar**, and enable **Check calendar availability** and **Book appointments** on the agent's **Tools** tab. |
+| The AI never offers times | No calendar connected, or the calendar tools are switched off | Connect a calendar under **Settings**, **Connectors**, and enable **Check calendar availability** and **Book appointments** on the agent's **Tools** tab. |
 | Calendar badge shows **Needs attention** | The connection broke or the sign-in expired | Disconnect and connect again. For Calendly the message "reconnect Calendly" means the same. |
 | "Google Calendar is not configured on this server" | The operator has not set up Google access | Self-hosted: see [Channels and integrations setup](/self-hosting/channels-and-integrations-setup). |
 | Booking status **Failed** | The calendar did not respond after three tries | Check the connection, then create the booking again. |
@@ -94,4 +94,4 @@ See [Bookings](/guides/workspace/bookings).
   </Card>
 </CardGroup>
 
-{/* source: packages/ai-runtime/src/{turn,runtime,agent-loader,intent}.ts (handoff reasons, keyword substring match, resume, credits gate); packages/channels/src/{send-job,whatsapp,meta}.ts (delivery_failed message, 24h window); docs/api/{channels,ops,credits,conversations}.md; features/bookings/{CalendarSettings,CalendarCard}.tsx; widget allowed-domains rules from docs/api/conversations.md. WhatsApp 131030 text comes from Meta's Cloud API error reference, not from this repo: unverified in code. */}
+{/* source: packages/ai-runtime/src/{turn,runtime,agent-loader,intent}.ts (handoff reasons, keyword substring match, resume, credits gate); packages/channels/src/{send-job,whatsapp,meta}.ts (delivery_failed message, 24h window); docs/api/{channels,ops,credits,conversations}.md; features/bookings/{CalendarSettings,CalendarStrip,NewBooking}.tsx; widget allowed-domains rules from docs/api/conversations.md. WhatsApp 131030 text comes from Meta's Cloud API error reference, not from this repo: unverified in code. */}

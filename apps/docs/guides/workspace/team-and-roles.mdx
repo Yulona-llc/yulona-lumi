@@ -26,14 +26,14 @@ A tick means allowed. Screens a role cannot use are hidden from its menu or show
 | View Overview, Inbox, Contacts, Tickets, Bookings | Yes | Yes | Yes | Yes |
 | Reply, add notes, take over, assign, resolve conversations | No | Yes | Yes | Yes |
 | Edit and merge contacts | No | Yes | Yes | Yes |
+| Block a contact for abuse | No | Yes | Yes | Yes |
+| Unblock a contact | No | No | Yes | Yes |
 | Needs attention: view, claim, release, resolve | No | Yes | Yes | Yes |
 | Needs attention: assign to others, take over a claimed item | No | No | Yes | Yes |
 | Create, edit, comment on and bulk-update tickets | No | Yes | Yes | Yes |
 | Delete tickets | No | No | Yes | Yes |
 | Create and cancel bookings | No | Yes | Yes | Yes |
 | Connect or disconnect a calendar | No | No | Yes | Yes |
-| Transactions: view, add, edit, export | No | Yes | Yes | Yes |
-| Transactions: delete, webhook endpoints | No | No | Yes | Yes |
 | Canned responses: use and create | View only | Yes | Yes | Yes |
 | Canned responses: edit others', delete | No | No | Yes | Yes |
 | Tags: create and apply | View only | Yes | Yes | Yes |
@@ -67,7 +67,7 @@ A tick means allowed. Screens a role cannot use are hidden from its menu or show
     Enter their **Email** and pick a **Role**. You can only grant a role up to your own, and only owners can invite another owner. **Agent** is preselected.
   </Step>
   <Step title="Send">
-    Click **Send invite**. Yulona emails a link that is valid for 7 days. If the email cannot be sent, the dialog says "Invitation created, but the email could not be sent." On a development installation it also shows a link you can copy with **Copy link**.
+    Click **Send invite**. Lumi emails a link that is valid for 7 days. If the email cannot be sent, the dialog says "Invitation created, but the email could not be sent." On a development installation it also shows a link you can copy with **Copy link**.
   </Step>
 </Steps>
 
@@ -111,4 +111,4 @@ After an invite, a row appears under **Invitations** with the status **pending**
   </Card>
 </CardGroup>
 
-{/* source: packages/shared/src/roles.ts; apps/dashboard/src/pages/Shell.tsx (min roles per menu item); features/team/TeamPage.tsx; apps/api/src/routes/users.ts; apps/api/src/platform/authz.ts (requireWriteRole); apps/api/src/ops/{tickets,transactions,handoffs,canned,tags,settings,bookings}.ts guards; apps/api/src/routes/{agents,api-keys,audit,widgets,knowledge}.ts; billing/routes.ts; usage/routes.ts; docs/api/platform.md. apps/dashboard/src/pages/AcceptInvite.tsx (the emailed link opens /accept-invite). */}
+{/* source: packages/shared/src/roles.ts; apps/dashboard/src/pages/Shell.tsx (min roles per menu item); features/team/TeamPage.tsx; apps/api/src/routes/users.ts; apps/api/src/platform/authz.ts (requireWriteRole); apps/api/src/ops/{tickets,handoffs,canned,tags,settings,bookings}.ts guards; apps/api/src/routes/{agents,api-keys,audit,widgets,knowledge}.ts; billing/routes.ts; usage/routes.ts; docs/api/platform.md. apps/dashboard/src/pages/AcceptInvite.tsx (the emailed link opens /accept-invite). */}

@@ -77,7 +77,7 @@ export interface SafeFetchOptions {
   fetchImpl?: typeof fetch;
 }
 /** Headers always treated as credentials on a cross-origin redirect. */
-export const CREDENTIAL_HEADERS = ["authorization", "proxy-authorization", "x-api-key", "x-yulona-signature", "x-yulona-timestamp", "cookie"];
+export const CREDENTIAL_HEADERS = ["authorization", "proxy-authorization", "x-api-key", "x-yulona-signature", "x-yulona-timestamp", "x-lumi-signature", "x-lumi-timestamp", "cookie"];
 
 export interface SafeFetchResult {
   url: string;
@@ -98,7 +98,7 @@ export async function safeFetch(rawUrl: string, opts: SafeFetchOptions = {}): Pr
   let url = rawUrl;
   let method = opts.method ?? "GET";
   let body = opts.body;
-  let headers: Record<string, string> = { "user-agent": "YulonaBot/1.0", accept: "*/*", ...opts.headers };
+  let headers: Record<string, string> = { "user-agent": "LumiBot/1.0", accept: "*/*", ...opts.headers };
   const sensitive = new Set([...CREDENTIAL_HEADERS, ...(opts.sensitiveHeaders ?? []).map((h) => h.toLowerCase())]);
   for (let hop = 0; hop <= (opts.maxRedirects ?? 5); hop++) {
     const u = await assertSafeUrl(url, opts.resolver);

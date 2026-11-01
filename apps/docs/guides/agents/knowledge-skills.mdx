@@ -51,8 +51,12 @@ Go to **Knowledge**. At the top you can drop a file anywhere, or use the three b
       <Step title="Click Add URL">
         Enter a link that starts with `http://` or `https://`.
       </Step>
-      <Step title="Choose how many pages to read">
-        **Pages to read (same site)**: 1 reads only that page. A higher number (up to 25) also follows its links on the same site.
+      <Step title="Choose how much of the site to read">
+        **Follow links on this site** is on by default: Lumi reads your page, then the pages it links to on the same site. Turn it off to read only that one page. With it on you can set:
+
+        - **How deep**: how many clicks away from your page Lumi goes. The default is 3, which suits most websites. 1 reads only the pages linked from your page; 5 reaches deep into large sites. Use the minus and plus buttons to change it.
+        - **Max pages**: Lumi stops after this many pages. The default is 25 and the most you can choose is 50.
+        - **Include subdomains**: off by default. Turn it on to also read pages such as `blog.example.com` when you start from `example.com`.
       </Step>
       <Step title="Click Add">
         Addresses on private networks are blocked. Each page is read up to 2 MB.
@@ -73,14 +77,25 @@ Go to **Knowledge**. At the top you can drop a file anywhere, or use the three b
 
 ## What happens after you add it
 
-The skill appears with a status badge: **pending** (queued), **processing…** (reading and splitting into sections), **ready**, or **failed**. The page refreshes by itself every few seconds while anything is still working. A failed skill shows the reason in red, for example an unsupported file type, a blocked address or a page that returned an error.
+The skill appears with a status badge: **pending** (queued), **processing…** (reading and splitting into sections), **ready**, or **failed**. The page refreshes by itself every few seconds while anything is still working. A failed skill shows the reason in red, for example an unsupported file type, a blocked address, a site that does not allow crawlers (`robots.txt`) or a page that returned an error.
 
 When a skill is **ready** you see its type, number of sections, size and when it was last read. The line `skills/<name>/` is its internal folder name.
 
+### How Lumi reads a website
+
+- It follows links from your page, breadth first, up to **How deep** clicks away and **Max pages** pages. Pages on other sites are never read.
+- The same page is read once, even when links spell it differently (with or without a trailing slash, a `#section`, or tracking parameters such as `utm_source`).
+- It checks the site's `robots.txt` first. Pages the file disallows for crawlers are skipped, and a `Crawl-delay` is respected (up to 10 seconds). If `robots.txt` disallows the page you entered, the skill fails with that reason.
+- It skips links marked `rel="nofollow"`, images, scripts, archives and other pages that are not text, and follows a page's `<base>` address.
+- It waits about half a second between pages and identifies itself as `LumiBot/1.0`.
+- Extra spaces, tabs and blank lines are cleaned from every title and every text you add (pages, PDF, DOCX, text files and pasted text), so section titles and descriptions read as one tidy line.
+
+While a website is being read the skill shows how many pages were read and how many were found. When it is ready it shows **Read N pages**, and how many were skipped. A very large crawl stops after about four minutes and keeps the pages it already read.
+
 ## Look at, edit and refresh a skill
 
-- **Sections** opens a panel with each numbered section, its title and size. Click a section to read its text. This is the exact material the agent can open.
-- **Edit** (the pencil next to the description): change the **Name** and the **Description**, then **Save skill**. The description should be one line telling the agent when to open this skill, for example "Opening hours, delivery areas and delivery fees." **Use automatic description** returns to the one Yulona wrote from the first sentence and section titles.
+- **Sections** opens a panel with each numbered section, its title and size. Click a section to read its text. This is the exact material the agent can open. For a website, the panel starts with **Pages read** (every address Lumi read and how many sections each gave) and each section shows the address it came from.
+- **Edit** (the pencil next to the description): change the **Name** and the **Description**, then **Save skill**. The description should be one line telling the agent when to open this skill, for example "Opening hours, delivery areas and delivery fees." **Use automatic description** returns to the one Lumi wrote from the first sentence and section titles.
 - **Reingest** (in the actions menu) re-reads the original file, page or text. Use it after a web page changes. It is unavailable while the skill is still processing.
 - **Delete** removes the skill and its sections. Agents stop using it immediately.
 
@@ -101,7 +116,8 @@ When a skill is **ready** you see its type, number of sections, size and when it
 | File size | 10 MB |
 | File types | PDF, DOCX, TXT, MD, HTML |
 | Pasted text | 900,000 characters |
-| Pages per web address | 1 to 25, same site |
+| Pages per web address | 1 to 50 (default 25), same site |
+| Link depth | 1 to 5 clicks from the first page (default 3) |
 | Storage | Counts against your plan's storage; at the limit you see an upgrade message |
 
 <Note>

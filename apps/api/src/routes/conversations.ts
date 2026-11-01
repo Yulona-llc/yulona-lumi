@@ -121,6 +121,7 @@ export function conversationRoutes({ cfg, db }: ConvDeps) {
       const convs = new ConversationsRepository(tx, tenantId);
       const conv = await convs.get(id, true);
       if (!conv) return null;
+      if (conv.contactBlockedAt) throw Errors.conflict("This contact is blocked for abuse. Unblock them before returning the conversation to the AI.");
       await convs.setState(id, { status: "open", handler: "ai", assignedUserId: null });
       // Without this the AI runtime stays paused (stage handoff_requested / ai_paused) and never answers again.
       await returnConversationToAi(tx, tenantId, id);

@@ -6,7 +6,7 @@ import type { PreChatField, Session, UiEvent, WireMessage, WidgetRuntimeConfig }
  * Every request carries X-Widget-Key (+ Bearer session token when session-scoped).
  */
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public retryAfter?: number) {
+  constructor(public status: number, message: string, public retryAfter?: number, public code?: string) {
     super(message);
   }
   /** Network failures, 5xx and 429 are retryable; other 4xx are not. */
@@ -20,12 +20,18 @@ export interface StartResult {
   messages: WireMessage[];
 }
 
+/** Honeypot value (must stay empty) and the Turnstile token, sent with the first request. */
+export interface BotFields {
+  hp?: string;
+  turnstileToken?: string;
+}
+
 export interface Api {
   getConfig(): Promise<WidgetRuntimeConfig>;
-  startConversation(visitor?: Record<string, string>, visitorId?: string): Promise<StartResult>;
+  startConversation(visitor?: Record<string, string>, visitorId?: string, bot?: BotFields): Promise<StartResult>;
   refresh(s: Session): Promise<Session>;
   history(s: Session, after?: string): Promise<WireMessage[]>;
-  send(s: Session, text: string, clientId: string): Promise<WireMessage>;
+  send(s: Session, text: string, clientId: string, hp?: string): Promise<WireMessage>;
   uiEvent(s: Session, e: UiEvent, clientId: string): Promise<WireMessage>;
   typing(s: Session, typing: boolean): Promise<void>;
   wsUrl(): string;
@@ -76,7 +82,15 @@ export function createApi(base: string, widgetKey: string, f: Fetch = (...a) => 
     } catch {
       throw new ApiError(0, "network");
     }
-    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`, Number(res.headers.get("retry-after")) || undefined);
+    if (!res.ok) {
+      let code: string | undefined;
+      try {
+        code = ((await res.json()) as { error?: { code?: string } }).error?.code;
+      } catch {
+        /* no JSON body */
+      }
+      throw new ApiError(res.status, `HTTP ${res.status}`, Number(res.headers.get("retry-after")) || undefined, code);
+    }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   }
@@ -92,21 +106,46 @@ export function createApi(base: string, widgetKey: string, f: Fetch = (...a) => 
     async getConfig() {
       const r = await call<{
         name?: string;
-        config?: Record<string, string | undefined>;
+        config?: Record<string, unknown>;
         prechat?: { enabled?: boolean; intro?: string; fields?: { name: PreChatField["name"]; label: string; required?: boolean }[] };
         schemaVersion?: number;
+        unavailable?: boolean;
       }>("/config");
-      const c = r.config ?? {};
+      const c = (r.config ?? {}) as Record<string, string | undefined>;
+      const prot = ((r.config ?? {}).protection ?? {}) as {
+        honeypot?: boolean;
+        turnstile?: { enabled?: boolean; siteKey?: string; theme?: string; size?: string; appearance?: string; action?: string };
+      };
+      const ts = prot.turnstile;
+      const ap = (r.config ?? {}).appearance as { mode?: string; color?: string; color2?: string; angle?: number } | undefined;
+      const hexOk = (v: unknown): v is string => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
+      const appearance = ap && hexOk(ap.color)
+        ? { mode: ap.mode === "gradient" && hexOk(ap.color2) ? "gradient" as const : "solid" as const, color: ap.color, color2: hexOk(ap.color2) ? ap.color2 : undefined, angle: typeof ap.angle === "number" && Number.isFinite(ap.angle) ? ap.angle : 135 }
+        : undefined;
       return {
         title: c.title ?? r.name ?? "Chat",
         subtitle: c.subtitle,
-        primaryColor: c.primaryColor ?? "#4f46e5",
+        primaryColor: appearance?.color ?? c.primaryColor ?? "#4f46e5",
+        appearance,
         logoUrl: c.avatarUrl,
         position: c.position === "left" ? "left" : "right",
         theme: c.theme === "dark" || c.theme === "auto" ? c.theme : "light",
         placeholder: c.inputPlaceholder,
         launcherLabel: c.launcherLabel,
         schemaVersion: r.schemaVersion,
+        unavailable: r.unavailable === true,
+        protection: {
+          honeypot: prot.honeypot !== false,
+          turnstile: ts?.enabled && ts.siteKey
+            ? {
+                siteKey: ts.siteKey,
+                theme: ts.theme === "light" || ts.theme === "dark" ? ts.theme : "auto",
+                size: ts.size === "compact" || ts.size === "flexible" ? ts.size : "normal",
+                appearance: ts.appearance === "interaction-only" ? "interaction-only" : "always",
+                action: ts.action || undefined,
+              }
+            : undefined,
+        },
         preChat: r.prechat?.enabled
           ? {
               enabled: true,
@@ -116,7 +155,7 @@ export function createApi(base: string, widgetKey: string, f: Fetch = (...a) => 
           : undefined,
       };
     },
-    async startConversation(visitor, visitorId) {
+    async startConversation(visitor, visitorId, bot) {
       let timezone: string | undefined;
       try {
         timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -130,6 +169,8 @@ export function createApi(base: string, widgetKey: string, f: Fetch = (...a) => 
           method: "POST",
           body: JSON.stringify({
             visitorId,
+            hp: bot?.hp || undefined,
+            turnstileToken: bot?.turnstileToken || undefined,
             visitor: clean && Object.keys(clean).length ? clean : undefined,
             context: { pageUrl: location.href.slice(0, 500), referrer: document.referrer.slice(0, 500) || undefined, locale: navigator.language, timezone },
           }),
@@ -145,8 +186,8 @@ export function createApi(base: string, widgetKey: string, f: Fetch = (...a) => 
       const r = await call<{ items: PublicMessage[] }>(`/messages${after ? `?after=${encodeURIComponent(after)}` : ""}`, { session: s });
       return r.items.map(toWire);
     },
-    async send(s, text, clientId) {
-      return toWire(await call<PublicMessage>("/messages", { method: "POST", session: s, body: JSON.stringify({ text, clientMessageId: clientId }) }));
+    async send(s, text, clientId, hp) {
+      return toWire(await call<PublicMessage>("/messages", { method: "POST", session: s, body: JSON.stringify({ text, clientMessageId: clientId, hp: hp || undefined }) }));
     },
     async uiEvent(s, e, clientId) {
       const p = e.payload;

@@ -1,0 +1,56 @@
+---
+title: Support playbook
+description: Step-by-step flows for triaging a customer, fixing common failures, granting credits and impersonating safely.
+icon: life-buoy
+---
+
+This page is for support and success admins handling a customer request. Each flow uses the admin console; see [Admin console tour](/platform-admin/console-tour) for the layout.
+
+## Find out what is wrong
+
+<Steps>
+  <Step title="Open the customer">
+    Press `Ctrl+K` and type the customer's name or the email of the person who wrote in.
+  </Step>
+  <Step title="Read the health card">
+    The Overview tab lists the reasons behind the score. Each reason points to a tab.
+  </Step>
+  <Step title="Open Issues">
+    Each failure shows the stored error and a "what to check" sentence. Filter by kind to isolate a webhook or a channel.
+  </Step>
+  <Step title="Leave a note">
+    Add a short note on the Overview tab so the next admin sees what you found. Never paste customer message content.
+  </Step>
+</Steps>
+
+## Common fixes
+
+| You see | What to do |
+|---|---|
+| Knowledge ingest failed | Ask the customer to re-upload or fix the source. |
+| Webhook delivery failed | Ask them to check the endpoint URL, certificate and that it answers within a few seconds. |
+| Channel error | Ask them to reconnect the channel under Channels. |
+| Dead job | Read the error under [Operations](/platform-admin/operations), fix the cause, then retry or discard. |
+| Pending invitation expired | Team tab, **Resend** (owner and support). A new 7-day link is emailed. |
+| Credits used up | Billing or owner admins can **Grant credits** with a reason, or change the plan. |
+
+## Impersonate safely
+
+Impersonation is the only way to see a customer's conversations, and it is audited.
+
+<Steps>
+  <Step title="Start the session">
+    Select **Impersonate**, give a reason (5 to 500 characters, for example a ticket number) and choose who to sign in as. The default is the workspace owner.
+  </Step>
+  <Step title="Pick the mode">
+    **Read-only** is the default and the customer API blocks every change. **Write mode** is owner only; use it only when the customer asked you to change something.
+  </Step>
+  <Step title="Open the customer dashboard">
+    The console opens the customer dashboard in a new tab through a one-time link that works once for 60 seconds. A banner in the dashboard says whether the session is read-only or write mode and has **Stop impersonating**.
+  </Step>
+  <Step title="End it">
+    The session ends by itself after 15 minutes. Select **End session now** in the console dialog to end it earlier.
+  </Step>
+</Steps>
+
+The reason, mode and times appear in the customer's Audit tab. Details of the API are in [Tenants and impersonation](/platform-admin/tenants-and-impersonation).

@@ -536,9 +536,9 @@ d("external (in-process) tools", () => {
 
   test("tests the saved draft even when a different version is published", async () => {
     const t = await seedTenant(env.owner);
-    const agent = await seedAgent(env.owner, t, { systemPrompt: "DRAFT-PROMPT-XYZ" });
+    const agent = await seedAgent(env.owner, t, { systemPrompt: "DRAFT-PROMPT-XYZ" }, "draft");
     await env.owner`INSERT INTO agent_versions (tenant_id, agent_id, version, config) VALUES (${t}, ${agent}, 1, ${JSON.stringify({ systemPrompt: "PUBLISHED-PROMPT-ABC" })}::text::jsonb)`;
-    await env.owner`UPDATE agents SET published_version = 1 WHERE id = ${agent}`;
+    await env.owner`UPDATE agents SET status = 'published', published_version = 1 WHERE id = ${agent}`;
     const live = await withTenant(env.app, t, (tx) => loadAgent(tx, t, agent));
     expect(live!.systemPrompt).toBe("PUBLISHED-PROMPT-ABC");
     const draft = await withTenant(env.app, t, (tx) => loadAgent(tx, t, agent, { draft: true }));

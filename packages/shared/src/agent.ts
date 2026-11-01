@@ -3,6 +3,23 @@ import { toolManifestSchema } from "./tool-manifest";
 
 export const BUILTIN_TOOLS = ["qualify_lead", "collect_contact", "escalate_to_human"] as const;
 
+export const DEFAULT_ABUSE_FAREWELL = "I'm sorry, but I can't continue this conversation. Goodbye.";
+
+/** Abuse protection (strict by default, on for every agent, including ones created by the builder). */
+export const abuseConfigSchema = z.strictObject({
+  enabled: z.boolean().default(true),
+  /** Strikes (abusive/spam/flood messages) in one conversation before the visitor is blocked. */
+  maxStrikes: z.number().int().min(1).max(10).default(3),
+  /** More customer messages than this in one minute count as a strike. */
+  maxMessagesPerMinute: z.number().int().min(2).max(60).default(12),
+  /** A message containing one of these (case-insensitive) counts as a strike. */
+  blockedPhrases: z.array(z.string().trim().min(1).max(100)).max(100).default([]),
+  /** The last thing the visitor sees before the conversation is closed and they are blocked. */
+  farewellMessage: z.string().max(500).default(DEFAULT_ABUSE_FAREWELL),
+});
+export type AbuseConfig = z.output<typeof abuseConfigSchema>;
+export const DEFAULT_ABUSE_CONFIG: AbuseConfig = abuseConfigSchema.parse({});
+
 /** Agent configuration (stored in agents.config / agent_versions.config). All keys optional with defaults. */
 export const agentConfigSchema = z.strictObject({
   systemPrompt: z.string().max(8000).default("You are a helpful assistant for this business. Answer only from the provided knowledge."),
@@ -22,6 +39,7 @@ export const agentConfigSchema = z.strictObject({
   temperature: z.number().min(0).max(2).optional(),
   enabledTools: z.array(z.string().regex(/^[a-z][a-z0-9_]{1,63}$/)).max(50).default(["qualify_lead", "collect_contact", "escalate_to_human"]),
   customTools: z.array(toolManifestSchema).max(20).default([]),
+  abuse: abuseConfigSchema.default(DEFAULT_ABUSE_CONFIG),
   escalationRules: z.strictObject({
     keywords: z.array(z.string().max(100)).max(50).default([]),
     maxUnansweredTurns: z.number().int().min(1).max(20).default(3),

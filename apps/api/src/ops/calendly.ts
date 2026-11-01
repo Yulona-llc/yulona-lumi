@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { withTenant } from "@yulona/db";
 import {
-  CalendlyClient, loadTenantCalendarAny, TenantCalendlyCalendar, openCalendlyTokens, pkceVerifier, sealCalendlyTokens, signState, verifyState, withRetry,
+  CalendlyClient, CalendlyOAuthError, checkRedirectUri, loadTenantCalendarAny, TenantCalendlyCalendar, openCalendlyTokens, pkceVerifier, sealCalendlyTokens, signState, verifyState, withRetry,
 } from "@yulona/ops";
 import { setCalendlyEventTypeSchema, setDefaultCalendarSchema } from "@yulona/shared";
 import type { AppEnv } from "../context";
@@ -23,6 +23,15 @@ export function calendlyRoutes(deps: OpsDeps) {
   const calendly = () => (runtime.calendly ? new CalendlyClient(runtime.calendly, runtime.fetchImpl) : null);
   const notConfigured = () => new AppError(503, "service_unavailable", "Calendly is not configured (CALENDLY_CLIENT_ID/SECRET, ENCRYPTION_KEY)");
 
+  /** Effective redirect URI (exactly what is sent to Calendly), where it came from and the pre-flight verdict. */
+  const redirectInfo = () => {
+    if (!runtime.calendly) return null;
+    const uri = runtime.calendly.redirectUri;
+    const source = runtime.calendlyRedirectSource ?? "configured";
+    const check = checkRedirectUri(uri, source, cfg.isProd);
+    return { redirectUri: uri, redirectSource: source, redirectWarning: check.ok ? check.warning : null, redirectError: check.ok ? null : check.message };
+  };
+
   const dto = (x: ConnRow | undefined, provider: string, configured: boolean) => x
     ? { provider, configured, connected: true, accountEmail: x.accountEmail, calendarId: x.calendarId, eventTypeSelected: provider === "calendly" ? x.calendarId.startsWith("http") : true,
         status: x.status, lastError: x.lastError, isDefault: x.isDefault, connectedAt: iso(x.createdAt) }
@@ -35,7 +44,7 @@ export function calendlyRoutes(deps: OpsDeps) {
       SELECT provider, account_email, calendar_id, status, last_error, is_default, created_at FROM calendar_connections WHERE tenant_id = ${tenantId}`);
     const items = [
       dto(rows.find((x) => x.provider === "google"), "google", !!runtime.google && !!cfg.encryptionKey),
-      dto(rows.find((x) => x.provider === "calendly"), "calendly", !!runtime.calendly && !!cfg.encryptionKey),
+      { ...dto(rows.find((x) => x.provider === "calendly"), "calendly", !!runtime.calendly && !!cfg.encryptionKey), ...(redirectInfo() ?? {}) },
     ];
     const def = rows.find((x) => x.isDefault)?.provider ?? rows[0]?.provider ?? null;
     return c.json({ items, default: def });
@@ -60,19 +69,27 @@ export function calendlyRoutes(deps: OpsDeps) {
     const { tenantId, userId } = c.get("auth");
     const cl = calendly();
     if (!cl || !cfg.encryptionKey) throw notConfigured();
+    const info = redirectInfo()!;
+    if (info.redirectError) throw new AppError(400, "validation_error", info.redirectError, { reason: "invalid_redirect_uri", redirectUri: info.redirectUri, redirectSource: info.redirectSource });
+    if (info.redirectWarning) deps.log.warn("calendly redirect uri warning", { redirectUri: info.redirectUri, warning: info.redirectWarning });
     const state = signState(cfg.jwtSecret, { tenantId, userId });
-    return c.json({ url: cl.authorizeUrl(state, pkceVerifier(cfg.jwtSecret, state)) });
+    return c.json({ redirectUri: info.redirectUri, warning: info.redirectWarning, url: cl.authorizeUrl(state, pkceVerifier(cfg.jwtSecret, state)) });
   });
 
   /** Public: Calendly redirects the browser here. Tenant comes from the signed state only (CSRF-safe, 10 min, PKCE bound to it). */
   r.get("/calendar/calendly/callback", async (c) => {
-    const back = (q: string) => c.redirect(`${cfg.appUrl.replace(/\/+$/, "")}/settings/integrations?${q}`, 302);
+    const back = (q: string, detail?: string) => c.redirect(`${cfg.appUrl.replace(/\/+$/, "")}/settings/integrations?${q}${detail ? `&detail=${encodeURIComponent(detail.replace(/\s+/g, " ").trim().slice(0, 200))}` : ""}`, 302);
     const cl = calendly();
     const rawState = c.req.query("state") ?? "";
     const state = verifyState(cfg.jwtSecret, rawState);
     const code = c.req.query("code");
     if (!cl || !cfg.encryptionKey || !state) return back("calendar=error&provider=calendly&reason=invalid_state");
-    if (c.req.query("error") || !code) return back("calendar=error&provider=calendly&reason=denied");
+    const provErr = c.req.query("error");
+    if (provErr || !code) {
+      // Pass Calendly's own OAuth error through (code is restricted to [a-z_], the description is clipped and shown as plain text).
+      const reason = !provErr || provErr === "access_denied" ? "denied" : /^[a-z_]{1,40}$/.test(provErr) ? provErr : "provider_error";
+      return back(`calendar=error&provider=calendly&reason=${reason}`, c.req.query("error_description"));
+    }
     try {
       const tokens = await withRetry((s) => cl.exchangeCode(code, pkceVerifier(cfg.jwtSecret, rawState), s), { retryable, attempts: 2, ...runtime.calendarRetry });
       const me = await cl.me(tokens.accessToken).catch(() => null);
@@ -95,6 +112,10 @@ export function calendlyRoutes(deps: OpsDeps) {
       return back("calendar=connected&provider=calendly");
     } catch (e) {
       deps.log.warn("calendly connect failed", { err: (e as Error).message });
+      if (e instanceof CalendlyOAuthError && e.oauthError) {
+        const reason = /^[a-z_]{1,40}$/.test(e.oauthError) ? e.oauthError : "exchange_failed";
+        return back(`calendar=error&provider=calendly&reason=${reason}`, e.oauthDescription);
+      }
       return back("calendar=error&provider=calendly&reason=exchange_failed");
     }
   });

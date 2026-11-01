@@ -67,7 +67,7 @@ export function createMockFetch(opts: MockOptions = {}): (input: RequestInfo | U
     if (/future|unknown/.test(t))
       return mk("ai", "Fallback text for a newer UI.", { version: 2, components: [{ type: "carousel", items: [] }, { type: "rating", title: "How did we do?" }] });
     return mk("ai", undefined, { version: 1, components: [
-      msg("Hi! I'm the Yulona assistant. Try one of these (or type: book a demo, contact form, pricing card):"),
+      msg("Hi! I'm the Lumi assistant. Try one of these (or type: book a demo, contact form, pricing card):"),
       { type: "buttons", id: "menu", buttons: [{ label: "Book a demo", value: "book" }, { label: "Pricing", value: "pricing" }, { label: "Contact me", value: "contact" }] },
     ] });
   }
@@ -85,9 +85,9 @@ export function createMockFetch(opts: MockOptions = {}): (input: RequestInfo | U
 
     if (path === "/config")
       return json({
-        name: "Yulona Support",
+        name: "Lumi Support",
         schemaVersion: 1,
-        config: { title: "Yulona Support", subtitle: "We reply in seconds", welcomeMessage: "Hello! Ask me anything.", primaryColor: "#4f46e5", position: "right", theme: "auto" },
+        config: { title: "Lumi Support", subtitle: "We reply in seconds", welcomeMessage: "Hello! Ask me anything.", primaryColor: "#4f46e5", position: "right", theme: "auto" },
         prechat: opts.preChat
           ? { enabled: true, intro: "Before we start, who are we talking to?", fields: [
               { name: "name", label: "Your name", required: true },

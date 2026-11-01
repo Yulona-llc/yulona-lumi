@@ -10,7 +10,7 @@ Required env: `ENCRYPTION_KEY` (base64, 32 bytes) for webhooks (secrets are seal
 ## 1. Outbound webhooks
 
 ### Events
-`conversation.created`, `message.created` (contact/ai/human messages only; internal notes and system lines are never sent), `handoff.requested`, `contact.created`, `contact.updated` (name/email/phone/custom attributes/merge changed), `booking.created`, `ticket.created`, `ticket.updated`, plus `*` for all. `webhook.test` is sent by the test endpoint regardless of subscription.
+`conversation.created`, `message.created` (contact/ai/human messages only; internal notes and system lines are never sent), `handoff.requested`, `contact.created`, `contact.updated` (name/email/phone/custom attributes/merge changed), `booking.created`, `lead.qualified` (`{ conversationId, contactId, agentId, lead }`, once when a conversation reaches `qualified`), `ticket.created`, `ticket.updated`, plus `*` for all. `webhook.test` is sent by the test endpoint regardless of subscription.
 Events are produced by **database triggers inside the writer's transaction**, so they exist if and only if the change committed, whichever component wrote it (API, AI worker, channels, ops). `booking.*`/`ticket.*` payloads are the row as camelCased JSON (columns that look like tokens/secrets are dropped). Re-run `SELECT webhooks_attach_optional_triggers()` (owner, idempotent) if those tables are created after migration 0500.
 Code can also emit: `emitWebhookEvent(tx, tenantId, type, data)` from `@yulona/integrations`.
 
@@ -19,7 +19,7 @@ Code can also emit: `emitWebhookEvent(tx, tenantId, type, data)` from `@yulona/i
 ```json
 { "id": "<event uuid>", "type": "message.created", "createdAt": "2026-01-01T10:00:00.000Z", "tenantId": "<uuid>", "data": { "message": { "id": "...", "conversationId": "...", "senderType": "contact", "content": "...", "createdAt": "..." } } }
 ```
-Headers: `X-Yulona-Event`, `X-Yulona-Delivery` (delivery id), `X-Yulona-Timestamp` (unix seconds), `X-Yulona-Signature: v1=<hex>` where hex = `HMAC_SHA256(secret, "<timestamp>.<raw body>")`.
+Headers: `X-Lumi-Event`, `X-Lumi-Delivery` (delivery id), `X-Lumi-Timestamp` (unix seconds), `X-Lumi-Signature: v1=<hex>` (the same four are also sent as `X-Yulona-*`, the pre-rename names) where hex = `HMAC_SHA256(secret, "<timestamp>.<raw body>")`.
 Verify on your side (constant-time compare, reject timestamps older than 5 min, de-duplicate on envelope `id`):
 ```js
 const ok = crypto.timingSafeEqual(Buffer.from(sig), Buffer.from("v1=" + crypto.createHmac("sha256", secret).update(`${ts}.${rawBody}`).digest("hex")));
@@ -79,13 +79,13 @@ Async: requests are rows in `gdpr_requests` processed by worker jobs `gdpr.expor
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/gdpr/exports` | `{ contactId? }` -> 202 `GdprRequest`. With `contactId`: that contact (and contacts merged into it): contact, identities, conversations, all messages incl. internal notes, handoffs, AI lead state, widget sessions (ip/user agent) and tickets/bookings/transactions that reference it. Without: the whole workspace (adds users, agents, widgets, knowledge source metadata, webhooks, API key metadata, audit log; never password hashes, key hashes or secrets). Tables are capped at 100k rows each. |
+| POST | `/gdpr/exports` | `{ contactId? }` -> 202 `GdprRequest`. With `contactId`: that contact (and contacts merged into it): contact, identities, conversations, all messages incl. internal notes, handoffs, AI lead state, widget sessions (ip/user agent) and tickets/bookings that reference it. Without: the whole workspace (adds users, agents, widgets, knowledge source metadata, webhooks, API key metadata, audit log; never password hashes, key hashes or secrets). Tables are capped at 100k rows each. |
 | POST | `/gdpr/erasures` | `{ contactId, confirm: true }` -> 202. Irreversible. |
 | GET | `/gdpr/requests` | `kind?`, `limit`, `cursor` |
 | GET | `/gdpr/requests/:id` | `{ id, kind, contactId, status: queued\|processing\|completed\|failed, requestedBy, sizeBytes, result, error, downloadAvailable, expiresAt, createdAt, completedAt }` |
 | GET | `/gdpr/requests/:id/download` | Export only, when completed and not expired (else 404). Returns `{ url, expiresAt }` (signed URL, 15 min) when the StorageProvider can presign (S3/MinIO), otherwise streams the JSON file through the API. `Cache-Control: no-store`. |
 
-Export files expire after 7 days (the sweep deletes them from storage). Erasure **anonymises in place** (ids, timestamps and conversation structure stay so funnel metrics and FKs remain valid): contact name/email/phone cleared and `customAttributes = {"erased": true}`; identities deleted; every message in the contact's conversations (including notes) becomes `[erased]` with no `ui`/metadata; conversation previews/metadata, handoff summary/lead card/context, AI lead state, tool execution input/output/error and widget session ip/user agent/origin are cleared; earlier exports of that contact are deleted. Erasure emits no webhooks. Rows in `tickets`, `bookings`, `transactions` that reference the contact are **retained** (possible legal retention) and listed in `result.retained` for follow-up; whole-workspace exports taken before the erasure are not touched (they expire after 7 days). Audit: `gdpr.export.requested|completed|downloaded`, `gdpr.erasure.requested|completed`.
+Export files expire after 7 days (the sweep deletes them from storage). Erasure **anonymises in place** (ids, timestamps and conversation structure stay so funnel metrics and FKs remain valid): contact name/email/phone cleared and `customAttributes = {"erased": true}`; identities deleted; every message in the contact's conversations (including notes) becomes `[erased]` with no `ui`/metadata; conversation previews/metadata, handoff summary/lead card/context, AI lead state, tool execution input/output/error and widget session ip/user agent/origin are cleared; earlier exports of that contact are deleted. Erasure emits no webhooks. Rows in `tickets` and `bookings` that reference the contact are **retained** (possible legal retention) and listed in `result.retained` for follow-up; whole-workspace exports taken before the erasure are not touched (they expire after 7 days). Audit: `gdpr.export.requested|completed|downloaded`, `gdpr.erasure.requested|completed`.
 
 ---
 ## 4. Retention

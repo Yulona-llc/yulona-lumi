@@ -33,6 +33,42 @@ export const pkceVerifier = (secret: string, state: string) => createHmac("sha25
 export const pkceChallenge = (verifier: string) => createHash("sha256").update(verifier).digest("base64url");
 export const uuidOf = (uri: string) => uri.replace(/\/+$/, "").split("/").pop() ?? uri;
 
+/** Token endpoint failure carrying Calendly's OAuth `error` / `error_description` (never the request, so no secrets). */
+export class CalendlyOAuthError extends ProviderError {
+  constructor(message: string, status: number, readonly oauthError?: string, readonly oauthDescription?: string) {
+    super(message, "calendly", status >= 500 || status === 429, status);
+  }
+}
+
+export type RedirectSource = "CALENDLY_REDIRECT_URI" | "PUBLIC_API_URL" | "localhost_fallback" | "configured";
+export type RedirectCheck =
+  | { ok: true; warning: string | null }
+  | { ok: false; code: "invalid_url" | "not_https" | "localhost_in_production"; message: string };
+const isLocalHost = (h: string) => h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h.endsWith(".localhost");
+
+/**
+ * Pre-flight for the OAuth redirect URI. Calendly (developer.calendly.com, "Creating an OAuth app"): Production apps accept https URIs only,
+ * Sandbox apps accept https plus http on localhost. The app cannot know which kind the operator registered, so http://localhost is allowed
+ * outside NODE_ENV=production only. Calendly's exact-match rules (trailing slash, case) are not documented: we always send the URI verbatim.
+ */
+export function checkRedirectUri(uri: string, source: RedirectSource, isProd: boolean): RedirectCheck {
+  let u: URL;
+  try { u = new URL(uri); } catch { return { ok: false, code: "invalid_url", message: `The Calendly redirect URL "${uri}" is not a valid URL. Set CALENDLY_REDIRECT_URI to a full https URL.` }; }
+  const local = isLocalHost(u.hostname);
+  if (source === "localhost_fallback" && isProd) {
+    return { ok: false, code: "localhost_in_production", message: "PUBLIC_API_URL is not set, so the Calendly redirect URL fell back to localhost. Set PUBLIC_API_URL (or CALENDLY_REDIRECT_URI) to your public https API address and register that exact URL in your Calendly app." };
+  }
+  if (u.protocol !== "https:") {
+    if (u.protocol === "http:" && local && !isProd) {
+      return { ok: true, warning: source === "localhost_fallback" ? "PUBLIC_API_URL is not set, so the redirect URL uses localhost. This only works with a Calendly Sandbox app; set PUBLIC_API_URL for production." : "This redirect URL uses http on localhost. Only a Calendly Sandbox app accepts it; a Production app needs https." };
+    }
+    return { ok: false, code: local ? "localhost_in_production" : "not_https", message: local
+      ? "Calendly Production apps do not accept http://localhost redirect URLs. Use your public https API address (PUBLIC_API_URL or CALENDLY_REDIRECT_URI)."
+      : "Calendly only accepts https redirect URLs (http is allowed on localhost for Sandbox apps only). Use an https address for CALENDLY_REDIRECT_URI or PUBLIC_API_URL." };
+  }
+  return { ok: true, warning: source === "localhost_fallback" ? "PUBLIC_API_URL is not set, so the redirect URL fell back to localhost." : null };
+}
+
 export class CalendlyClient {
   readonly authUrl: string;
   readonly tokenUrl: string;
@@ -67,7 +103,12 @@ export class CalendlyClient {
       signal,
     });
     // 429 (8 tokens/user/min) and 5xx are transient; 400/401 (invalid_grant, revoked) are permanent => reconnect.
-    if (!res.ok) throw new ProviderError(`calendly token endpoint HTTP ${res.status}`, "calendly", res.status >= 500 || res.status === 429, res.status);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: unknown; error_description?: unknown } | null;
+      const oauthError = typeof body?.error === "string" ? body.error.slice(0, 60) : undefined;
+      const oauthDescription = typeof body?.error_description === "string" ? body.error_description.slice(0, 300) : undefined;
+      throw new CalendlyOAuthError(`calendly token endpoint HTTP ${res.status}${oauthError ? `: ${oauthError}` : ""}`, res.status, oauthError, oauthDescription);
+    }
     const j = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number; created_at?: number; owner?: string };
     if (!j.access_token || !j.refresh_token) throw new ProviderError("calendly token response incomplete", "calendly", false);
     return { accessToken: j.access_token, refreshToken: j.refresh_token, expiresAt: Date.now() + (j.expires_in ?? 7200) * 1000, owner: j.owner };

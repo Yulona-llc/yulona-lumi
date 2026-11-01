@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "../../auth/AuthProvider";
 import { errMsg } from "../common/api";
 import { ErrorState, Loading, RoleNotice, Select, TextArea, TextField, useRole } from "../common/ui";
+import { SearchSelect } from "../common/inputs";
 import { initials } from "./hooks";
 import { label, ops, type Availability, type OpsSettings } from "./opsApi";
 
@@ -95,7 +96,15 @@ function HoursCard({ canEdit }: { canEdit: boolean }) {
   const q = useQuery({ queryKey: ["ops-settings"], queryFn: ops.settings });
   const [s, setS] = useState<OpsSettings | null>(null);
   const [holiday, setHoliday] = useState("");
-  useEffect(() => { if (q.data) setS(q.data); }, [q.data]);
+  const [autoZone, setAutoZone] = useState(false);
+  useEffect(() => {
+    if (!q.data) return;
+    // A workspace that never set hours still has the placeholder UTC: start from the visitor's own time zone instead (they can change it).
+    const mine = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })();
+    const fresh = q.data.timezone === "UTC" && q.data.businessHours.length === 0 && !!mine && mine !== "UTC";
+    setAutoZone(fresh);
+    setS(fresh ? { ...q.data, timezone: mine! } : q.data);
+  }, [q.data]);
   const save = useMutation({
     mutationFn: () => ops.saveSettings(s!),
     onSuccess: (r) => { setS(r); toast.success("Settings saved"); void qc.invalidateQueries({ queryKey: ["ops-settings"] }); },
@@ -119,7 +128,7 @@ function HoursCard({ canEdit }: { canEdit: boolean }) {
       <div><h2 id="bh" className="font-display text-lg font-semibold">Business hours and routing</h2><p className="text-sm text-muted-foreground">With no windows configured you are treated as always open.</p></div>
       {dis && <RoleNotice what="changing these settings" />}
       <fieldset disabled={dis} className="space-y-8">
-        <div className="max-w-sm"><Select label="Timezone" value={s.timezone} onChange={(e) => setS({ ...s, timezone: e.target.value })}>{[...new Set([s.timezone, ...zones()])].map((z) => <option key={z}>{z}</option>)}</Select></div>
+        <div className="max-w-sm"><SearchSelect label="Time zone" hint={autoZone && s.timezone !== "UTC" ? "We picked the time zone of this computer. Change it if your team works elsewhere." : "Your opening hours below follow this time zone."} value={s.timezone} onChange={(z) => { setAutoZone(false); setS({ ...s, timezone: z }); }} options={zones()} placeholder="Search for a city or region" /></div>
 
         <div>
           <div className="mb-2 flex items-center justify-between gap-2"><h3 className="font-display text-base font-semibold">Weekly windows</h3>

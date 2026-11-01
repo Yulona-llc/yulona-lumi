@@ -15,7 +15,8 @@
     "@yulona/providers": "workspace:*",
     "@yulona/queue": "workspace:*",
     "@yulona/ai-runtime": "workspace:*",
-    "@yulona/worker": "workspace:*"
+    "@yulona/worker": "workspace:*",
+    "@yulona/admin-api": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

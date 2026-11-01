@@ -1,14 +1,14 @@
 import { Hono } from "hono";
 import { AuditLogRepository, withTenant } from "@yulona/db";
-import { createContactSchema, listContactsQuerySchema, mergeContactSchema, timelineQuerySchema, updateContactSchema } from "@yulona/shared";
+import { blockContactSchema, createContactSchema, listContactsQuerySchema, mergeContactSchema, timelineQuerySchema, updateContactSchema } from "@yulona/shared";
 import type { AppEnv } from "../context";
 import { Errors } from "../errors";
 import { parseBody } from "../http";
 import { requireAuth } from "../middleware";
 import { requireWriteRole } from "../platform/authz";
-import { cursorOf, idParam, parseQuery, type ConvDeps } from "../conversations/common";
+import { cursorOf, idParam, parseQuery, requireRoles, type ConvDeps } from "../conversations/common";
 import { encodeCursor, toContactDto, toMessageDto } from "../conversations/dto";
-import { ContactsRepository, ConversationsRepository } from "../conversations/repos";
+import { ContactsRepository, ConversationsRepository, WidgetSessionsRepository } from "../conversations/repos";
 
 export function contactRoutes({ cfg, db }: ConvDeps) {
   const r = new Hono<AppEnv>();
@@ -138,6 +138,45 @@ export function contactRoutes({ cfg, db }: ConvDeps) {
       await new AuditLogRepository(tx, tenantId).record({
         actorUserId: userId, action: "contact.merge", resourceType: "contact", resourceId: id,
         metadata: { sourceContactId: body.sourceContactId }, ip: c.get("ip"), requestId: c.get("requestId"),
+      });
+      return toContactDto((await repo.get(id))!);
+    });
+    if (!dto) throw Errors.notFound("Contact not found");
+    return c.json(dto);
+  });
+
+  // ---- block / unblock (abuse). The AI blocks on its own through the runtime; only people unblock, and only owners/admins.
+  r.post("/contacts/:id/block", async (c) => {
+    const { tenantId, userId } = c.get("auth");
+    const id = idParam(c);
+    const body = await parseBody(c, blockContactSchema);
+    const dto = await withTenant(db, tenantId, async (tx) => {
+      const repo = new ContactsRepository(tx, tenantId);
+      const cur = (await repo.get(id, true)) as (Awaited<ReturnType<typeof repo.get>> & { mergedInto?: string | null }) | undefined;
+      if (!cur || cur.mergedInto) return null;
+      const changed = await repo.block(id, body.reason ?? "Blocked by a team member", userId);
+      // a blocked visitor loses every widget session immediately
+      await new WidgetSessionsRepository(tx, tenantId).revokeForContact(id);
+      if (changed) await new AuditLogRepository(tx, tenantId).record({
+        actorUserId: userId, action: "contact.block", resourceType: "contact", resourceId: id,
+        metadata: { reason: body.reason ?? null, by: "user" }, ip: c.get("ip"), requestId: c.get("requestId"),
+      });
+      return toContactDto((await repo.get(id))!);
+    });
+    if (!dto) throw Errors.notFound("Contact not found");
+    return c.json(dto);
+  });
+
+  r.post("/contacts/:id/unblock", requireRoles("owner", "admin"), async (c) => {
+    const { tenantId, userId } = c.get("auth");
+    const id = idParam(c);
+    const dto = await withTenant(db, tenantId, async (tx) => {
+      const repo = new ContactsRepository(tx, tenantId);
+      const cur = (await repo.get(id, true)) as (Awaited<ReturnType<typeof repo.get>> & { mergedInto?: string | null }) | undefined;
+      if (!cur || cur.mergedInto) return null;
+      const changed = await repo.unblock(id);
+      if (changed) await new AuditLogRepository(tx, tenantId).record({
+        actorUserId: userId, action: "contact.unblock", resourceType: "contact", resourceId: id, ip: c.get("ip"), requestId: c.get("requestId"),
       });
       return toContactDto((await repo.get(id))!);
     });

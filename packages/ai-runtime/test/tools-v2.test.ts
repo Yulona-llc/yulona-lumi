@@ -114,6 +114,8 @@ describe("request building + auth types", () => {
     await callConnection(m, conn({ authType: "hmac", secret: "whsec_test" }), { a: 1 }, opts);
     const h = last().headers;
     expect(h["x-yulona-signature"]).toMatch(/^v1=[0-9a-f]{64}$/);
+    expect(h["x-lumi-signature"]).toBe(h["x-yulona-signature"]);
+    expect(h["x-lumi-timestamp"]).toBe(h["x-yulona-timestamp"]);
     expect(verifyWebhookSignature("whsec_test", last().body, { timestamp: h["x-yulona-timestamp"]!, signature: h["x-yulona-signature"]! })).toBe(true);
     expect(verifyWebhookSignature("whsec_test", last().body + " ", { timestamp: h["x-yulona-timestamp"]!, signature: h["x-yulona-signature"]! })).toBe(false);
     expect(verifyWebhookSignature("whsec_other", last().body, { timestamp: h["x-yulona-timestamp"]!, signature: h["x-yulona-signature"]! })).toBe(false);

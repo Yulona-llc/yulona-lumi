@@ -1,37 +1,42 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { ArrowRight, BookOpen, Bot, Check, Radio, UserRound } from "lucide-react";
+import { ArrowRight, Bot, Check, Circle, Sparkles, UserRound } from "lucide-react";
 import { useAuth } from "../../auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedNumber } from "@/components/motion";
+import { toast } from "@/components/ui/sonner";
+import { errMsg } from "../common/api";
 import { ErrorState, PageHeader, useRole } from "../common/ui";
-import { buildFunnel, overviewApi, waitLabel } from "./api";
-import { Funnel } from "./Funnel";
+import { overviewApi, waitLabel } from "./api";
+import { GOAL_BLOCKS, NoGoal } from "./GoalBlocks";
+import { onboardingApi } from "../onboarding/api";
 import { CreditAlerts, CreditsCard } from "../usage/CreditAlerts";
 import { SparkCard, dailyValues } from "./Spark";
 
-const DAY = 86_400_000;
-
-function Setup({ steps }: { steps: Array<{ done: boolean; title: string; body: string; to: string; cta: string; icon: typeof Bot }> }) {
-  const done = steps.filter((s) => s.done).length;
+function Setup({ items, nextStep }: { items: { key: string; label: string; done: boolean; path: string }[]; nextStep?: { label: string; path: string } | null }) {
+  const done = items.filter((s) => s.done).length;
   return (
     <Card className="gap-4 p-5" data-testid="setup-checklist">
       <div>
         <h2 className="font-display text-lg font-semibold">Set up your workspace</h2>
-        <p className="text-sm text-muted-foreground">{done} of {steps.length} done. Your first conversation appears here once a channel is live.</p>
+        <p className="text-sm text-muted-foreground">{done} of {items.length} done. Your first conversation appears here once a channel is live.</p>
       </div>
+      {nextStep && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/40 bg-accent/50 p-3" data-testid="try-then-publish">
+          <Sparkles className="size-5 shrink-0 text-accent-foreground" aria-hidden />
+          <p className="min-w-0 flex-1 text-sm font-medium">{nextStep.label}</p>
+          <Button asChild size="sm"><Link to={`${nextStep.path}?tab=sandbox`}>Try it now</Link></Button>
+        </div>
+      )}
       <ol className="grid gap-3">
-        {steps.map((s) => (
-          <li key={s.title} className="flex flex-wrap items-start gap-3 rounded-xl border bg-background p-3 sm:flex-nowrap">
-            <span className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full ${s.done ? "bg-success text-white dark:text-[#06210f]" : "bg-accent text-accent-foreground"}`}>{s.done ? <Check className="size-4" aria-hidden /> : <s.icon className="size-4" aria-hidden />}</span>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium">{s.title}{s.done && <span className="sr-only"> (done)</span>}</p>
-              <p className="text-sm text-muted-foreground">{s.body}</p>
-            </div>
-            {!s.done && <Button asChild size="sm" variant="outline" className="max-sm:ml-11 max-sm:w-[calc(100%-2.75rem)]"><Link to={s.to}>{s.cta}</Link></Button>}
+        {items.map((s) => (
+          <li key={s.key} className="flex flex-wrap items-center gap-3 rounded-xl border bg-background p-3 sm:flex-nowrap">
+            <span className={`grid size-8 shrink-0 place-items-center rounded-full ${s.done ? "bg-success text-white dark:text-[#06210f]" : "bg-accent text-accent-foreground"}`}>{s.done ? <Check className="size-4" aria-hidden /> : <Circle className="size-4" aria-hidden />}</span>
+            <p className="min-w-0 flex-1 font-medium">{s.label}{s.done && <span className="sr-only"> (done)</span>}</p>
+            {!s.done && <Button asChild size="sm" variant="outline" className="max-sm:ml-11 max-sm:w-[calc(100%-2.75rem)]"><Link to={s.path}>Open</Link></Button>}
           </li>
         ))}
       </ol>
@@ -41,32 +46,29 @@ function Setup({ steps }: { steps: Array<{ done: boolean; title: string; body: s
 
 export default function OverviewPage() {
   const { session } = useAuth();
-  const { atLeast } = useRole();
+  const { atLeast, isAdmin } = useRole();
+  const qc = useQueryClient();
   const [range, setRange] = useState<7 | 30>(30);
+  const summary = useQuery({ queryKey: ["overview", "summary"], queryFn: overviewApi.summary, retry: false });
   const usage = useQuery({ queryKey: ["overview", "usage"], queryFn: () => overviewApi.usage(30) });
   const open = useQuery({ queryKey: ["overview", "open"], queryFn: () => overviewApi.conversations({ status: "open", limit: 100 }) });
   const pending = useQuery({ queryKey: ["overview", "pending"], queryFn: () => overviewApi.conversations({ status: "pending_human", limit: 100 }) });
-  const recent = useQuery({ queryKey: ["overview", "recent"], queryFn: () => overviewApi.conversations({ limit: 100 }) });
-  const bookings = useQuery({ queryKey: ["overview", "bookings"], queryFn: overviewApi.bookings, retry: false });
   const attention = useQuery({ queryKey: ["overview", "attention"], queryFn: overviewApi.attention, enabled: atLeast("agent"), retry: false, refetchInterval: 30_000 });
-  const isAdmin = atLeast("admin");
-  const agents = useQuery({ queryKey: ["overview", "agents"], queryFn: overviewApi.agents, enabled: isAdmin, retry: false });
-  const sources = useQuery({ queryKey: ["overview", "sources"], queryFn: overviewApi.sources, enabled: isAdmin, retry: false });
-  const channels = useQuery({ queryKey: ["overview", "channels"], queryFn: overviewApi.channels, enabled: isAdmin, retry: false });
-  const widgets = useQuery({ queryKey: ["overview", "widgets"], queryFn: overviewApi.widgets, enabled: isAdmin, retry: false });
+  const onboarding = useQuery({ queryKey: ["onboarding"], queryFn: onboardingApi.state, enabled: isAdmin, retry: false, staleTime: 60_000 });
+  const setGoals = useMutation({
+    mutationFn: onboardingApi.setGoals,
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["overview", "summary"] }); void qc.invalidateQueries({ queryKey: ["workspace-profile"] }); },
+    onError: (e) => toast.error(errMsg(e)),
+  });
 
   const first = session?.user.name?.split(" ")[0];
-  const setupReady = isAdmin && agents.isSuccess && sources.isSuccess && (channels.isSuccess || widgets.isSuccess);
-  const steps = setupReady ? [
-    { done: agents.data!.length > 0, title: "Create an agent", body: "Give your AI a name, a voice and its instructions.", to: "/agents", cta: "Create agent", icon: Bot },
-    { done: sources.data!.some((s) => s.status === "ready"), title: "Add knowledge", body: "Upload a document or point it at a web page so answers are grounded in your facts.", to: "/knowledge", cta: "Add knowledge", icon: BookOpen },
-    { done: (channels.data?.length ?? 0) + (widgets.data?.length ?? 0) > 0, title: "Connect a channel", body: "Put the chat widget on your site or connect WhatsApp, Telegram and more.", to: "/channels", cta: "Connect channel", icon: Radio },
-  ] : [];
-  const setupIncomplete = steps.some((s) => !s.done);
-
-  const sample = recent.data ?? [];
-  const funnel = buildFunnel(sample, bookings.data ?? [], Date.now() - 30 * DAY);
-  const noTraffic = recent.isSuccess && sample.length === 0;
+  const o = summary.data;
+  const setupIncomplete = isAdmin && !!o && o.common.setup.doneCount < o.common.setup.total;
+  const obStatus = onboarding.data?.status;
+  const nextStep = onboarding.data?.result && o && !o.common.setup.items.find((i) => i.key === "publish")?.done ? onboarding.data.result.nextStep : null;
+  const noGoal = !!o && o.goals.length === 0;
+  // Before the first conversation the checklist leads; once chats flow, the numbers come first and the checklist follows.
+  const setupFirst = !o || o.common.conversations.last30d === 0 || !!nextStep;
 
   const ai = (open.data ?? []).filter((c) => c.handler === "ai").length;
   const waiting = pending.data ?? [];
@@ -78,21 +80,24 @@ export default function OverviewPage() {
     <div className="mx-auto w-full min-w-0 max-w-5xl">
       <PageHeader title={first ? `Hello, ${first}` : "Overview"} subtitle="How conversations are turning into customers, and what needs a person right now." />
       <CreditAlerts className="mb-6" />
-      {setupIncomplete && <div className="mb-6"><Setup steps={steps} /></div>}
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-        <section aria-labelledby="funnel-h" className="min-w-0">
-          <Card className="gap-4 p-5">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 id="funnel-h" className="font-display text-lg font-semibold">From first message to booking</h2>
-              <p className="text-xs text-muted-foreground">Latest {Math.min(sample.length, 100) || 100} chats</p>
-            </div>
-            {recent.isPending ? <div className="space-y-2" role="status" aria-label="Loading funnel">{[100, 75, 50, 30].map((w) => <Skeleton key={w} className="mx-auto h-14" style={{ width: `${w}%` }} />)}</div>
-              : recent.isError ? <ErrorState error={recent.error} retry={() => void recent.refetch()} />
-              : noTraffic ? <p className="py-6 text-center text-sm text-muted-foreground">No conversations yet. When customers start chatting, the funnel fills in here.</p>
-              : <Funnel steps={funnel} />}
-          </Card>
-        </section>
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6">
+      {isAdmin && (obStatus === "not_started" || obStatus === "skipped" || obStatus === "in_progress") && !noGoal && (
+        <Card className="mb-6 flex-row flex-wrap items-center gap-3 p-4" data-testid="setup-prompt">
+          <Sparkles className="size-5 shrink-0 text-accent-foreground" aria-hidden />
+          <p className="min-w-0 flex-1 text-sm"><strong>Finish your setup with Lumi.</strong> Answer a few questions and Lumi prepares an agent, chat window and hours for you.</p>
+          <Button asChild size="sm"><Link to="/onboarding">{obStatus === "in_progress" ? "Continue setup" : "Start setup"}</Link></Button>
+        </Card>
+      )}
+      {noGoal && <div className="mb-6"><NoGoal isAdmin={isAdmin} onboardingOpen={obStatus !== "completed"} pending={setGoals.isPending} onPick={(g) => setGoals.mutate(g)} /></div>}
+      {setupIncomplete && o && setupFirst && <div className="mb-6"><Setup items={o.common.setup.items} nextStep={nextStep} /></div>}
+      <div className={noGoal ? "grid grid-cols-[minmax(0,1fr)] gap-6" : "grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]"}>
+        {!noGoal && <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6">
+          {summary.isPending ? <Skeleton className="h-64" role="status" aria-label="Loading overview" />
+            : summary.isError ? <ErrorState error={summary.error} retry={() => void summary.refetch()} />
+            : noGoal ? null
+            : o!.order.map((g) => GOAL_BLOCKS[g as "support" | "leads" | "bookings"]?.(o!))}
+          {o && !noGoal && o.order.length === 0 && <p className="text-sm text-muted-foreground">Your goal is set to something else. Use Ask Lumi to tell Lumi more about it.</p>}
+        </div>}
+        <div className={noGoal ? "grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6 md:grid-cols-2" : "grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-6"}>
           <CreditsCard />
           <section aria-labelledby="now-h">
             <Card className="gap-3 p-5" data-testid="right-now">
@@ -129,6 +134,7 @@ export default function OverviewPage() {
           )}
         </div>
       </div>
+      {setupIncomplete && o && !setupFirst && <div className="mt-6"><Setup items={o.common.setup.items} nextStep={nextStep} /></div>}
       <section aria-labelledby="usage-h" className="mt-6">
         <div className="mb-3 flex items-center justify-between">
           <h2 id="usage-h" className="font-display text-lg font-semibold">Activity</h2>

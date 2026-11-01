@@ -168,6 +168,8 @@ function buildRequest(m: ToolManifestV2, conn: ResolvedConnection, input: Json, 
       const sig = `v1=${createHmac("sha256", conn.secret!).update(`${ts}.${body ?? ""}`).digest("hex")}`;
       auth("x-yulona-timestamp", ts, ts);
       auth("x-yulona-signature", sig, "v1=***");
+      auth("x-lumi-timestamp", ts, ts);
+      auth("x-lumi-signature", sig, "v1=***");
       break;
     }
     default: break;

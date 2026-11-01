@@ -15,9 +15,8 @@ const envSchema = z.object({
   ALLOW_PUBLIC_SIGNUP: bool(false),
   CROSS_SITE_COOKIES: bool(false),
   TRUST_PROXY: bool(false),
-  /** saas (default): multi-tenant, billing + super-admin on. selfhosted: single tenant, no billing, super-admin only if SUPER_ADMIN_ENABLED=true. */
+  /** saas (default): multi-tenant, billing on. selfhosted: single tenant, no billing. */
   DEPLOYMENT_MODE: z.enum(["saas", "selfhosted"]).default("saas"),
-  SUPER_ADMIN_ENABLED: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["true", "false"]).optional()),
   APP_URL: z.string().default("http://localhost:5173"),
   OPENAPI_ENABLED: z.enum(["true", "false"]).optional(),
   DOCS_USERNAME: z.string().default("docs"),
@@ -30,6 +29,8 @@ const envSchema = z.object({
   PUBLIC_API_URL: z.string().optional(),
   WIDGET_SCRIPT_URL: z.string().optional(),
   WIDGET_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  /** optional cheaper model for the "Ask Lumi" copilot (must be enabled on the LLM profile in SaaS) */
+  COPILOT_MODEL: z.string().trim().max(100).optional(),
 });
 
 export interface RateLimitRule {
@@ -52,7 +53,6 @@ export interface Config {
   deploymentMode: "saas" | "selfhosted";
   /** false in selfhosted mode: billing routes are not mounted (no Stripe, no plan upsell). */
   billingEnabled: boolean;
-  superAdminEnabled: boolean;
   appUrl: string;
   openapiEnabled: boolean;
   /** HTTP basic auth for /docs and /api/v1/openapi.json. Unset means the docs are not mounted. */
@@ -67,6 +67,10 @@ export interface Config {
   publicApiUrl?: string;
   widgetScriptUrl: string;
   widgetSessionTtlHours: number;
+  /** model override for the Ask Lumi copilot (undefined = the provider default) */
+  copilotModel?: string;
+  /** Cloudflare Turnstile siteverify endpoint (a constant; tests point it at a fake server). */
+  turnstileVerifyUrl: string;
   rateLimits: { global: RateLimitRule; loginIpEmail: RateLimitRule; loginIp: RateLimitRule; register: RateLimitRule; refresh: RateLimitRule; docs: RateLimitRule };
 }
 
@@ -126,7 +130,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     trustProxy: e.TRUST_PROXY,
     deploymentMode: e.DEPLOYMENT_MODE,
     billingEnabled: !selfhosted,
-    superAdminEnabled: e.SUPER_ADMIN_ENABLED ? e.SUPER_ADMIN_ENABLED === "true" : !selfhosted,
     appUrl: e.APP_URL,
     openapiEnabled: e.OPENAPI_ENABLED ? e.OPENAPI_ENABLED === "true" : !isProd,
     docsUsername,
@@ -139,6 +142,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     publicApiUrl: e.PUBLIC_API_URL?.replace(/\/+$/, "") || undefined,
     widgetScriptUrl: e.WIDGET_SCRIPT_URL || "/widget.js",
     widgetSessionTtlHours: e.WIDGET_SESSION_TTL_HOURS,
+    copilotModel: e.COPILOT_MODEL || undefined,
+    turnstileVerifyUrl: "https://challenges.cloudflare.com/turnstile/v0/siteverify",
     rateLimits: {
       global: { limit: 300, windowMs: 60_000 },
       loginIpEmail: { limit: 8, windowMs: 15 * 60_000 },

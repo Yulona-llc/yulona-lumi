@@ -27,7 +27,7 @@ Connections are managed under **Settings, then Connections**. Only **admins and 
     Your system accepts requests without a password. Only use this for public information. There is no secret to store.
   </Tab>
   <Tab title="Bearer token">
-    Your system gives you a long token. Yulona sends it with every request as the standard "Authorization: Bearer" header. Enter it in **Token**.
+    Your system gives you a long token. Lumi sends it with every request as the standard "Authorization: Bearer" header. Enter it in **Token**.
   </Tab>
   <Tab title="API key in a header">
     Your system gives you a key and tells you which header carries it (often `X-API-Key`). Enter the header in **Header name** and the key in **API key**.
@@ -36,7 +36,7 @@ Connections are managed under **Settings, then Connections**. Only **admins and 
     A username and a password, sent the standard way (HTTP basic sign-in). Enter both in **Username** and **Password**. Ask your developer for them.
   </Tab>
   <Tab title="Signed requests">
-    Instead of sending a password, Yulona signs every request with a shared secret so your system can check it really came from Yulona. Enter the secret in **Signing secret**, or click **Generate one** to create a strong one and then give it to your developer. Your developer needs it to check the signature; see the [developer guide](/developers/custom-tools-backend).
+    Instead of sending a password, Lumi signs every request with a shared secret so your system can check it really came from Lumi. Enter the secret in **Signing secret**, or click **Generate one** to create a strong one and then give it to your developer. Your developer needs it to check the signature; see the [developer guide](/developers/custom-tools-backend).
   </Tab>
 </Tabs>
 
@@ -69,7 +69,7 @@ Never paste secrets into an agent's persona, a knowledge skill or a chat. The AI
 
 ## Test a connection
 
-Click **Test connection** on any connection. Yulona calls the test page (or the main address) and tells you whether your system answered, with the status and speed. If it fails you see a reason in plain words: your system refused the sign-in (check the secret), the path was not found, the address cannot be reached, or the call timed out. Test results are kept for the current browser session only, so you may see "Not tested yet" after a reload. You can run up to 20 tests a minute.
+Click **Test connection** on any connection. Lumi calls the test page (or the main address) and tells you whether your system answered, with the status and speed. If it fails you see a reason in plain words: your system refused the sign-in (check the secret), the path was not found, the address cannot be reached, or the call timed out. Test results are kept for the current browser session only, so you may see "Not tested yet" after a reload. You can run up to 20 tests a minute.
 
 ## Rotate a secret
 

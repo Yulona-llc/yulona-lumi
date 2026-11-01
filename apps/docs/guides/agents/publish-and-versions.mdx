@@ -16,9 +16,9 @@ An agent is always in one of three states, shown as a badge on the **Agents** pa
 
 | Badge | Meaning |
 |---|---|
-| **Draft** | Never published. "Customers see nothing until you publish." |
+| **Draft** | Never published. "Customers see nothing until you publish." A widget or channel using it shows an offline notice and a team member replies. |
 | **Live · v3** (shown as "published" in the list) | A version is live. The text beneath says "Live on version 3. Edits below are a draft until you publish." |
-| **archived** | Switched off. The agent does not answer visitors. |
+| **archived** | Switched off. The agent does not answer visitors; its widget and channels reply "This assistant is not available right now. A team member will reply." and raise a needs attention item once per conversation. |
 
 Once an agent is live, your edits are a draft **on top of** the live version. Customers keep talking to the live version until you publish again.
 
@@ -79,11 +79,11 @@ You see "Rolled back to version N". Rolling back does not erase history: it crea
 
 ## Archive and unarchive
 
-At the bottom of the agent page, **Archive agent** stops it answering visitors, and **Unarchive agent** brings it back. Archived agents cannot be published or rolled back. Archiving frees a place under your plan's agent limit, and unarchiving needs a free place. See [Billing and plans](/guides/account/billing-and-plans).
+At the bottom of the agent page, **Archive agent** stops it answering visitors, and **Unarchive agent** brings it back. Archived agents cannot be published or rolled back. If a widget or channel still uses the agent, archiving shows a warning that lists them, so you can attach another agent. Archiving frees a place under your plan's agent limit, and unarchiving needs a free place. See [Billing and plans](/guides/account/billing-and-plans).
 
 ## Where a published agent is used
 
-Channels and the website widget have an **Answering agent** setting. When it says **Default agent**, the workspace's oldest agent answers. Channels list only published agents. Set these up in [Website widget](/guides/channels/website-widget) and the [channel guides](/guides/channels/whatsapp).
+Channels and the website widget have an **Answering agent** setting. When it says **No agent**, nobody answers: visitors see an offline notice and a team member replies. Only a published, non-archived agent answers customers; there is no fallback to another agent. Channels list only published agents. Set these up in [Website widget](/guides/channels/website-widget) and the [channel guides](/guides/channels/whatsapp).
 
 ## Common problems
 

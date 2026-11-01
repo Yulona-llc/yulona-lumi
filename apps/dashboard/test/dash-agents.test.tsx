@@ -81,6 +81,55 @@ describe("knowledge", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/unsupported/i);
     expect(screen.getByRole("button", { name: "Upload" })).toBeDisabled();
   });
+  it("add URL: follow links on by default (depth 3, 25 pages), stepper is bounded, body carries the crawl settings", async () => {
+    const calls = mount(<KnowledgePage />, "admin", { "/knowledge/sources/url": (i?: RequestInit) => json({ id: "n", ...(JSON.parse(String(i?.body))) }, 201), "/knowledge/sources": { items: [] }, "/agents": { items: [] } });
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole("button", { name: /add url/i }));
+    expect(screen.getByRole("switch", { name: "Follow links on this site" })).toBeChecked();
+    expect(screen.getByLabelText("Depth")).toHaveTextContent("3");
+    expect(screen.getByText(/How many clicks away from this page/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Max pages")).toHaveValue(25);
+    expect(screen.getByRole("switch", { name: "Include subdomains" })).not.toBeChecked();
+    for (let i = 0; i < 4; i++) await u.click(screen.getByRole("button", { name: "Go deeper" }));
+    expect(screen.getByLabelText("Depth")).toHaveTextContent("5");
+    expect(screen.getByRole("button", { name: "Go deeper" })).toBeDisabled();
+    await u.click(screen.getByRole("button", { name: "Go less deep" }));
+    expect(screen.getByLabelText("Depth")).toHaveTextContent("4");
+    await u.clear(screen.getByLabelText("Max pages"));
+    await u.type(screen.getByLabelText("Max pages"), "999");
+    expect(screen.getByLabelText("Max pages")).toHaveValue(50);
+    await u.click(screen.getByRole("switch", { name: "Include subdomains" }));
+    await u.type(screen.getByLabelText("URL"), "https://example.com/help");
+    await u.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/knowledge/sources/url"))).toBe(true));
+    const post = calls.find((c) => c.url.endsWith("/knowledge/sources/url"))!;
+    expect(JSON.parse(String(post.init?.body))).toEqual({ url: "https://example.com/help", followLinks: true, maxDepth: 4, maxPages: 50, includeSubdomains: true });
+  });
+  it("add URL: turning Follow links off hides the options and reads one page", async () => {
+    const calls = mount(<KnowledgePage />, "admin", { "/knowledge/sources/url": (i?: RequestInit) => json({ id: "n", ...(JSON.parse(String(i?.body))) }, 201), "/knowledge/sources": { items: [] }, "/agents": { items: [] } });
+    const u = userEvent.setup();
+    await u.click(await screen.findByRole("button", { name: /add url/i }));
+    await u.click(screen.getByRole("switch", { name: "Follow links on this site" }));
+    expect(screen.queryByLabelText("Max pages")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Go deeper" })).toBeNull();
+    await u.type(screen.getByLabelText("URL"), "https://example.com/");
+    await u.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/knowledge/sources/url"))).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.url.endsWith("/knowledge/sources/url"))!.init?.body))).toEqual({ url: "https://example.com/", followLinks: false, maxPages: 1 });
+  });
+  it("shows crawl progress while reading and a summary afterwards, and lists pages read in the sections view", async () => {
+    const base = { agentId: null, type: "url", error: null, sourceUrl: "https://x.co", fileName: null, sizeBytes: 10, attempts: 1, lastIngestedAt: null, createdAt: "x", updatedAt: "x", maxPages: 25, maxDepth: 3, followLinks: true, includeSubdomains: false };
+    const busy = { ...base, id: "s1", name: "Busy", status: "processing", chunkCount: 0, crawlProgress: { pagesCrawled: 4, pagesFound: 12, pagesSkipped: 0, done: false } };
+    const done = { ...base, id: "s2", name: "Done", status: "ready", chunkCount: 2, crawlProgress: { pagesCrawled: 2, pagesFound: 3, pagesSkipped: 1, done: true } };
+    const chunks = [{ id: "c1", chunkIndex: 0, title: "/ › Home", content: "a", tokenCount: 5, url: "https://x.co/" }, { id: "c2", chunkIndex: 1, title: "/pricing", content: "b", tokenCount: 5, url: "https://x.co/pricing" }];
+    mount(<KnowledgePage />, "admin", { "/knowledge/sources/s2/chunks": { items: chunks }, "/knowledge/sources": { items: [busy, done] }, "/agents": { items: [] } });
+    expect(await screen.findByText("Reading pages: 4 read, 12 found so far (up to 25).")).toBeInTheDocument();
+    expect(screen.getByText("Read 2 pages, skipped 1.")).toBeInTheDocument();
+    const u = userEvent.setup();
+    await u.click(screen.getAllByRole("button", { name: /^Sections/ })[1]!);
+    expect(await screen.findByText("Pages read (2)")).toBeInTheDocument();
+    expect(screen.getAllByText("https://x.co/pricing").length).toBeGreaterThan(0);
+  });
   it("renders statuses and failure reasons", async () => {
     const s = { id: "s1", agentId: null, type: "url", name: "Docs", status: "failed", error: "Blocked URL", sourceUrl: "https://x.co", fileName: null, sizeBytes: 0, chunkCount: 0, attempts: 1, lastIngestedAt: null, createdAt: "x", updatedAt: "x" };
     mount(<KnowledgePage />, "admin", { "/knowledge/sources": { items: [s] }, "/agents": { items: [] } });
@@ -109,13 +158,13 @@ describe("api keys", () => {
 });
 
 describe("widget config", () => {
-  it("validates domains and color before saving", async () => {
+  it("validates domains before saving", async () => {
     mount(<WidgetConfigPage />, "admin", { [`/widgets/${wid}/embed`]: { snippet: "<script>", widgetKey: "wk_1", apiUrl: "http://x/api/v1", scriptUrl: "http://x/widget.js" }, "/widgets": { items: [widget] }, "/agents": { items: [] } });
     const u = userEvent.setup();
-    const dom = await screen.findByLabelText(/one per line/i);
-    await u.type(dom, "{enter}not a domain!");
-    expect(await screen.findByText(/Invalid domain pattern/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled();
+    const dom = await screen.findByLabelText(/add your website/i);
+    await u.type(dom, "not a domain!{enter}");
+    expect(await screen.findByText(/does not look like a website address/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /save changes/i })).toBeNull(); // nothing was added, nothing to save
   });
   it("preview doc escapes script-breaking content", () => {
     const d = previewDoc({ widgetKey: "</script><b>", apiBase: "x", scriptUrl: "/w.js" });

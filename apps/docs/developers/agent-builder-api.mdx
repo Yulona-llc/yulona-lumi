@@ -91,6 +91,7 @@ The assistant edits the draft through internal tools; every patch is merged into
 | Rule | Detail |
 |---|---|
 | Not settable | `model`, `customTools`, `similarityThreshold`, `topK`. Add custom tools later in the agent's Tools tab or via the agent API ([Tool manifest](/developers/tool-manifest)). |
+| `abuse` | Optional. A patch merges into the existing abuse settings. Agents it creates always have the strict defaults (`enabled: true`, `maxStrikes: 3`) even when the assistant never mentions it; see [AI runtime](/developers/ai-runtime#abuse-flagging). |
 | `enabledTools` | Only `qualify_lead`, `collect_contact`, `escalate_to_human`, `check_availability`, `book_appointment` |
 | Required to finish | `name`, `config.systemPrompt` (at least 40 characters) and `config.greeting` |
 | Knowledge | The assistant can add up to 3 sources per session (URL or pasted text, up to 100,000 characters), created tenant-wide through the normal ingest path with the same storage limit, SSRF check and audit entries |

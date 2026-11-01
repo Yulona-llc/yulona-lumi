@@ -1,10 +1,10 @@
 ---
 title: Self-hosting overview
-description: Understand what you run when you self-host Yulona, and how it differs from the hosted product, before you install.
+description: Understand what you run when you self-host Lumi, and how it differs from the hosted product, before you install.
 icon: server
 ---
 
-This section is for operators who run Yulona on their own server. You get the same workspace, agents, inbox, channels and widget as the hosted product, running on your infrastructure with your data in your own database. If you are a platform admin of the hosted product, see [Platform admin overview](/platform-admin/overview) instead.
+This section is for operators who run Lumi on their own server. You get the same workspace, agents, inbox, channels and widget as the hosted product, running on your infrastructure with your data in your own database. If you are a platform admin of the hosted product, see [Platform admin overview](/platform-admin/overview) instead.
 
 ## What you get
 
@@ -38,7 +38,7 @@ Behaviour is switched by the `DEPLOYMENT_MODE` variable. The bundled compose fil
 | Billing routes and Stripe webhook | Not mounted | Mounted |
 | Plan | `self_hosted`, no limits | `free`, `pro`, and others |
 | AI credits | Usage is recorded but never charged and never blocks replies | Charged, with 80% and 100% warnings and a gate at zero |
-| Platform admin console (`/admin`) | Off, unless `SUPER_ADMIN_ENABLED=true` | On, unless `SUPER_ADMIN_ENABLED=false` |
+| Platform admin service | Not included | Optional separate service (Compose profile `admin`) |
 | AI provider | Your own provider and key, set in `deploy/.env` | Platform-managed provider profiles, with the environment as fallback |
 | Licence | Optional offline licence, verified locally | Not used |
 
@@ -52,13 +52,13 @@ Self-hosted installs call an AI provider with the key you set in `deploy/.env`. 
 
 Agent knowledge needs no embedding model and no second API key. Each source becomes a skill (a description plus titled sections) that the agent reads and searches in Postgres.
 
-### The platform admin console
+### The platform admin
 
-Self-hosted mode is single-tenant, so the console is off by default. If you want it, for example to inspect usage or change feature flags, set `SUPER_ADMIN_ENABLED=true`, restart the `api` service, and create an admin as described in [Platform admin overview](/platform-admin/overview). Billing-related sections stay unavailable because billing routes are not mounted.
+Self-hosted mode is single-tenant, so the bundle does not include the platform admin. It is a separate service for operators of a multi-tenant (SaaS) platform; see [Platform admin overview](/platform-admin/overview). The workspace API serves no admin routes in any mode.
 
 ### The licence
 
-A licence is optional. It is an Ed25519-signed token that Yulona verifies offline. Nothing is sent to any server. Today the API verifies it at boot and logs the result; an invalid or missing licence never blocks access to your data. See [Licensing](/self-hosting/licensing).
+A licence is optional. It is an Ed25519-signed token that Lumi verifies offline. Nothing is sent to any server. Today the API verifies it at boot and logs the result; an invalid or missing licence never blocks access to your data. See [Licensing](/self-hosting/licensing).
 
 ## Your responsibilities
 

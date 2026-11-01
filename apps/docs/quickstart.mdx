@@ -4,7 +4,7 @@ description: Go from a new workspace to your first real customer conversation in
 icon: rocket
 ---
 
-This guide is for the person setting Yulona up for the first time, usually a business owner or admin. In about 20 minutes you will create an agent, give it knowledge, test it, publish it, put the chat widget on your website, and watch the first conversation arrive in the Inbox.
+This guide is for the person setting Lumi up for the first time, usually a business owner or admin. In about 20 minutes you will create an agent, give it knowledge, test it, publish it, put the chat widget on your website, and watch the first conversation arrive in the Inbox.
 
 ## Before you start
 
@@ -18,7 +18,7 @@ On a self-hosted installation your administrator may have turned off public sign
 
 <Steps>
   <Step title="Create your workspace">
-    Open the dashboard and click **Create a workspace** on the sign-in screen. Fill in **Your name**, **Workspace name**, **Work email** and **Password**, then click **Create workspace**. You land on the **Overview** page, which shows a **Set up your workspace** checklist with three items: create an agent, add knowledge and connect a channel.
+    Open the dashboard and click **Create a workspace** on the sign-in screen. Fill in **Your name**, **Workspace name**, **Work email** and **Password**, then click **Create workspace**. You land on the **Set up Lumi** wizard (see [Set up with Lumi](/guides/workspace/setup-wizard)): answer a few questions and Lumi prepares a draft agent, a chat window and your business hours, or click **Skip setup for now**. The **Overview** page then shows a **Set up your workspace** checklist: create an agent, add knowledge, add the chat to your website and publish.
 
     You are the workspace **owner**, the highest role. See [Concepts](/concepts) for what roles can do.
   </Step>
@@ -39,7 +39,7 @@ On a self-hosted installation your administrator may have turned off public sign
   </Step>
 
   <Step title="Add knowledge">
-    Go to **Knowledge** and click **Upload file** (PDF, DOCX, TXT, MD or HTML, up to 10 MB), **Add URL** (one page, or up to 25 pages of the same site) or **Add text**. Leave **Available to** on **All agents** for your first source.
+    Go to **Knowledge** and click **Upload file** (PDF, DOCX, TXT, MD or HTML, up to 10 MB), **Add URL** (one page, or the pages it links to on the same site) or **Add text**. Leave **Available to** on **All agents** for your first source.
 
     Each source becomes a *skill* that is read and split into titled sections. Wait until the skill stops showing **Reading and splitting into sections** and shows a description. Click **Sections** to check that it was read properly.
 
@@ -62,7 +62,7 @@ On a self-hosted installation your administrator may have turned off public sign
     Go to **Settings**, then **Widget**. Click **Create widget**. Then:
 
     1. Under **Allowed domains**, enter your website, for example `example.com` (one per line). An empty list blocks every site.
-    2. Under **Behaviour**, pick your agent in **Answering agent**. If you leave **Default agent**, the oldest agent answers.
+    2. Under **Behaviour**, pick your agent in **Answering agent**. Publish the agent first: a widget with **No agent (offline)**, or with an unpublished agent, shows an offline notice instead of answering.
     3. Adjust **Branding** if you like, then click **Save changes**.
     4. Under **Embed code**, click **Copy snippet** and paste it before the closing body tag of your site. Your web developer can do this in a minute.
   </Step>

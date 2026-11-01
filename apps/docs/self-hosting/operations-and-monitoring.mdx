@@ -21,7 +21,7 @@ When a check fails, `/readyz` answers `503` with `"status":"unavailable"` and th
 curl -fsS https://app.example.com/readyz
 ```
 
-Caddy also probes `/healthz` on the API every 15 seconds and the `api` image has its own container health check. The worker exposes no port and has no container health check; its restart policy covers crashes, and its heartbeat tells you whether it is alive (see below).
+Caddy probes `/readyz` on the API every 2 seconds (so a stopped container is dropped quickly during a blue/green rollout) and the `api` image has its own container health check on `/healthz`. The worker exposes no port and has no container health check; its restart policy covers crashes, and its heartbeat tells you whether it is alive (see below).
 
 ## Status and logs
 
@@ -78,7 +78,7 @@ In self-hosted mode usage is still recorded for the Usage page, but credits are 
 
 ### Is the worker alive?
 
-The worker writes its heartbeat to the database. The platform admin console shows it as Worker: Alive when the last beat is under 120 seconds old, along with queue counts and database latency. That console is off in self-hosted mode unless `SUPER_ADMIN_ENABLED=true`; see [Platform admin overview](/platform-admin/overview#system-health). Without it, read the worker log: `worker started` appears once, and the container should not be restarting in `docker compose ps`.
+The worker writes its heartbeat to the database. The platform admin service (not part of the self-hosted bundle) shows it as alive when the last beat is under 120 seconds old, along with queue counts and database latency; see [Platform admin overview](/platform-admin/overview#system-health). In self-hosted mode, read the worker log: `worker started` appears once, and the container should not be restarting in `docker compose ps`.
 
 ## Smoke test
 

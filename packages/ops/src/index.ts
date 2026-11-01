@@ -8,3 +8,5 @@ export * from "./notify";
 export * from "./tools";
 export * from "./scheduler";
 export * from "./calendly";
+export * from "./hubspot";
+export * from "./hubspot-sync";

@@ -1,6 +1,6 @@
 ---
 title: Configuration reference
-description: Look up every environment variable Yulona reads, with its default, whether it is required, and an example.
+description: Look up every environment variable Lumi reads, with its default, whether it is required, and an example.
 icon: sliders
 ---
 
@@ -25,7 +25,7 @@ Passwords must be URL-safe (hex or alphanumeric) because they are embedded in co
 | `SITE_ADDRESS` | `localhost` | Yes | Domain Caddy serves. A real domain gets automatic HTTPS, `localhost` uses a local test CA, `:80` is plain HTTP. | `app.example.com` |
 | `APP_URL` | `https://$SITE_ADDRESS` | No | Canonical dashboard URL used in emails, invitation links and OAuth redirects. | `https://app.example.com` |
 | `PUBLIC_API_URL` | same origin as the dashboard | No | Base URL of the API as seen by widgets and as shown in webhook URLs. Needed only for split deployments. | `https://api.example.com` |
-| `WIDGET_SCRIPT_URL` | `/widget.js` | No | URL of the widget bundle embedded on customer sites. Pin a release with `/widget.<hash>.js` (hash in `/widget.version`). | `/widget.js` |
+| `WIDGET_SCRIPT_URL` | `/widget.js` | No | URL of the widget bundle embedded on customer sites. Absolute URL when the dashboard (for example on Vercel) serves the file. Pin a release with `/widget.<hash>.js` (hash in `/widget.version`). | `https://app.example.com/widget.js` |
 | `DASHBOARD_API_URL` | empty (same-origin `/api`) | No | API URL given to the dashboard container at start. Must be a plain `http(s)://host[:port]`. Passed to the container as `API_URL`. | `https://api.example.com` |
 
 ## Secrets
@@ -47,7 +47,6 @@ See [Security hardening](/self-hosting/security-hardening#encryption-key) before
 | Variable | Default | Required | Meaning | Example |
 |---|---|---|---|---|
 | `DEPLOYMENT_MODE` | `selfhosted` in compose (`saas` if the API runs without compose) | No | `selfhosted`: one workspace, no billing, no credits, signup closed. `saas`: multi-tenant with billing and platform admin. | `selfhosted` |
-| `SUPER_ADMIN_ENABLED` | empty (follows mode) | No | Empty means off for `selfhosted` and on for `saas`. Set `true` or `false` to override. | `true` |
 | `ALLOW_PUBLIC_SIGNUP` | `false` | No | Open registration. Honoured only when `DEPLOYMENT_MODE=saas`. | `false` |
 | `CORS_ORIGINS` | empty (same origin only) | No | Comma-separated origins allowed to call the API cross-origin. `*` is refused in production. | `https://app.example.com` |
 | `CROSS_SITE_COOKIES` | `false` | No | Set `true` only when dashboard and API are on different sites (not subdomains of one domain). Sets the refresh cookie to `SameSite=None; Secure`. | `false` |
@@ -55,6 +54,30 @@ See [Security hardening](/self-hosting/security-hardening#encryption-key) before
 | `OPENAPI_ENABLED` | `false` in compose | No | Publishes the API reference at `/docs`. Requires `DOCS_PASSWORD` in production. | `false` |
 | `DOCS_USERNAME` | `docs` | No | HTTP basic-auth user for `/docs`. 1 to 64 characters, no `:`. | `docs` |
 | `DOCS_PASSWORD` | none | When `OPENAPI_ENABLED=true` | HTTP basic-auth password for `/docs`. At least 16 characters, high entropy. | `openssl rand -base64 24` |
+
+## Platform admin (separate service, optional)
+
+Only for operators of a multi-tenant platform; the self-hosted bundle does not include it and none of these are needed. They configure the `admin-api` service (Compose profile `admin`). See [Platform admin overview](/platform-admin/overview).
+
+| Variable | Default | Required | Meaning | Example |
+|---|---|---|---|---|
+| `ADMIN_JWT_SECRET` | none | Yes (admin service) | Own signing key for admin tokens. At least 32 characters. Startup aborts if it is missing or equal to `JWT_SECRET`. | `openssl rand -base64 48` |
+| `ADMIN_DB_PASSWORD` | none | Yes, with `DATABASE_URL` host/database | Password of the `yulona_admin` database role (EXECUTE on `sa_*` functions only, no table grants). The `migrate` service and the dev init script apply it. | `7f3a...` |
+| `ADMIN_DB_URL` | none | Alternative | Full connection URL for the admin service instead of `DATABASE_URL` plus `ADMIN_DB_PASSWORD`. | `postgres://yulona_admin:...@postgres:5432/yulona` |
+| `ADMIN_WEB_ORIGIN` | `http://localhost:5180` (dev; `apps/admin-web` runs on 5178, so set `http://localhost:5178` in development) | Yes in production | The only origin CORS allows; must be https in production. | `https://admin.example.com` |
+| `ADMIN_SITE_ADDRESS` | `admin.localhost` | For the Caddy host | Host Caddy serves the admin site on, from `deploy/admin-site/admin.caddy`. | `admin.example.com` |
+| `ADMIN_ALLOWED_CIDRS` | empty (any IP) | No | Comma-separated IPv4/IPv6 CIDRs allowed to reach the admin API. Uses the proxy-provided client IP when `TRUST_PROXY=true`. | `203.0.113.0/24,2001:db8::/32` |
+| `ADMIN_REQUIRE_2FA` | `false` | No | `true` forces every admin to enrol TOTP (restricted session until they do). | `false` |
+| `ADMIN_CUSTOMER_APP_URL` | `http://localhost:5173` (compose: `APP_URL`) | No | Customer dashboard URL used in impersonation links (`/impersonate#code=...`) and invitation emails. | `https://app.example.com` |
+| `ADMIN_RATE_READ` | `30` | No | Reads per minute per admin. | `30` |
+| `ADMIN_RATE_WRITE` | `10` | No | Writes per minute per admin (exports count as writes). | `10` |
+| `ADMIN_SESSION_TTL_DAYS` | `7` | No | Lifetime of the admin refresh cookie. | `7` |
+| `ADMIN_PORT` | `4100` | No | Port of the admin service (`PORT` also works). | `4100` |
+| `YULONA_ADMIN_API_IMAGE` | `yulona/admin-api:local` | No | Image of the admin service in Compose. | `yulona/admin-api:1.0` |
+| `ADMIN_WEB_API_URL` | empty (same origin) | No | API URL given to the admin web container at start. Leave empty behind the Caddy admin site, which proxies `/api` to the admin service. Must be a plain `http(s)://host[:port]`. Passed to the container as `API_URL`. | `https://admin-api.example.com` |
+| `YULONA_ADMIN_WEB_IMAGE` | `yulona/admin-web:local` | No | Image of the admin web app in Compose. | `yulona/admin-web:1.0` |
+
+The admin service also reads `ENCRYPTION_KEY` (provider keys and TOTP secrets), `DEPLOYMENT_MODE`, `TRUST_PROXY`, `REDIS_URL`, `LOG_LEVEL` and the SMTP variables (invitation resend). Do not give it `JWT_SECRET`.
 
 ## AI provider
 
@@ -71,6 +94,18 @@ Full guidance is in [AI providers](/self-hosting/ai-providers).
 | `AI_EXTRA_HEADERS` | none | No | JSON object of extra headers. Values must be strings. | `{"x-org":"abc"}` |
 | `AI_QUERY` | none | No | JSON object of query-string parameters added to every request. | `{"api-version":"2024-06-01"}` |
 | `AI_CHAT_PATH` | `/chat/completions` | No | Path appended to the base URL. | `/openai/deployments/my-gpt/chat/completions` |
+| `AI_MAX_TOOL_ROUNDS` | `2` | No | Rounds in which the model may open or search skills (or call tools) for one customer message, before one forced tool-free call writes the answer. Range 0 to 6. | `2` |
+| `AI_TURN_TOKEN_BUDGET` | `12000` | No | Prompt plus completion tokens one message may spend. Once reached, the next call is the tool-free final answer. Range 1000 to 200000. | `12000` |
+| `AI_INLINE_ALL_CHARS` | `4000` | No | An agent whose whole knowledge is this many characters or fewer gets it all in the prompt, with no tools. | `4000` |
+| `AI_PRELOAD_SECTIONS` | `2` | No | Best-matching skill sections put in the prompt before the model starts, for larger knowledge bases. | `2` |
+| `AI_READ_SKILL_MAX_CHARS` | `3000` | No | Longest text one `read_skill` call returns. | `3000` |
+| `AI_SEARCH_SNIPPET_CHARS` | `160` | No | Snippet length per hit in `search_skills` results. | `160` |
+| `AI_STALE_TOOL_RESULT_CHARS` | `300` | No | Skill text from an earlier round is cut to this length once the model has used it. | `300` |
+| `AI_HISTORY_MESSAGES` | `6` | No | Most recent conversation messages sent to the model. | `6` |
+| `AI_HISTORY_MESSAGE_CHARS` | `600` | No | Characters kept per history message. | `600` |
+| `AI_MAX_OUTPUT_TOKENS` | `700` | No | Completion cap for each model call. | `700` |
+| `AI_REASONING_EFFORT` | not sent | No | `none`, `minimal`, `low`, `medium` or `high`, sent to the provider as `reasoning_effort`. Set it only for models that accept it. | `low` |
+| `COPILOT_MODEL` | provider default | No | Model used by the Ask Lumi assistant, for example a cheaper one than your chat model. On the hosted product it must be enabled on the LLM profile, otherwise the profile default is used. Ask Lumi is always available on self-hosted installs and never charged. | `deepseek-chat` |
 | `CREDITS_EXHAUSTED_MESSAGE` | built-in text | No | Hosted product only. Message customers see when a workspace's AI credits run out. Ignored when self-hosted. | `We will be right back.` |
 
 ## Email (SMTP)
@@ -84,7 +119,7 @@ With `SMTP_HOST` empty, emails (invitations, notifications) are only written to 
 | `SMTP_USER` | none | No | SMTP username. | `apikey` |
 | `SMTP_PASS` | none | No | SMTP password. | `...` |
 | `SMTP_SECURE` | `false` | No | `true` for implicit TLS (usually port 465). Any other value means STARTTLS or plain. | `true` |
-| `EMAIL_FROM` | `Yulona <no-reply@localhost>` | No | From address. | `Acme <no-reply@example.com>` |
+| `EMAIL_FROM` | `Lumi <no-reply@localhost>` | No | From address. | `Acme <no-reply@example.com>` |
 
 ## Object storage (S3 and MinIO)
 
@@ -117,7 +152,7 @@ Setup steps are in [Channels and integrations setup](/self-hosting/channels-and-
 | `GOOGLE_REDIRECT_URI` | `<PUBLIC_API_URL>/api/v1/calendar/google/callback` | No | Redirect registered in the Google console. | `https://app.example.com/api/v1/calendar/google/callback` |
 | `CALENDLY_CLIENT_ID` | none | For Calendly | OAuth app client id. | `...` |
 | `CALENDLY_CLIENT_SECRET` | none | For Calendly | OAuth app client secret. | `...` |
-| `CALENDLY_REDIRECT_URI` | `<PUBLIC_API_URL>/api/v1/calendar/calendly/callback` | No | Redirect registered in the Calendly developer console (HTTPS). | `https://app.example.com/api/v1/calendar/calendly/callback` |
+| `CALENDLY_REDIRECT_URI` | `<PUBLIC_API_URL>/api/v1/calendar/calendly/callback` | No | Redirect registered in the Calendly developer console. Must be https in production (http://localhost only for a Calendly Sandbox app); the dashboard shows the effective value. | `https://api.example.com/api/v1/calendar/calendly/callback` |
 | `STRIPE_SECRET_KEY` | none | Hosted product only | Stripe API key. Ignored in self-hosted mode because billing routes are not mounted. | `sk_live_...` |
 | `STRIPE_WEBHOOK_SECRET` | none | Hosted product only | Signing secret for `POST /api/v1/webhooks/billing`. | `whsec_...` |
 
@@ -151,7 +186,8 @@ These are not in `deploy/.env.example` and the bundled compose file does not for
 | `WORKER_CONCURRENCY` | `5` | Jobs the worker runs in parallel. |
 | `WORKER_POLL_MS` | `1000` | How often the worker polls for jobs. |
 | `WORKER_DB_POOL_MAX` | `10` | Worker database pool size. |
-| `STRIPE_PRICE_<PLAN>` | none | Hosted product only. Stripe price id per paid plan, for example `STRIPE_PRICE_PRO`. |
+| `STRIPE_PRICE_PRO` | none | Hosted product only. Stripe price id of the $49/month Pro plan. Without it, the Upgrade button is not offered. See [Stripe test mode](#stripe-test-mode-hosted-product). |
+| `STRIPE_PRICE_<PLAN>` | none | Hosted product only. Stripe price id for any other paid plan; the plan key in upper case, for example `STRIPE_PRICE_TEAM`. |
 | `BILLING_GRACE_DAYS` | `7` | Hosted product only. Days of grace after a failed payment. |
 
 The compose file sets `NODE_ENV=production`, `PORT=3000` and `TRUST_PROXY=true` for you. `TRUST_PROXY` makes the API read the client IP from the proxy header, which is correct only behind Caddy.
@@ -168,6 +204,27 @@ These are not configurable by environment variable. They apply per client IP unl
 | Registration | 10 per hour |
 | Token refresh | 60 per minute |
 | `/docs` (basic auth) | 30 per 15 minutes |
+
+## Stripe test mode (hosted product)
+
+This section is for operators of the hosted product who want to try subscriptions without real money. It needs the [Stripe CLI](https://docs.stripe.com/stripe-cli) logged in to a test-mode account (`stripe login`) and `jq`.
+
+<Steps>
+  <Step title="Create the $49 price">
+    From the repository root run `scripts/stripe-sandbox.sh --write-env`. It creates the Lumi Pro product and a $49 per month price (looked up by the key `yulona_pro_monthly`, so running it again changes nothing), then adds `STRIPE_PRICE_PRO` to your gitignored `.env`. It never prints API keys.
+  </Step>
+  <Step title="Add your test secret key">
+    Copy the test secret key (`sk_test_...`) from the Stripe dashboard, in test mode, under Developers, API keys. Put it in `.env` as `STRIPE_SECRET_KEY`.
+  </Step>
+  <Step title="Forward webhooks">
+    Run `stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,invoice.paid,invoice.payment_succeeded,invoice.payment_failed --forward-to http://localhost:3000/api/v1/webhooks/billing` and leave it running. Put the `whsec_...` signing secret it prints into `.env` as `STRIPE_WEBHOOK_SECRET`. `stripe listen --print-secret` shows it again.
+  </Step>
+  <Step title="Restart and test">
+    Restart the API with `DEPLOYMENT_MODE=saas`. As the workspace owner open **Settings**, **Billing** and click **Upgrade to Pro**. Pay with the test card `4242 4242 4242 4242`, any future expiry and any CVC. The plan card switches to Pro and the allowance to 4,980 credits.
+  </Step>
+</Steps>
+
+To test a failed renewal, use the test card `4000 0000 0000 0341` (attaches, then fails to charge) or run `stripe trigger invoice.payment_failed`. The workspace stays on Pro for `BILLING_GRACE_DAYS` and then moves to Free.
 
 ## Next steps
 

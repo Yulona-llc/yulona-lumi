@@ -15,7 +15,7 @@ const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((v) => !Number.isN
 export const usageAiQuery = z.strictObject({
   from: isoDay.optional(),
   to: isoDay.optional(),
-  groupBy: z.enum(["day", "agent", "model", "conversation"]).default("day"),
+  groupBy: z.enum(["day", "agent", "model", "conversation", "source"]).default("day"),
 });
 
 interface Item { key: string | null; label: string | null; promptTokens: string; completionTokens: string; requests: string; creditsMicro: string }
@@ -26,6 +26,7 @@ const dto = (i: Item, groupBy: string) => {
   const label = groupBy === "day" ? key
     : groupBy === "agent" ? (i.key === null ? "(unattributed)" : i.label ?? "(deleted agent)")
     : groupBy === "model" ? (i.key ?? "(unknown)")
+    : groupBy === "source" ? (i.key ?? "(unknown)")
     : (i.key === null ? "(no conversation)" : key);
   return { key, label, promptTokens, completionTokens, totalTokens: promptTokens + completionTokens, requests: num(i.requests), creditsMicro: num(i.creditsMicro) };
 };
@@ -52,6 +53,9 @@ export function usageRoutes({ cfg, db }: { cfg: Config; db: Db }) {
           WHERE ${where} GROUP BY e.agent_id ORDER BY sum(e.credits_micro) DESC, e.agent_id`;
       } else if (q.groupBy === "model") {
         rows = await tx<Item[]>`SELECT e.model AS key, e.model AS label, ${agg} FROM ai_usage_events e WHERE ${where} GROUP BY e.model ORDER BY sum(e.credits_micro) DESC, e.model`;
+      } else if (q.groupBy === "source") {
+        // turn = live customer chats, sandbox = agent tests, builder = the AI agent builder
+        rows = await tx<Item[]>`SELECT e.source AS key, e.source AS label, ${agg} FROM ai_usage_events e WHERE ${where} GROUP BY e.source ORDER BY sum(e.credits_micro) DESC, e.source`;
       } else {
         rows = await tx<Item[]>`
           SELECT e.conversation_id::text AS key, NULL::text AS label, ${agg} FROM ai_usage_events e

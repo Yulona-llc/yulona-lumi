@@ -1,4 +1,4 @@
-# Yulona
+# Lumi
 
 AI-powered revenue conversion and customer interaction hub. Monorepo (bun workspaces): `apps/api` (Bun + Hono), `apps/worker`, `apps/dashboard` (React SPA), `packages/shared`, `packages/db`. See `PLAN.md` and `docs/`.
 

@@ -170,19 +170,52 @@ describe.skipIf(!hasDb)("conversations domain", () => {
   });
 
   test("agent greeting is the opening message only when the widget has no welcome message", async () => {
-    const mk = async (cfg: object, agentCfg: object, publish?: object) => {
+    const mk = async (cfg: object, agentCfg: object, publish?: object, status = "published") => {
       const [ag] = await owner`INSERT INTO agents (tenant_id, name, config) VALUES (${A.tenantId}, 'G', ${JSON.stringify(agentCfg)}::text::jsonb) RETURNING id`;
       if (publish) {
         await owner`INSERT INTO agent_versions (tenant_id, agent_id, version, config) VALUES (${A.tenantId}, ${ag!.id}, 1, ${JSON.stringify(publish)}::text::jsonb)`;
-        await owner`UPDATE agents SET published_version = 1 WHERE id = ${ag!.id}`;
+        await owner`UPDATE agents SET status = ${status}, published_version = 1 WHERE id = ${ag!.id}`;
       }
       const w = await (await send("POST", "/widgets", A.h, { name: "G", allowedDomains: [ORIGIN], agentId: ag!.id, config: cfg })).json() as { widgetKey: string };
       return (await startConv({}, w.widgetKey)).messages.map((m) => m.content);
     };
-    expect(await mk({}, { greeting: "Draft hello" })).toEqual(["Draft hello"]);
+    expect(await mk({}, { greeting: "Draft hello" })).toEqual([]); // never published: no AI greeting
     expect(await mk({}, { greeting: "Draft hello" }, { greeting: "Published hello" })).toEqual(["Published hello"]);
     expect(await mk({ welcomeMessage: "Widget wins" }, { greeting: "Agent greeting" })).toEqual(["Widget wins"]);
+    expect(await mk({}, { greeting: "Archived hello" }, { greeting: "Archived hello" }, "archived")).toEqual([]);
     expect(await mk({}, {})).toEqual([]);
+  });
+
+  test("widget /config and start report unavailable when the agent is not live; archiving warns while it is attached", async () => {
+    const mkAgent = async () => (await (await send("POST", "/agents", A.h, { name: "Gate", config: { greeting: "Hello from gate" } })).json() as { id: string }).id;
+    const id = await mkAgent();
+    const w = await (await send("POST", "/widgets", A.h, { name: "Gate", allowedDomains: [ORIGIN], agentId: id })).json() as { widgetKey: string };
+    const cfgOf = async () => (await (await pub("GET", "/config", pubH(w.widgetKey))).json() as { unavailable: boolean }).unavailable;
+    expect(await cfgOf()).toBe(true); // draft only
+    const draftStart = await startConv({}, w.widgetKey) as { unavailable?: boolean; messages: { content: string }[] };
+    expect(draftStart.unavailable).toBe(true);
+    expect(draftStart.messages).toEqual([]); // no AI greeting
+    expect((await send("POST", `/agents/${id}/publish`, A.h, {})).status).toBe(200);
+    expect(await cfgOf()).toBe(false);
+    const liveStart = await startConv({}, w.widgetKey) as { unavailable?: boolean; messages: { content: string }[] };
+    expect(liveStart.unavailable).toBe(false);
+    expect(liveStart.messages.map((m) => m.content)).toEqual(["Hello from gate"]);
+    // archive: still attached to the widget -> warning in the response
+    const arch = await send("DELETE", `/agents/${id}`, A.h);
+    expect(arch.status).toBe(200);
+    const body = await arch.json() as { status: string; warning?: { code: string; widgets: { name: string }[]; channels: unknown[] } };
+    expect(body.status).toBe("archived");
+    expect(body.warning).toMatchObject({ code: "agent_in_use", widgets: [{ name: "Gate" }], channels: [] });
+    expect(await cfgOf()).toBe(true);
+    // unarchive restores the published agent; no warning field
+    const un = await (await send("POST", `/agents/${id}/unarchive`, A.h, {})).json() as { status: string; warning?: unknown };
+    expect(un).toMatchObject({ status: "published" });
+    expect(un.warning).toBeUndefined();
+    expect(await cfgOf()).toBe(false);
+    // detach, then archiving has nothing to warn about
+    await send("PATCH", `/widgets/${(await (await send("GET", "/widgets", A.h)).json() as { items: { id: string; widgetKey: string }[] }).items.find((x) => x.widgetKey === w.widgetKey)!.id}`, A.h, { agentId: null });
+    const arch2 = await (await send("DELETE", `/agents/${id}`, A.h)).json() as { warning?: unknown };
+    expect(arch2.warning).toBeUndefined();
   });
 
   test("prechat required fields enforced", async () => {

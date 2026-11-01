@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Find the cause and the fix for the most common problems when installing, running and upgrading a self-hosted Yulona.
+description: Find the cause and the fix for the most common problems when installing, running and upgrading a self-hosted Lumi.
 icon: wrench
 ---
 
@@ -111,7 +111,7 @@ For Google and Calendly, a `503` can also mean the client id or secret is missin
 | Check | Fix |
 |---|---|
 | The URL is not public HTTPS | Use a real domain with a valid certificate. Providers reject `localhost` and self-signed certificates |
-| Meta verification fails | The verify token in Meta must equal the one shown in Yulona |
+| Meta verification fails | The verify token in Meta must equal the one shown in Lumi |
 | Requests answer `401` | The app secret, signing secret or webhook secret is wrong. Update the connection's credentials |
 | Requests answer `404` | The connection is disabled, deleted, or the URL names the wrong channel |
 | Telegram does nothing | You did not run `setWebhook` with the same secret token |

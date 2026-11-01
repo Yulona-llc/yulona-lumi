@@ -24,6 +24,7 @@ import { registerIntegrations } from "./integrations/register";
 import { impersonationAudit, registerBillingAdmin } from "./billing/register";
 import { registerUsage } from "./usage/register";
 import { registerAgentBuilder } from "./agent-builder/register";
+import { registerCopilot } from "./copilot/register";
 import { impersonationGuard } from "./impersonation-guard";
 import type { Providers } from "@yulona/providers";
 import { createRealtime, type Realtime } from "./realtime/service";
@@ -55,7 +56,10 @@ export function createApp({ cfg, db, limiter, log, realtime, providers, channelR
   app.use("*", requestId());
   app.use("*", resolveIp(cfg.trustProxy));
   app.use("*", requestLogger(log)); // outermost after request-id so 4xx from later middleware are logged
-  app.use("*", secureHeaders({ crossOriginResourcePolicy: "same-site" }));
+  const secure = secureHeaders({ crossOriginResourcePolicy: "same-site" });
+  // The public widget avatar is an image customer sites embed cross-origin.
+  const secureEmbeddable = secureHeaders({ crossOriginResourcePolicy: "cross-origin" });
+  app.use("*", (c, next) => (/^(\/api\/v1)?\/public\/widgets\/[^/]+\/avatar$/.test(c.req.path) ? secureEmbeddable(c, next) : secure(c, next)));
   const corsMw = cors({
     origin: (origin) => (allowed.has(origin) ? origin : null),
     credentials: true,
@@ -83,7 +87,7 @@ export function createApp({ cfg, db, limiter, log, realtime, providers, channelR
     const guard = requireDocsAuth(cfg.docsUsername, cfg.docsPassword, limiter, cfg.rateLimits.docs);
     app.get("/api/v1/openapi.json", guard, (c) => c.json(doc));
     app.get("/docs/", guard, (c) => c.redirect("/docs", 301));
-    app.get("/docs", guard, Scalar({ url: "/api/v1/openapi.json", pageTitle: "Yulona API" }));
+    app.get("/docs", guard, Scalar({ url: "/api/v1/openapi.json", pageTitle: "Lumi API" }));
   } else if (cfg.openapiEnabled) {
     log.warn("openapi docs not mounted; set DOCS_PASSWORD to enable /docs");
   }
@@ -99,6 +103,7 @@ export function createApp({ cfg, db, limiter, log, realtime, providers, channelR
   registerBillingAdmin(app, { cfg, db, log, providers });
   registerUsage(app, { cfg, db });
   registerAgentBuilder(app, { cfg, db, limiter, ports: builderPorts });
+  registerCopilot(app, { cfg, db, limiter, ports: builderPorts }); // onboarding, Ask Lumi, /overview, /workspace/profile
   app.route("/api/v1", meRoutes(cfg, db));
   registerKnowledge(app, { cfg, db, limiter });
 

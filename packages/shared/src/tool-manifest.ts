@@ -7,7 +7,7 @@ export const TOOL_MANIFEST_VERSION_V2 = 2 as const;
 const stages = z.enum(["visitor", "engaged", "qualified", "booking_offered", "booked", "handoff_requested"]);
 const FIELD_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 /** Headers a tool may never set itself (auth is applied from the connection; hop-by-hop/host are controlled). */
-export const RESERVED_TOOL_HEADERS = ["authorization", "proxy-authorization", "cookie", "host", "content-length", "connection", "transfer-encoding", "x-yulona-signature", "x-yulona-timestamp"];
+export const RESERVED_TOOL_HEADERS = ["authorization", "proxy-authorization", "cookie", "host", "content-length", "connection", "transfer-encoding", "x-yulona-signature", "x-yulona-timestamp", "x-lumi-signature", "x-lumi-timestamp"];
 const HEADER_NAME = /^[A-Za-z0-9-]{1,64}$/;
 
 export const toolRequestFieldSchema = z.strictObject({

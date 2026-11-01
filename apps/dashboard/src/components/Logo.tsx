@@ -1,16 +1,16 @@
 import { cn } from "@/lib/utils";
 
-/** The Yulona drop (from yulona.co): used alone in tight spaces. */
+/** The Lumi mark (placeholder until the final logo is supplied): used alone in tight spaces. */
 export function LogoMark({ className }: { className?: string }) {
-  return <img src="/brand/yulona-drop.svg" alt="" aria-hidden="true" className={cn("size-8", className)} />;
+  return <img src="/brand/lumi-mark.svg" alt="" aria-hidden="true" className={cn("size-8", className)} />;
 }
 
-/** Full wordmark from yulona.co. `light` = for dark backgrounds (white lettering). */
+/** Full wordmark. `light` = for dark backgrounds (white lettering). */
 export function Logo({ light = false, className }: { light?: boolean; className?: string }) {
   return (
     <img
-      src={light ? "/brand/yulona-logo-on-dark.png" : "/brand/yulona-logo-on-light.png"}
-      alt="Yulona"
+      src={light ? "/brand/lumi-logo-on-dark.svg" : "/brand/lumi-logo-on-light.svg"}
+      alt="Lumi"
       width={170}
       height={68}
       className={cn("h-9 w-auto select-none", className)}
@@ -24,7 +24,7 @@ export function ThemedLogo({ className }: { className?: string }) {
   return (
     <>
       <Logo className={cn("dark:hidden", className)} />
-      <img src="/brand/yulona-logo-on-dark.png" alt="Yulona" width={170} height={68} className={cn("hidden h-9 w-auto select-none dark:block", className)} draggable={false} />
+      <img src="/brand/lumi-logo-on-dark.svg" alt="Lumi" width={170} height={68} className={cn("hidden h-9 w-auto select-none dark:block", className)} draggable={false} />
     </>
   );
 }

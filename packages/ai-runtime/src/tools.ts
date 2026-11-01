@@ -83,6 +83,13 @@ export const BUILTIN_MANIFESTS: Record<string, ToolManifest> = {
     { reason: str(500), type: { type: "string", enum: ["uncertainty", "stage"] } },
     ["reason"],
   ),
+  // Not listed in `enabledTools`: offered to every agent whose `abuse.enabled` is true (see resolveTools).
+  flag_abuse: builtin(
+    "flag_abuse",
+    "Flag the customer's behaviour as abusive, harassing or nonsense spam. Each call is one strike; the customer is blocked after the limit. Use it only after the customer has kept sending abuse or meaningless text, never for a hard question or a complaint.",
+    { reason: str(300) },
+    ["reason"],
+  ),
 };
 
 export const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
@@ -116,8 +123,9 @@ export function resolveTools(agent: AgentConfig, external?: ExternalToolProvider
   const m = new Map<string, ResolvedTool>();
   for (const n of agent.enabledTools) {
     const b = BUILTIN_MANIFESTS[n];
-    if (b) m.set(n, { manifest: b, custom: false });
+    if (b && n !== "flag_abuse") m.set(n, { manifest: b, custom: false });
   }
+  if (agent.abuse?.enabled) m.set("flag_abuse", { manifest: BUILTIN_MANIFESTS.flag_abuse!, custom: false });
   for (const ct of agent.customTools) {
     // The dashboard stores bare manifests; older/programmatic configs use { manifest, secret? }. Accept both.
     const wrapped = typeof ct === "object" && ct !== null && "manifest" in ct && typeof (ct as { manifest: unknown }).manifest === "object";
@@ -158,6 +166,8 @@ export interface ToolEffects {
   ask?: ("name" | "email" | "phone")[];
   escalate?: { type: HandoffType; reason: string };
   qualified?: boolean;
+  /** flag_abuse: one strike against the customer (the turn decides whether the limit is reached) */
+  abuse?: { reason: string };
 }
 export interface ToolExecution {
   run: ToolRun;
@@ -220,6 +230,8 @@ function runBuiltin(name: string, input: Json, lead: Lead): { output: Json; effe
         output: { escalated: true },
         effects: { escalate: { type: input.type === "stage" ? "stage" : "uncertainty", reason: trim(input.reason) ?? "requested by AI" } },
       };
+    case "flag_abuse":
+      return { output: { flagged: true }, effects: { abuse: { reason: trim(input.reason, 300) ?? "flagged by the AI" } } };
     default:
       throw new Error("unknown builtin");
   }

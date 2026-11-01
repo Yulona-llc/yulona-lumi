@@ -1,6 +1,6 @@
-# Yulona — Implementation Plan (handoff for the team-building session)
+# Lumi — Implementation Plan (handoff for the team-building session)
 
-> Source of truth: the "Yulona Product Development Definition v1.0" (summarized below, section numbers `§` refer to it). If this plan and the spec disagree, the spec wins; flag the conflict.
+> Source of truth: the "Lumi Product Development Definition v1.0" (summarized below, section numbers `§` refer to it). If this plan and the spec disagree, the spec wins; flag the conflict.
 > Status: **nothing built yet.** This repo contains only skills (`.claude/skills`, `.agents/skills`) and this plan.
 
 ## 0. What the next session should do
@@ -135,7 +135,7 @@ Cross-tenant leak (3 layers + automated sweep); hallucination (threshold + hando
 
 ## 9. Open questions for the user
 1. Billing provider (Stripe?) and plan tiers/limits.
-2. Default LLM + embedding provider/model, and whether Yulona-hosted key proxying/metering is needed.
+2. Default LLM + embedding provider/model, and whether Lumi-hosted key proxying/metering is needed.
 3. Calendar provider(s): Google only first, or Outlook/Cal.com too?
 4. ORM/query-builder preference (Drizzle vs Kysely) given RLS-per-transaction requirement.
 5. Email provider for invitations/notifications/reports.

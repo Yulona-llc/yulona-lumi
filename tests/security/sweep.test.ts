@@ -5,7 +5,7 @@ import { api, boot, docsAuth, hasDb, mkTenant, type Booted } from "../support";
 /**
  * Cross-tenant sweep over EVERY registered route (Hono route table, cross-checked against docs/openapi.json).
  *  1. unauthenticated => 401 (or the documented alternative for allow-listed non-JWT realms)
- *  2. super-admin routes reject tenant tokens
+ *  2. the customer API serves no platform-admin route at all (apps/admin-api; its own sweep lives in apps/admin-api/test/roles.test.ts)
  *  3. tenant B + tenant A's ids => never 2xx, A's rows byte-identical afterwards, no A markers in B's responses
  *  4. API-key realm: B's key + A's ids => same guarantees
  * A route that is neither covered (fixture for its :params) nor allow-listed with a reason FAILS the test.
@@ -17,15 +17,16 @@ const PUBLIC: Allow[] = [
   { re: /^POST \/api\/v1\/auth\/(register|login)$/, reason: "credential endpoints; rate limited", unauth: [400] },
   { re: /^POST \/api\/v1\/auth\/(refresh|logout)$/, reason: "refresh-cookie + CSRF header realm", unauth: [401, 403] },
   { re: /^GET \/api\/v1\/auth\/csrf$/, reason: "issues double-submit CSRF token", unauth: [200] },
-  { re: /^POST \/api\/v1\/admin\/auth\/login$/, reason: "super-admin credential endpoint", unauth: [400] },
+  { re: /^POST \/api\/v1\/auth\/impersonation\/exchange$/, reason: "one-time impersonation code realm (single use, 60 s, hashed, rate limited)", unauth: [400] },
   { re: /^POST \/api\/v1\/invitations\/accept$/, reason: "invitation-token realm", unauth: [400] },
   { re: /^GET \/api\/v1\/calendar\/google\/callback$/, reason: "OAuth callback authenticated by HMAC-signed state (invalid state => redirect to dashboard with error)", unauth: [302, 400, 401, 403] },
   { re: /^GET \/api\/v1\/calendar\/calendly\/callback$/, reason: "Calendly OAuth callback authenticated by HMAC-signed state + PKCE (invalid state => redirect to dashboard with error)", unauth: [302, 400, 401, 403] },
   { re: /^GET \/api\/v1\/realtime\/ws$/, reason: "WebSocket: token is sent in the first frame (closed 4401 otherwise, see conversations.test); plain GET => 426", unauth: [426] },
+  { re: /^GET (\/api\/v1)?\/public\/widgets\/:key\/avatar$/, reason: "public brand image keyed by the widget key in the path; only enabled widgets, origin/referer policy when sent", unauth: [404] },
   { re: /^(GET|POST|OPTIONS) (\/api\/v1)?\/public\/widget\//, reason: "widget-key + origin allowlist + session JWT realm", unauth: [400, 401, 403] },
   { re: /^(GET|POST|PATCH) \/api\/v1\/(public-api\/|key-info$)/, reason: "API-key realm (Bearer yl_...)", unauth: [401] },
   { re: /^(GET|POST) \/api\/v1\/webhooks\/channels\/:channel\/:connectionId$/, reason: "provider webhook, signature verified", unauth: [400, 401, 403, 404] },
-  { re: /^POST \/api\/v1\/webhooks\/(billing|transactions\/:endpointId)$/, reason: "provider/HMAC webhook, signature verified (billing: stub provider is accepted only outside production; see misc.test)", unauth: [200, 400, 401, 403, 404] },
+  { re: /^POST \/api\/v1\/webhooks\/billing$/, reason: "provider webhook, signature verified (billing: stub provider is accepted only outside production; see misc.test)", unauth: [200, 400, 401, 403, 404] },
 ];
 const publicRule = (sig: string) => PUBLIC.find((p) => p.re.test(sig));
 
@@ -39,15 +40,16 @@ const BODIES: Record<string, (f: Fixtures) => unknown> = {
   "PATCH /api/v1/widgets/:id": () => ({ name: "hacked" }),
   "PATCH /api/v1/tickets/:id": () => ({ title: "hacked" }),
   "POST /api/v1/tickets/:id/comments": () => ({ body: "hacked", text: "hacked" }),
-  "PATCH /api/v1/transactions/:id": () => ({ description: "hacked" }),
   "PATCH /api/v1/canned-responses/:id": () => ({ title: "hacked" }),
   "PATCH /api/v1/tags/:id": () => ({ name: "hacked" }),
   "PATCH /api/v1/webhooks/:id": () => ({ name: "hacked" }),
   "PATCH /api/v1/tool-connections/:id": () => ({ name: "hacked" }),
   "PATCH /api/v1/users/:id": () => ({ role: "viewer" }),
   "PATCH /api/v1/channels/connections/:id": () => ({ name: "hacked" }),
-  "PATCH /api/v1/transactions/webhook-endpoints/:id": () => ({ name: "hacked" }),
   "POST /api/v1/agent-builder/sessions/:id/messages": () => ({ text: "hacked" }),
+  "POST /api/v1/copilot/sessions/:id/messages": () => ({ text: "hacked" }),
+  "POST /api/v1/copilot/sessions/:id/confirm": (f) => ({ token: f.ids["copilot-token"] ?? "x".repeat(32) }),
+  "POST /api/v1/copilot/sessions/:id/cancel": (f) => ({ token: f.ids["copilot-token"] ?? "x".repeat(32) }),
   "POST /api/v1/bookings/:id/cancel": () => ({}),
   "POST /api/v1/needs-attention/:id/assign": (f) => ({ userId: f.tenant.userId }),
   "POST /api/v1/needs-attention/:id/resolve": () => ({ note: "hacked" }),
@@ -61,8 +63,8 @@ const BODIES: Record<string, (f: Fixtures) => unknown> = {
 
 const PARAM_KEY: Record<string, string> = {
   agents: "agents", "api-keys": "api-keys", "canned-responses": "canned-responses", connections: "connections", contacts: "contacts",
-  invitations: "invitations", sources: "sources", tags: "tags", tickets: "tickets", transactions: "transactions",
-  "webhook-endpoints": "webhook-endpoints", webhooks: "webhooks", widgets: "widgets", bookings: "bookings", conversations: "conversations",
+  invitations: "invitations", sources: "sources", tags: "tags", tickets: "tickets",
+  webhooks: "webhooks", widgets: "widgets", bookings: "bookings", conversations: "conversations",
   requests: "requests", "needs-attention": "needs-attention", notifications: "notifications", "webhook-deliveries": "webhook-deliveries",
   users: "users", "merge-suggestions": "merge-suggestions", "tool-connections": "tool-connections", sessions: "sessions",
 };
@@ -72,7 +74,8 @@ function fill(path: string, f: Fixtures): string | null {
   for (let i = 0; i < parts.length; i++) {
     const p = parts[i]!;
     if (!p.startsWith(":")) { out.push(p); continue; }
-    const key = PARAM_KEY[parts[i - 1] ?? ""];
+    // Ask Lumi sessions are a different table from the agent-builder sessions
+    const key = path.startsWith("/api/v1/copilot/") && parts[i - 1] === "sessions" ? "copilot-sessions" : PARAM_KEY[parts[i - 1] ?? ""];
     const val = key ? f.ids[key] : undefined;
     if (!val) return null;
     out.push(val);
@@ -133,12 +136,15 @@ describe.skipIf(!hasDb)("cross-tenant sweep", () => {
     expect(allowCount).toBeGreaterThan(20);
   });
 
-  test("2. super-admin routes reject tenant tokens (owner included)", async () => {
+  test("2. no platform-admin route exists in the customer API; tenant tokens get 404 on the old paths", async () => {
+    expect(routes.filter((x) => /\/admin(\/|$)/.test(x.path) || x.path.includes("/impersonate")).map((x) => x.sig)).toEqual([]);
     const failures: string[] = [];
-    for (const r of routes.filter((x) => x.path.startsWith("/api/v1/admin/") && !publicRule(x.sig))) {
-      const url = r.path.replace(/:[A-Za-z]+/g, crypto.randomUUID());
-      const res = await req(r.method, url, A.tenant.h);
-      if (![401, 403].includes(res.status)) failures.push(`${r.sig} -> ${res.status}`);
+    for (const [m, p] of [["POST", "/api/v1/admin/auth/login"], ["GET", "/api/v1/admin/tenants"], ["GET", `/api/v1/admin/tenants/${A.tenant.tenantId}`], ["POST", `/api/v1/admin/tenants/${A.tenant.tenantId}/impersonate`],
+      ["GET", "/api/v1/admin/analytics"], ["GET", "/api/v1/admin/llm-profiles"], ["PUT", "/api/v1/admin/feature-flags/x.y"], ["GET", "/api/v1/admin/audit-logs/export"]] as const) {
+      for (const h of [{}, A.tenant.h]) {
+        const res = await req(m, p, h);
+        if (res.status !== 404) failures.push(`${m} ${p} -> ${res.status}`);
+      }
     }
     expect(failures).toEqual([]);
   });
@@ -148,7 +154,7 @@ describe.skipIf(!hasDb)("cross-tenant sweep", () => {
     const uncovered: string[] = [], failures: string[] = [], weak: string[] = [];
     let attacked = 0;
     for (const r of routes) {
-      if (publicRule(r.sig) || r.path.startsWith("/api/v1/admin/")) continue;
+      if (publicRule(r.sig)) continue;
       if (!r.path.includes(":")) continue; // id-less routes are covered by the leak scan below
       const url = fill(r.path, A);
       if (!url) { uncovered.push(r.sig); continue; }
@@ -172,7 +178,7 @@ describe.skipIf(!hasDb)("cross-tenant sweep", () => {
   test("3a. positive control: the same GET :id routes DO return 200 for the owning tenant (fixtures are real, so B's refusals are meaningful)", async () => {
     let ok = 0; const bad: string[] = [];
     for (const r of routes) {
-      if (r.method !== "GET" || !r.path.includes(":") || publicRule(r.sig) || r.path.startsWith("/api/v1/admin/") || r.path.startsWith("/api/v1/public-api/")) continue;
+      if (r.method !== "GET" || !r.path.includes(":") || publicRule(r.sig) || r.path.startsWith("/api/v1/public-api/")) continue;
       const url = fill(r.path, A);
       if (!url) continue;
       const res = await req("GET", url, A.tenant.h);
@@ -186,7 +192,7 @@ describe.skipIf(!hasDb)("cross-tenant sweep", () => {
     const leaks: string[] = [], empty: string[] = [];
     let n = 0;
     for (const r of routes) {
-      if (r.method !== "GET" || r.path.includes(":") || publicRule(r.sig) || r.path.startsWith("/api/v1/admin/") || r.path.endsWith("/ws") || r.path.endsWith("/stream")) continue;
+      if (r.method !== "GET" || r.path.includes(":") || publicRule(r.sig) || r.path.endsWith("/ws") || r.path.endsWith("/stream")) continue;
       const rb = await req("GET", r.path, B.tenant.h);
       const t = await rb.text();
       n++;
@@ -235,7 +241,6 @@ describe.skipIf(!hasDb)("cross-tenant sweep", () => {
       ["POST", "/bookings", { title: "x", startAt: new Date(Date.now() + 864e5).toISOString(), endAt: new Date(Date.now() + 864e5 + 36e5).toISOString(), contactId: A.ids.contacts }],
       ["POST", `/contacts/${B.ids.contacts}/merge`, { sourceContactId: A.ids.contacts }],
       ["PUT", `/contacts/${B.ids.contacts}/tags`, { tagIds: [A.ids.tags] }],
-      ["POST", "/transactions", { amountCents: 100, currency: "USD", contactId: A.ids.contacts }],
       ["POST", "/knowledge/sources/text", { name: "x", text: "hello world", agentId: A.ids.agents }],
       ["POST", "/knowledge/sandbox", { agentId: A.ids.agents, message: "hi" }],
       ["POST", `/needs-attention/${B.ids["needs-attention"]}/assign`, { userId: A.tenant.userId }],
@@ -258,9 +263,9 @@ describe.skipIf(!hasDb)("cross-tenant sweep", () => {
     const agent = await mkTenant(b, "agt", "agent", A.tenant.tenantId);
     const ownState = /^(PUT \/api\/v1\/availability\/me|POST \/api\/v1\/notifications\/(read-all|:id\/read)|PUT \/api\/v1\/notifications\/preferences|POST \/api\/v1\/knowledge\/sandbox|POST \/api\/v1\/auth\/.*)$/;
     const viewerOk: string[] = [], agentAdmin: string[] = [];
-    const adminOnly = [/^POST \/api\/v1\/(api-keys|invitations|webhooks|channels\/connections|widgets|agents)$/, /^(PATCH|DELETE) \/api\/v1\/(users|api-keys|webhooks|agents|widgets|channels\/connections)\/:id$/, /^PUT \/api\/v1\/(retention|ops\/settings)$/, /^POST \/api\/v1\/gdpr\//, /^POST \/api\/v1\/billing\/(checkout|portal|cancel)$/, /^PATCH \/api\/v1\/tenant$/];
+    const adminOnly = [/^(POST|PUT) \/api\/v1\/(copilot\/sessions|workspace\/profile|onboarding\/(answers|skip|finish))$/, /^POST \/api\/v1\/copilot\/sessions\/:id\/(messages|confirm|cancel)$/, /^POST \/api\/v1\/(api-keys|invitations|webhooks|channels\/connections|widgets|agents)$/, /^(PATCH|DELETE) \/api\/v1\/(users|api-keys|webhooks|agents|widgets|channels\/connections)\/:id$/, /^PUT \/api\/v1\/(retention|ops\/settings)$/, /^POST \/api\/v1\/gdpr\//, /^POST \/api\/v1\/billing\/(checkout|portal|cancel)$/, /^PATCH \/api\/v1\/tenant$/];
     for (const r of routes) {
-      if (!["POST", "PUT", "PATCH", "DELETE"].includes(r.method) || publicRule(r.sig) || r.path.startsWith("/api/v1/admin/") || r.path.startsWith("/api/v1/public-api/") || ownState.test(r.sig)) continue;
+      if (!["POST", "PUT", "PATCH", "DELETE"].includes(r.method) || publicRule(r.sig) || r.path.startsWith("/api/v1/public-api/") || ownState.test(r.sig)) continue;
       const url = fill(r.path, A) ?? r.path.replace(/:[A-Za-z]+/g, crypto.randomUUID());
       const body = BODIES[r.sig]?.(A);
       const rv = await req(r.method, url, viewer.h, body);

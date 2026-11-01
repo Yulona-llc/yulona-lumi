@@ -1,7 +1,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { Db } from "@yulona/db";
 import type { Role, Logger } from "@yulona/shared";
-import type { CalendlyOAuthConfig, GoogleOAuthConfig, RetryOptions } from "@yulona/ops";
+import type { CalendlyOAuthConfig, GoogleOAuthConfig, RedirectSource, RetryOptions } from "@yulona/ops";
 import type { Config } from "../config";
 import type { AppEnv } from "../context";
 import { Errors } from "../errors";
@@ -13,8 +13,12 @@ import type { RateLimiter } from "../ratelimit";
 export interface OpsRuntime {
   google?: GoogleOAuthConfig;
   calendly?: CalendlyOAuthConfig;
+  /** Where the Calendly redirect URI came from (env resolution); tests that inject `calendly` directly omit it ("configured"). */
+  calendlyRedirectSource?: RedirectSource;
   fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
   calendarRetry?: RetryOptions;
+  /** Tests: fake HubSpot server (production always uses https://api.hubapi.com). */
+  hubspot?: { apiBase?: string; retry?: RetryOptions };
 }
 export interface OpsDeps {
   cfg: Config;
@@ -28,7 +32,9 @@ export function opsRuntimeFromEnv(cfg: Config, env: Record<string, string | unde
   const clientId = env.GOOGLE_CLIENT_ID;
   const clientSecret = env.GOOGLE_CLIENT_SECRET;
   const base = (cfg.publicApiUrl ?? `http://localhost:${cfg.port}`).replace(/\/+$/, "");
+  const calendlySource: RedirectSource = env.CALENDLY_REDIRECT_URI ? "CALENDLY_REDIRECT_URI" : cfg.publicApiUrl ? "PUBLIC_API_URL" : "localhost_fallback";
   return {
+    calendlyRedirectSource: calendlySource,
     google: clientId && clientSecret ? { clientId, clientSecret, redirectUri: env.GOOGLE_REDIRECT_URI ?? `${base}/api/v1/calendar/google/callback` } : undefined,
     calendly: env.CALENDLY_CLIENT_ID && env.CALENDLY_CLIENT_SECRET
       ? { clientId: env.CALENDLY_CLIENT_ID, clientSecret: env.CALENDLY_CLIENT_SECRET, redirectUri: env.CALENDLY_REDIRECT_URI || `${base}/api/v1/calendar/calendly/callback` }

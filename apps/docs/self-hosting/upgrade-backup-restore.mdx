@@ -1,10 +1,10 @@
 ---
 title: Upgrade, backup and restore
-description: Upgrade a self-hosted Yulona safely, schedule backups, restore from one, and roll back a bad release.
+description: Upgrade a self-hosted Lumi safely, schedule backups, restore from one, and roll back a bad release.
 icon: database
 ---
 
-This page is for operators. Three scripts in `deploy/` cover the routine work: `upgrade.sh`, `backup.sh` and `restore.sh`. All of them read `deploy/.env` and must be run on the host that runs the stack.
+This page is for operators. Four scripts in `deploy/` cover the routine work: `upgrade.sh`, `rollout.sh`, `backup.sh` and `restore.sh`. All of them read `deploy/.env` and must be run on the host that runs the stack.
 
 ## Back up
 
@@ -35,7 +35,57 @@ Schedule it with cron and copy the files off the host:
 Backups contain customer conversations and encrypted credentials. Encrypt them before they leave the host, restrict access, and delete old copies. The script creates files readable only by the owner (umask 077).
 </Warning>
 
-## Upgrade
+## Zero-downtime backend rollout
+
+Use this when the API and worker run from registry images on a VM (for example under `/opt/yulona`) and the dashboard lives elsewhere (such as Vercel). `deploy/rollout.sh` swaps `api` and `worker` only after the new containers pass checks. Postgres, Redis and Caddy stay up.
+
+```bash
+deploy/rollout.sh ghcr.io/your-org/yulona/api:<sha>
+```
+
+The script:
+
+1. Writes `deploy/backups/pre-rollout-<timestamp>.sql.gz` and aborts if it is empty.
+2. Pulls the image and runs the `migrate` one-shot from `deploy/docker-compose.backend.yml` on the existing `yulona_edge` / `yulona_backend` networks. If migrate fails, the live containers are left alone.
+3. Starts the next blue/green slot (`yulona-backend-blue` or `yulona-backend-green`) with Docker network alias `api`.
+4. Polls `/readyz` inside the new API container and checks the new worker logged `worker started`.
+5. Reloads Caddy, stops the previous API and worker (including the ones from the first `setup.sh` stack), reloads Caddy again.
+6. Records the live slot in `deploy/.deploy-slot` and the previous image tag in `deploy/.deploy-previous`.
+
+Caddy’s API proxy uses a short `/readyz` health check so a stopped container is dropped quickly. For an API-only host (dashboard on Vercel), copy `deploy/Caddyfile.api` over `deploy/Caddyfile` and reload Caddy once.
+
+<Warning>
+Migrations run while the old API is still serving traffic. Ship schema changes that the old code can still read (add columns and tables; do not drop or rename in the same release as the code that stops using them).
+</Warning>
+
+### GitHub Actions on the VPC VM
+
+1. Install the stack once with `deploy/setup.sh` under `/opt/yulona` (so `deploy/.env` mode 600 stays on the host).
+2. Register a [self-hosted runner](https://docs.github.com/en/actions/hosting-your-own-runners) on that VM with labels `self-hosted` and `yulona-vpc`. Give the runner user access to the Docker socket. Do not use this runner for pull requests from forks.
+3. Enable GitHub Packages (GHCR) for the repository.
+4. Fill in `deploy/.env` on the VM from `deploy/.env.backend.example` (it lists every value a VM-plus-Vercel setup needs and why). Secrets never leave `deploy/.env`; GitHub needs no secrets for deploys.
+5. In the repository, set the Actions **variable** `BACKEND_DEPLOY_ENABLED` to `true`. Until you do, the `deploy-backend` workflow does nothing, so you can push the code before the VM exists.
+
+### Deploy only what changed
+
+The `deploy-backend` workflow runs on pushes to `main` that touch backend code. It works out which service changed, runs the tests, builds only that image and rolls out only that service:
+
+| You changed | What is built and deployed |
+|---|---|
+| `apps/api`, `apps/worker`, or any `packages/*` | the `api` image (API and worker run from it), with `deploy/rollout.sh` (backup, migrate, blue/green) |
+| `apps/admin-api`, or `packages/{ai-runtime,crypto,db,providers,shared}` | the `admin-api` image, with `deploy/rollout-admin-api.sh` (only the admin API container restarts, in its own compose project `yulona-admin-api`) |
+| `apps/dashboard`, `apps/admin-web`, `apps/widget` | nothing here: these are Vercel projects that build themselves (see [Dashboard and admin web on Vercel](/self-hosting/requirements-and-install#dashboard-and-admin-web-on-vercel)) |
+| docs only | nothing |
+
+When one push changes both, the admin API rolls out after the API (the API rollout applies the database migrations). The admin API is recreated in place, so it is unavailable for a few seconds; if the new image does not become ready, the script restores the previous image. To deploy by hand, run `deploy/rollout-admin-api.sh ghcr.io/<owner>/<repo>/admin-api:<sha>`, or start the workflow from the Actions tab and choose a service.
+
+The API and worker share one image and one rollout because they share code and database migrations. Changing only the worker therefore rebuilds that image and rolls out both.
+
+Pull requests run the tests (`ci`) but never deploy. Protect `main` so changes arrive through a pull request with the `ci` check required.
+
+## In-place upgrade (full stack)
+
+`deploy/upgrade.sh` rebuilds or pulls images and restarts `api`, `worker`, `dashboard` and `caddy` one service at a time. There is a short gap per service while the new container replaces the old one. Prefer `rollout.sh` when you need the API to stay up.
 
 <Steps>
   <Step title="Read the changelog">
@@ -103,15 +153,18 @@ Restore the object-storage bucket separately if you lost it, and use the same `E
 
 ## Roll back
 
-If a release misbehaves but the schema is fine:
-
-1. Check out the previous commit (`git checkout <previous-commit>`), or set `YULONA_API_IMAGE` and `YULONA_DASHBOARD_IMAGE` in `deploy/.env` to the previous tags.
-2. Run `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build`.
-
-If the new release applied migrations the old code cannot read, also restore the pre-upgrade backup:
+If a rollout misbehaves but the schema is fine, re-run the previous image tag (printed at the end of `rollout.sh`, and stored in `deploy/.deploy-previous`):
 
 ```bash
-deploy/restore.sh deploy/backups/pre-upgrade-20261019-040000.sql.gz
+deploy/rollout.sh "$(cat deploy/.deploy-previous)"
+```
+
+For an in-place full-stack upgrade, check out the previous commit or set `YULONA_API_IMAGE` and `YULONA_DASHBOARD_IMAGE` in `deploy/.env` to the previous tags, then run `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build`.
+
+If the new release applied migrations the old code cannot read, also restore the pre-upgrade or pre-rollout backup:
+
+```bash
+deploy/restore.sh deploy/backups/pre-rollout-20261019-040000.sql.gz
 ```
 
 You lose everything written after that backup was taken, so prefer fixing forward when you can.
@@ -133,4 +186,4 @@ You lose everything written after that backup was taken, so prefer fixing forwar
   </Card>
 </CardGroup>
 
-{/* source: deploy/upgrade.sh, deploy/backup.sh, deploy/restore.sh, deploy/postgres/init-roles.sh, packages/db/src/cli.ts, docs/self-hosting.md */}
+{/* source: deploy/upgrade.sh, deploy/rollout.sh, deploy/docker-compose.backend.yml, deploy/backup.sh, deploy/restore.sh, deploy/postgres/init-roles.sh, packages/db/src/cli.ts, docs/self-hosting.md, .github/workflows/deploy-backend.yml */}

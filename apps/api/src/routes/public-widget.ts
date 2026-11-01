@@ -7,7 +7,7 @@ import {
   typingSchema, uiEventSchema, type RealtimeEvent, type UiEvent,
 } from "@yulona/shared";
 import type { Tx } from "@yulona/db";
-import { loadAgent } from "@yulona/ai-runtime";
+import { isAgentLive, loadAgent } from "@yulona/ai-runtime";
 import type { AppEnv } from "../context";
 import { Errors, AppError } from "../errors";
 import { parseBody } from "../http";
@@ -17,13 +17,14 @@ import { toPublicMessage, type MessageRow } from "../conversations/dto";
 import { enqueueAiRespond } from "../conversations/enqueue";
 import { originAllowed } from "../conversations/origin";
 import {
-  ContactsRepository, ConversationsRepository, MessagesRepository, WidgetSessionsRepository, resolveWidget,
+  ContactsRepository, ConversationsRepository, MessagesRepository, WidgetSessionsRepository, WidgetsRepository, resolveWidget,
   type ResolvedWidget,
 } from "../conversations/repos";
 import { signWidgetSession, verifyWidgetSession } from "../conversations/widget-session";
 import { announce, socketHandlers, upgradeWebSocket } from "../realtime/ws";
 import type { Conn } from "../realtime/hub";
 import { assertWithinLimit } from "../platform/limits";
+import { openTurnstileSecret, verifyTurnstile } from "../conversations/turnstile";
 
 interface PubSession { id: string; conversationId: string; contactId: string }
 type PubEnv = {
@@ -38,7 +39,12 @@ const LIMITS = {
   typing: { limit: 60, windowMs: 60_000 },
   refresh: { limit: 20, windowMs: 60_000 },
   history: { limit: 120, windowMs: 60_000 },
+  /** Turnstile siteverify calls per widget + IP (keeps the endpoint from being used to hammer Cloudflare) */
+  captcha: { limit: 30, windowMs: 10 * 60_000 },
+  /** honeypot hits per widget + IP, answered with a fake success until the limit, then 429 */
+  honeypot: { limit: 20, windowMs: 10 * 60_000 },
 };
+const contactBlocked = () => new AppError(403, "contact_blocked", "This conversation has ended and can't be continued.");
 
 export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
   const r = new Hono<PubEnv>();
@@ -78,6 +84,15 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
     if (!claims || claims.tid !== pub.tenantId || claims.wid !== pub.widgetId) throw Errors.unauthorized("Invalid or expired session");
     const ok = await withTenant(db, claims.tid, (tx) => new WidgetSessionsRepository(tx, claims.tid).isActive(claims.sub, claims.wid, claims.cid));
     if (!ok) throw Errors.unauthorized("Invalid or expired session");
+    // A blocked contact (abuse) keeps no access even if a session token is still valid.
+    const blocked = await withTenant(db, claims.tid, async (tx) => {
+      const [r] = await tx<{ b: boolean }[]>`
+        SELECT (ct.blocked_at IS NOT NULL) AS b FROM widget_sessions ws
+        JOIN contacts ct ON ct.tenant_id = ws.tenant_id AND ct.id = ws.contact_id
+        WHERE ws.tenant_id = ${claims.tid} AND ws.id = ${claims.sub}`;
+      return r?.b === true;
+    });
+    if (blocked) throw contactBlocked();
     c.set("session", { id: claims.sub, conversationId: claims.cid, contactId: claims.ctid });
     await next();
   };
@@ -90,8 +105,17 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
     const pub = c.get("pub");
     await enforceLimit(limiter, `pw:cfg:${pub.widgetId}:${ipOf(c)}`, LIMITS.config);
     c.header("Cache-Control", "private, max-age=60");
+    // The widget's agent is not live (never published, archived or unassigned): the widget shows an offline notice.
+    const { live, avatar } = await withTenant(db, pub.tenantId, async (tx) => ({
+      live: await isAgentLive(tx, pub.tenantId, pub.agentId),
+      avatar: await new WidgetsRepository(tx, pub.tenantId).avatarEtag(pub.widgetId),
+    }));
+    // An uploaded avatar wins over the optional image link; it is served by `/public/widgets/:key/avatar`.
+    const config = avatar
+      ? { ...pub.config, avatarUrl: `${cfg.publicApiUrl ?? new URL(c.req.url).origin}/api/v1/public/widgets/${c.req.header("x-widget-key") ?? c.req.query("key")}/avatar?v=${avatar}` }
+      : pub.config;
     return c.json({
-      widgetId: pub.widgetId, name: pub.name, config: pub.config, prechat: pub.prechat,
+      widgetId: pub.widgetId, name: pub.name, config, prechat: pub.prechat, unavailable: !live,
       schemaVersion: WIDGET_UI_SCHEMA_VERSION, features: { sse: true, ws: true },
     });
   });
@@ -105,11 +129,40 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
     if (missing.length) throw Errors.validation(missing);
 
     const { tenantId } = pub;
+    // ---- bot protection: honeypot, then Cloudflare Turnstile (fail closed)
+    const prot = pub.config?.protection;
+    if (prot?.honeypot !== false && body.hp?.trim()) {
+      await enforceLimit(limiter, `pw:hp:${pub.widgetId}:${ipOf(c)}`, LIMITS.honeypot);
+      // looks like success so the bot moves on; nothing is stored and the token cannot be used for anything
+      return c.json({
+        sessionToken: `${crypto.randomUUID()}.${crypto.randomUUID()}.${crypto.randomUUID()}`, expiresIn: ttlSeconds, visitorId: crypto.randomUUID(),
+        conversation: { id: crypto.randomUUID(), status: "open", handler: "ai" }, messages: [], unavailable: false,
+      }, 201);
+    }
+    const ts = prot?.turnstile;
+    if (ts?.enabled) {
+      await enforceLimit(limiter, `pw:ts:${pub.widgetId}:${ipOf(c)}`, LIMITS.captcha);
+      const enc = await withTenant(db, tenantId, (tx) => new WidgetsRepository(tx, tenantId).turnstileSecretEnc(pub.widgetId));
+      let secret: string | null = null;
+      try {
+        if (enc && cfg.encryptionKey) secret = openTurnstileSecret(cfg.encryptionKey, enc, tenantId, pub.widgetId);
+      } catch {
+        secret = null;
+      }
+      const v = secret && ts.siteKey
+        ? await verifyTurnstile({ url: cfg.turnstileVerifyUrl, secret, token: body.turnstileToken, ip: ipOf(c) })
+        : { ok: false as const, reason: "misconfigured" };
+      if (!v.ok) throw new AppError(403, "turnstile_failed", "Verification failed. Reload the page and try again.", { reason: v.reason });
+    }
+
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+    let unavailable = false;
     const out = await withTenant(db, tenantId, async (tx) => {
       const contacts = new ContactsRepository(tx, tenantId);
       const visitorId = body.visitorId ?? crypto.randomUUID();
       let contactId = await contacts.findByIdentity("widget", visitorId);
+      // blocked visitors cannot start a new conversation: by identity, or from the same IP shortly after a block
+      if (contactId ? await contacts.isBlocked(contactId) : ipOf(c) !== "unknown" && (await contacts.blockedRecentlyFromIp(ipOf(c)))) throw contactBlocked();
       if (!contactId) {
         contactId = await contacts.create({});
         await contacts.addIdentity(contactId, "widget", visitorId);
@@ -123,8 +176,10 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
         widgetId: pub.widgetId, conversationId, contactId, origin: pub.origin, ip: ipOf(c), userAgent: c.req.header("user-agent"), expiresAt,
       });
       const messages = new MessagesRepository(tx, tenantId);
-      // The widget's welcome message wins; otherwise fall back to the agent's greeting (published version, else draft).
-      const welcome = pub.config?.welcomeMessage || (await loadAgent(tx, tenantId, pub.agentId))?.greeting;
+      // The widget's own welcome message wins; otherwise the live agent's greeting (published version). A not-live agent gives no AI greeting.
+      const agent = await loadAgent(tx, tenantId, pub.agentId);
+      unavailable = !agent;
+      const welcome = pub.config?.welcomeMessage || agent?.greeting;
       if (welcome) {
         const { id } = await messages.insert({
           conversationId, senderType: "ai", content: welcome,
@@ -141,7 +196,7 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
       sessionId: out.sessionId, tenantId, widgetId: pub.widgetId, conversationId: out.conversationId, contactId: out.contactId, ttlSeconds,
     });
     return c.json({
-      sessionToken, expiresIn: ttlSeconds, visitorId: out.visitorId,
+      sessionToken, expiresIn: ttlSeconds, visitorId: out.visitorId, unavailable,
       conversation: state(out.conv),
       messages: out.rows.reverse().map(toPublicMessage),
     }, 201);
@@ -186,6 +241,8 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
     const convs = new ConversationsRepository(tx, tenantId);
     const conv = await convs.get(s.conversationId, true);
     if (!conv) throw Errors.notFound();
+    // blocked contact: nothing is stored and a resolved conversation is never reopened
+    if (await new ContactsRepository(tx, tenantId).isBlocked(conv.contactId)) throw contactBlocked();
     const messages = new MessagesRepository(tx, tenantId);
     const { id, created } = await messages.insert({
       conversationId: s.conversationId, senderType: "contact", content: m.content, metadata: m.metadata, clientMessageId: m.clientMessageId,
@@ -208,6 +265,10 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
     const s = c.get("session");
     await enforceLimit(limiter, `pw:msg:${s.id}`, LIMITS.message);
     const body = await parseBody(c, publicSendMessageSchema);
+    if (pub.config?.protection?.honeypot !== false && body.hp?.trim()) {
+      await enforceLimit(limiter, `pw:hp:${pub.widgetId}:${ipOf(c)}`, LIMITS.honeypot);
+      return c.json({ id: crypto.randomUUID(), senderType: "contact", senderName: null, content: body.text, ui: null, createdAt: new Date().toISOString() }, 201);
+    }
     const { row, created } = await withTenant(db, pub.tenantId, (tx) =>
       postContactMessage(tx, pub.tenantId, s, { content: body.text, clientMessageId: body.clientMessageId }));
     return c.json(toPublicMessage(row), created ? 201 : 200);
@@ -312,5 +373,36 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
     }),
   );
 
+  return r;
+}
+
+/**
+ * Public, cacheable avatar image: GET /public/widgets/:key/avatar. Loaded by an <img> tag on the customer's site, so there is no CORS
+ * preflight and no widget-key header: the key is in the path. Origin policy: when the browser sends Origin or Referer it must match the
+ * widget's allowed domains; with neither (privacy settings, direct visit) the public brand image is still served. Only enabled widgets.
+ */
+export function publicWidgetAvatarRoutes({ cfg, db, limiter }: ConvDeps) {
+  const r = new Hono<AppEnv>();
+  r.get("/:key/avatar", async (c) => {
+    const key = c.req.param("key");
+    const notFound = () => c.body(null, 404, { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+    if (!WIDGET_KEY_RE.test(key)) return notFound();
+    await enforceLimit(limiter, `pw:avatar:${key}:${c.get("ip") as string}`, LIMITS.history);
+    const w = await resolveWidget(db, key);
+    if (!w || !w.enabled || w.tenantStatus !== "active") return notFound();
+    const origin = c.req.header("origin") ?? (() => { try { return new URL(c.req.header("referer") ?? "").origin; } catch { return undefined; } })();
+    if (origin && !originAllowed(origin, w.allowedDomains, cfg.isProd)) return c.body(null, 403, { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+    const a = await withTenant(db, w.tenantId, (tx) => new WidgetsRepository(tx, w.tenantId).getAvatar(w.widgetId));
+    if (!a) return notFound();
+    const headers = {
+      ETag: `"${a.etag}"`,
+      "Cache-Control": "public, max-age=3600",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      Vary: "Origin, Referer",
+    };
+    if (c.req.header("if-none-match")?.replace(/^W\//, "") === `"${a.etag}"`) return c.body(null, 304, headers);
+    return c.body(a.data as never, 200, { ...headers, "Content-Type": a.contentType, "Content-Length": String(a.data.length) });
+  });
   return r;
 }

@@ -1,10 +1,10 @@
 import { withTenant, type Db, type Tx } from "@yulona/db";
 import { AppError } from "../errors";
 
-export const LIMIT_METRICS = ["seats", "agents", "widgets", "api_keys", "monthly_conversations", "storage_mb", "llm_tokens_monthly", "llm_credits_monthly"] as const;
+export const LIMIT_METRICS = ["seats", "agents", "widgets", "api_keys", "monthly_conversations", "storage_mb", "llm_tokens_monthly", "llm_credits_monthly", "copilot_credits_monthly"] as const;
 export type LimitMetric = (typeof LIMIT_METRICS)[number];
 
-const MONTHLY: ReadonlySet<LimitMetric> = new Set(["monthly_conversations", "llm_tokens_monthly", "llm_credits_monthly"]);
+const MONTHLY: ReadonlySet<LimitMetric> = new Set(["monthly_conversations", "llm_tokens_monthly", "llm_credits_monthly", "copilot_credits_monthly"]);
 export const GAUGE_PERIOD = "1970-01-01";
 
 export interface LimitCheck {
@@ -72,6 +72,13 @@ async function usedOf(tx: Tx, tenantId: string, metric: LimitMetric): Promise<nu
       const [r] = await tx<{ n: string }[]>`
         SELECT COALESCE(ceil(used_micro / 1000000.0), 0)::bigint AS n FROM tenant_credits
         WHERE tenant_id = ${tenantId} AND period = (date_trunc('month', now() AT TIME ZONE 'UTC'))::date`;
+      return Number(r?.n ?? 0);
+    }
+    // Whole credits the Ask Lumi copilot used this UTC month (its own allowance; never drawn from chat credits).
+    case "copilot_credits_monthly": {
+      const [r] = await tx<{ n: string }[]>`
+        SELECT COALESCE(ceil(sum(credits_micro) / 1000000.0), 0)::bigint AS n FROM ai_usage_events
+        WHERE tenant_id = ${tenantId} AND source = 'copilot' AND at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
       return Number(r?.n ?? 0);
     }
     default:

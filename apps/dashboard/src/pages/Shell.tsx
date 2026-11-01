@@ -1,8 +1,8 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import {
-  BellRing, BookOpen, CalendarDays, ChevronsLeft, ChevronsRight, CreditCard, Contact, Gauge, Inbox, KeyRound, LayoutDashboard, LayoutGrid, LogOut, MonitorSmartphone, Moon, MoreHorizontal,
-  PanelsTopLeft, Plug, Cable, Radio, ReceiptText, Search, Settings, ShieldAlert, Sun, SunMoon, Ticket, UserCog, Users, Webhook, Bot, type LucideIcon,
+  BellRing, BookOpen, CalendarDays, ChevronsLeft, ChevronsRight, CreditCard, Contact, Gauge, Inbox, KeyRound, LayoutDashboard, LogOut, MonitorSmartphone, Moon, MoreHorizontal,
+  PanelsTopLeft, Plug, Cable, Radio, Search, Settings, ShieldAlert, Sun, SunMoon, Ticket, UserCog, Users, Webhook, Bot, type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { Logo, LogoMark } from "../components/Logo";
@@ -17,7 +17,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import NotificationsBell from "../features/ops-settings/NotificationsBell";
-import { ImpersonationBanner } from "../features/admin/ImpersonationBanner";
+import { AskLumi } from "../features/copilot/CopilotDrawer";
+import { ImpersonationBanner } from "../features/impersonation/ImpersonationBanner";
 import { CreditsBanner } from "../features/usage/CreditAlerts";
 import { useRole } from "../features/common/ui";
 import type { Role } from "../features/common/api";
@@ -37,7 +38,6 @@ const GROUPS: Group[] = [
   { label: "Operations", items: [
     { to: "/tickets", label: "Tickets", icon: Ticket, min: "viewer", keywords: "support issues sla" },
     { to: "/bookings", label: "Bookings", icon: CalendarDays, min: "viewer", keywords: "appointments calendar" },
-    { to: "/transactions", label: "Transactions", icon: ReceiptText, min: "viewer", keywords: "orders payments" },
   ] },
   { label: "AI", items: [
     { to: "/agents", label: "Agents", icon: Bot, min: "admin", keywords: "ai persona assistant" },
@@ -52,7 +52,7 @@ const SETTINGS: Item[] = [
   { to: "/settings/webhooks", label: "Webhooks", icon: Webhook, min: "viewer" },
   { to: "/settings/billing", label: "Billing", icon: CreditCard, min: "viewer", keywords: "plan invoice usage" },
   { to: "/settings/usage", label: "Usage", icon: Gauge, min: "viewer", keywords: "ai credits tokens buy top up" },
-  { to: "/settings/integrations", label: "Calendar", icon: Plug, min: "viewer", keywords: "google integrations" },
+  { to: "/settings/integrations", label: "Connectors", icon: Plug, min: "viewer", keywords: "calendar google calendly hubspot crm integrations connect" },
   { to: "/settings/connections", label: "Connections", icon: Cable, min: "viewer", keywords: "tools systems api secret" },
   { to: "/settings/operations", label: "Business hours", icon: BellRing, min: "viewer", keywords: "operations availability" },
   { to: "/settings/account", label: "Account", icon: UserCog, min: "viewer", keywords: "password profile" },
@@ -144,7 +144,6 @@ export default function Shell() {
             </nav>
             <div className="space-y-0.5 border-t border-sidebar-border px-3 py-3">
               <RailLink item={SETTINGS_HOME} collapsed={collapsed} />
-              {isOwner && <RailLink item={{ to: "/admin", label: "Platform admin", icon: LayoutGrid, min: "owner" }} collapsed={collapsed} />}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className={cn("mt-1 flex w-full items-center gap-3 rounded-lg p-2 text-left outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-primary", collapsed && "justify-center")}>
@@ -178,6 +177,7 @@ export default function Shell() {
                 <kbd className="ml-auto hidden rounded-md border bg-muted px-1.5 py-0.5 font-mono text-[11px] sm:inline">⌘K</kbd>
               </button>
               <div className="ml-auto flex items-center gap-1">
+                <AskLumi />
                 <NotificationsBell />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -226,7 +226,7 @@ export default function Shell() {
           <SheetContent side="bottom" className="gap-0">
             <SheetHeader><SheetTitle>Menu</SheetTitle><SheetDescription className="sr-only">All sections</SheetDescription></SheetHeader>
             <div className="space-y-5 overflow-y-auto px-4 pb-4">
-              {[...groups, { label: "Workspace", items: [SETTINGS_HOME, ...(isOwner ? [{ to: "/admin", label: "Platform admin", icon: LayoutGrid, min: "owner" as Role }] : [])] }].map((g) => (
+              {[...groups, { label: "Workspace", items: [SETTINGS_HOME] }].map((g) => (
                 <section key={g.label}>
                   <h3 className="mb-2 font-sans text-xs font-medium tracking-normal text-muted-foreground">{g.label}</h3>
                   <ul className="grid grid-cols-3 gap-2">
@@ -250,7 +250,7 @@ export default function Shell() {
           <CommandList>
             <CommandEmpty>Nothing matches. Try “inbox”, “billing” or “team”.</CommandEmpty>
             <CommandGroup heading="Go to">
-              {[...flat, ...(isOwner ? [{ to: "/admin", label: "Platform admin", icon: LayoutGrid, min: "owner" as Role, keywords: "super admin tenants" }] : [])].map((i) => (
+              {flat.map((i) => (
                 <CommandItem key={i.to} value={`${i.label} ${i.keywords ?? ""}`} onSelect={() => go(i.to)}><i.icon />{i.label}</CommandItem>
               ))}
             </CommandGroup>

@@ -7,6 +7,7 @@ import { platformPaths, platformSecuritySchemes } from "./platform/openapi";
 import { opsPaths } from "./ops/openapi";
 import { toolsPaths } from "./tools/openapi";
 import { agentBuilderPaths } from "./agent-builder/openapi";
+import { copilotPaths } from "./copilot/openapi";
 import { integrationsPaths } from "./integrations/openapi";
 import { knowledgePaths, polishOpenApi } from "./integrations/openapi-extra";
 import { usagePaths } from "./usage/openapi";
@@ -24,7 +25,7 @@ export function buildOpenApi() {
   const secured = [{ bearerAuth: [] }];
   return polishOpenApi({
     openapi: "3.0.3",
-    info: { title: "Yulona API", version: "0.1.0" },
+    info: { title: "Lumi API", version: "0.1.0" },
     components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" }, widgetSession: { type: "http", scheme: "bearer", bearerFormat: "JWT" }, ...platformSecuritySchemes } },
     paths: {
       "/healthz": { get: { summary: "Liveness", responses: { 200: resp("OK") } } },
@@ -44,6 +45,11 @@ export function buildOpenApi() {
       "/api/v1/auth/logout": {
         post: { summary: "Revoke refresh family and clear cookies (X-CSRF-Token header)", responses: { 200: resp("OK", okSchema), 403: err("CSRF failed") } },
       },
+      "/api/v1/auth/impersonation/exchange": {
+        post: { summary: "Redeem a one-time platform impersonation code (60 s, single use) for a 15-minute token; read-only sessions carry a `ro` claim and are limited to GET/HEAD",
+          requestBody: body(z.strictObject({ code: z.string().min(16).max(200) })),
+          responses: { 200: resp("Impersonation token, readOnly flag, user and tenant"), 400: err("Code invalid, expired or already used"), 429: err("Rate limited") } },
+      },
       ...conversationPaths(),
       ...channelPaths(),
       ...platformPaths(),
@@ -53,6 +59,7 @@ export function buildOpenApi() {
       ...knowledgePaths(),
       ...usagePaths(),
       ...agentBuilderPaths(),
+      ...copilotPaths(),
       "/api/v1/me": { get: { summary: "Current user and tenant", security: secured, responses: { 200: resp("Me", meSchema), 401: err("Unauthorized") } } },
     },
   });

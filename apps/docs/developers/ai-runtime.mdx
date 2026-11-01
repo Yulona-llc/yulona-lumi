@@ -18,13 +18,36 @@ The worker runs these jobs. Retryable failures throw and the queue retries with 
 
 Other jobs (`webhook.deliver`, `gdpr.export`, `gdpr.erase`) are covered in [Webhooks](/developers/webhooks).
 
+## Knowledge sources API
+
+Operators and tools create knowledge sources over the workspace API with an access token (owner or admin role). A URL source is read by the worker job `knowledge.ingest`; every request, including `robots.txt` and each discovered link, goes through the same SSRF-safe fetch as other outbound calls.
+
+```bash
+curl -X POST "$API/api/v1/knowledge/sources/url" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{ "url": "https://example.com/help", "maxDepth": 3, "maxPages": 25, "includeSubdomains": false }'
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `url` | required | Start page, `http` or `https`, public hosts only. |
+| `maxPages` | 25 (1 to 50) | Pages to read in total, the first page included. |
+| `followLinks` | `true` when `maxPages` is more than 1 | `false` reads only the start page. |
+| `maxDepth` | 3 (1 to 5) | Link clicks away from the start page. Links are queued only while the page's depth is below this. |
+| `includeSubdomains` | `false` | Also read hosts below the start host. The check uses the final host after redirects. `www.` is treated as the same host. |
+| `name`, `description`, `agentId` | optional | As for other sources. |
+
+Unknown fields and out-of-range values return `400 validation_error`. The response is the source, including the stored settings and a `crawlProgress` object (`pagesCrawled`, `pagesFound`, `pagesSkipped`, `truncated`, `done`) that the worker updates after every page, so you can poll `GET /api/v1/knowledge/sources/{id}`. `GET /api/v1/knowledge/sources/{id}/chunks` returns each section with the `url` of the page it came from.
+
+The crawler walks breadth first and sequentially. URLs are normalized for deduplication (lowercase host, no fragment or default port, tracking parameters and trailing slash removed). It reads `robots.txt` once per host (`Disallow`, `Allow`, wildcards and `Crawl-delay` up to 10 seconds, under the user agent `LumiBot`), waits at least 500 ms between requests, skips non-text content types and `rel="nofollow"` links, and honours `<base href>`. A `robots.txt` that blocks the start page fails the source permanently. The crawl stops after about 4 minutes and keeps the pages read so far; the job lock is 5 minutes. All extracted text, titles and descriptions have whitespace normalized before they are split into sections.
+
 ## Turn lifecycle
 
 `ai.respond` first loads the conversation, message, stage and agent in one short transaction (no model call happens while a transaction is open), then runs the turn, then persists everything atomically.
 
 <Steps>
   <Step title="Skip checks">
-    The job returns without replying when the message or conversation is missing, the message is not from the contact, the conversation is `resolved`, a person has taken over (`handler = human`), the conversation is `pending_human`, the AI is paused (stage `handoff_requested`), a reply to this message already exists, or no agent resolves (the conversation's agent, else the workspace's oldest agent). If the agent has a published version it runs that version; an agent that was never published runs its draft config.
+    The job returns without replying when the message or conversation is missing, the message is not from the contact, the conversation is `resolved`, a person has taken over (`handler = human`), the conversation is `pending_human`, the AI is paused (stage `handoff_requested`), a reply to this message already exists, or the conversation is paused for a person. An agent answers only while it is **published and not archived**, and it always runs its published version (the sandbox alone uses the saved draft). If the conversation's agent is a draft, archived, deleted or unassigned, the runtime never calls the model: it posts "This assistant is not available right now. A team member will reply.", raises a `system_failure` handoff with reason `agent_unavailable` (one notification for the conversation) and pauses the AI. There is no fallback to the oldest or a draft agent.
   </Step>
   <Step title="Credit gate (SaaS only)">
     If the credit pool is empty, the model is not called. The runtime raises a `system_failure` handoff with reason `ai_credits_exhausted` and sends the customer a safe notice. See [Credits API](/developers/credits-api).
@@ -39,10 +62,10 @@ Other jobs (`webhook.deliver`, `gdpr.export`, `gdpr.erase`) are covered in [Webh
     A message that is entirely a greeting, thanks, goodbye or "who are you" is answered conversationally with no knowledge and no tools, and never counts as a miss. "Hi, what are your prices?" is not small talk.
   </Step>
   <Step title="Knowledge: skills">
-    Every knowledge source is a **skill**: a slug, description and titled sections. If all of the agent's knowledge is 9000 characters or less, all of it goes into the prompt and the model runs once without tools. Otherwise the prompt carries the skill list plus the four best keyword matches (stemmed prefix terms ranked by Postgres full-text rank and term coverage), and the model may call `search_skills { query, skill? }` and `read_skill { skill, section? }` for up to four rounds. Results return inside `<knowledge_result>` data blocks. There are no embeddings; `similarityThreshold` and `topK` in the config are deprecated and ignored.
+    Every knowledge source is a **skill**: a slug, description and titled sections. If all of the agent's knowledge is 4000 characters or less (`AI_INLINE_ALL_CHARS`), all of it goes into the prompt and the model runs once without tools. Otherwise the prompt carries the skill list plus the two best keyword matches (`AI_PRELOAD_SECTIONS`) (stemmed prefix terms ranked by Postgres full-text rank and term coverage), and the model may call `search_skills { query, skill? }` and `read_skill { skill, section? }` for up to two rounds (`AI_MAX_TOOL_ROUNDS`), followed by one forced tool-free call that writes the answer. A `read_skill` result is capped at 3000 characters, and results from earlier rounds are shortened once the model has used them. A per-message token budget (`AI_TURN_TOKEN_BUDGET`, 12000) also ends the tool phase early. Only the last six history messages are sent, each cut to 600 characters. Results return inside `<knowledge_result>` data blocks. There are no embeddings; `similarityThreshold` and `topK` in the config are deprecated and ignored.
   </Step>
   <Step title="Model and tools">
-    The model sees only the tools legal in the current stage (built-ins, enabled custom tools, and the two knowledge tools), with customer and knowledge text wrapped in `<user_message>` and `<knowledge>` blocks and declared untrusted. Tool calls are validated and gated by stage again server-side. A model error is retried once; a second failure raises a `system_failure` handoff.
+    The model sees only the tools legal in the current stage (built-ins, enabled custom tools, and the two knowledge tools), with customer and knowledge text wrapped in `<user_message>` and `<knowledge>` blocks and declared untrusted. Tool calls are validated and gated by stage again server-side. A model error is retried once; a second failure raises a `system_failure` handoff. If the failed first attempt timed out or returned a server error, its estimated prompt tokens are added to the turn's usage because the provider may have billed it. The tuning variables are listed in [Configuration](/self-hosting/configuration).
   </Step>
   <Step title="Answer, clarify or hand off">
     If the model replies with `[[NO_ANSWER]]` (or the agent has no ready skills), the runtime counts an **unanswered turn**. Below `escalationRules.maxUnansweredTurns` (default 3, range 1 to 20) the AI asks a clarifying question, written by the model in the customer's language with `clarifyMessage` as the fallback. At the limit it hands off with type `uncertainty`. A grounded answer, or a return to the AI, resets the counter. With `maxUnansweredTurns = 1` the first miss hands off.
@@ -71,21 +94,45 @@ Automatic rules: the first AI answer moves `visitor` to `engaged`; `qualify_lead
 
 ## Handoffs
 
-Three types exist. Each handoff, in one transaction, inserts a `handoffs` row (`type`, `reason`, `summary` of the last turns, `lead_card`, `context`), sets the stage to `handoff_requested` and `ai_paused = true`, sets the conversation to `pending_human` (Needs Attention), and sends the customer `handoffMessage` (or `fallbackMessage` for `uncertainty`) plus a notice. The `handoff.requested` [webhook](/developers/webhooks) fires from the new row.
+Four types exist (`abuse` is raised only by [abuse flagging](#abuse-flagging) and behaves differently, see below). Each handoff, in one transaction, inserts a `handoffs` row (`type`, `reason`, `summary` of the last turns, `lead_card`, `context`), sets the stage to `handoff_requested` and `ai_paused = true`, sets the conversation to `pending_human` (Needs Attention), and sends the customer `handoffMessage` (or `fallbackMessage` for `uncertainty`) plus a notice. The `handoff.requested` [webhook](/developers/webhooks) fires from the new row.
 
 | Type | Raised when |
 |---|---|
 | `uncertainty` | The customer asked for a person or hit an escalation keyword; the unanswered-turn limit was reached; the model called `escalate_to_human` with `type: uncertainty` (or any non-`stage` type); the model produced no answer |
 | `stage` | The model called `escalate_to_human` with `type: stage`, or `handoffAtQualified` is on and the lead just qualified. Always carries a lead card. |
-| `system_failure` | The model provider failed, a tool failed with `onFailure: handoff`, or credits are exhausted (`ai_credits_exhausted`) |
+| `system_failure` | The model provider failed, a tool failed with `onFailure: handoff`, credits are exhausted (`ai_credits_exhausted`), or the conversation's agent is not live (`agent_unavailable`) |
 
 The lead card is `{ name?, email?, phone?, need?, budget?, timeline?, score?, stage, summary }`.
+
+| `abuse` | A visitor reached the agent's strike limit. Raised with the farewell, in one transaction; see [Abuse flagging](#abuse-flagging). |
 
 ### Resume keyword
 
 The notice appended to every handoff message tells the customer they can reply with the agent's `escalationRules.resumeKeyword` (default `AI`; empty disables it) to keep chatting with the assistant. The match is exact on the whole message, ignoring case and punctuation. It works only while an unresolved handoff exists **and** no person has replied since it was raised. Then the conversation returns to `open` and `handler = ai`, open handoffs are resolved (`resolution_note: "customer resumed the AI"`), a `customer_resumed_ai` system message is added, and the AI sends a welcome message (job result `resumed`). When business hours are closed, the notice also says the team is offline.
 
 A person returns a conversation to the AI from the inbox (`POST /api/v1/conversations/:id/return-to-ai`), which resumes at `engaged`.
+
+## Abuse flagging
+
+Every agent has an `abuse` config. It is on by default, also for agents saved before the field existed and for agents created by the [agent builder](/developers/agent-builder-api) (`mapAgentRow` and `agentConfigSchema` both apply the defaults).
+
+```json
+{ "abuse": { "enabled": true, "maxStrikes": 3, "maxMessagesPerMinute": 12, "blockedPhrases": [], "farewellMessage": "I'm sorry, but I can't continue this conversation. Goodbye." } }
+```
+
+| Field | Range | Meaning |
+|---|---|---|
+| `enabled` | boolean | Default `true`. |
+| `maxStrikes` | 1 to 10 | Strikes in one conversation before the visitor is blocked. Default 3. |
+| `maxMessagesPerMinute` | 2 to 60 | More customer messages than this in 60 seconds is a strike. Default 12. |
+| `blockedPhrases` | up to 100 strings | Case-insensitive substring match; a hit is a strike. |
+| `farewellMessage` | up to 500 chars | The last message the visitor sees. |
+
+**Strikes.** Rules run before any model call (structured form submissions are exempt): a blocked phrase, a message flood, the same message three times in a row (near-identical text counts), or gibberish (mostly symbols, or one character repeated). Each hit adds a strike, stored in `conversation_ai_state.abuse_strikes`. The model also has a built-in tool, `flag_abuse(reason)`, offered at every stage except `handoff_requested` whenever `abuse.enabled` (it does not need to be in `enabledTools`). Each call is one strike, so with the default of 3 strikes the model cannot block anyone with a single call. Once strikes exist, the system prompt tells the model to stay calm and brief.
+
+**At the limit.** The turn ends with the farewell, with no model call. In the same transaction that stores that message the runtime: closes the conversation (`resolved`), inserts an `abuse` handoff (reason `Blocked for abuse: ...`, context with the kind and strikes), sets `contacts.blocked_at`, `blocked_reason` and `blocked_by = NULL` (the AI), revokes the contact's widget sessions, appends a team-only `abuse_blocked` system message and writes a `contact.block` audit log. The handoff trigger notifies **owners and admins only**, once (`notifications.type = handoff.abuse`); it does not assign a person or send the out-of-hours message. The `handoff.requested` webhook fires from the new row.
+
+**Enforcement.** `handleInboundMessage` skips a blocked contact before the pause check, so the resume keyword is ignored and the job result is `skipped` with reason `contact_blocked`. The widget API refuses blocked visitors ([Widget embed](/developers/widget-embed#bot-protection-and-blocked-visitors)), channel ingest drops their messages without creating a conversation, `POST /conversations/:id/return-to-ai` returns `409 conflict`, and resolving a handoff with `returnToAi` resolves it but leaves the conversation alone. Only people unblock: `POST /api/v1/contacts/:id/unblock` (owner and admin). `POST /api/v1/contacts/:id/block` takes `{ "reason"?: string }` (agent and above). Both are audit logged as `contact.block` and `contact.unblock`, and a contact merge carries the block to the kept contact. `GET /api/v1/needs-attention/counts` includes `abuse`, and contact DTOs include `blockedAt`, `blockedReason` and `blockedBy`.
 
 ## Usage metering and the credit gate
 

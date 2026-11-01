@@ -29,6 +29,8 @@ export interface LlmRequest {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  /** sent as `reasoning_effort` (none|minimal|low|medium|high) by OpenAI-compatible providers that support it; omit otherwise */
+  reasoningEffort?: string;
   /** Ask for a JSON object response */
   json?: boolean;
   signal?: AbortSignal;

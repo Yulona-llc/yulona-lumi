@@ -1,25 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { CALENDAR_TOOL_MANIFESTS, computeSlots, csvCell, signState, signWebhook, verifyState, verifyWebhook, withRetry } from "../src";
+import { CALENDAR_TOOL_MANIFESTS, computeSlots, signState, verifyState, withRetry } from "../src";
 
 // ---------------------------------------------------------------- pure unit tests
 describe("ops unit", () => {
-  test("webhook signature: valid, tampered, stale, missing", () => {
-    const body = JSON.stringify({ a: 1 });
-    const ts = String(Math.floor(Date.now() / 1000));
-    const sig = signWebhook("whsec_x", ts, body);
-    expect(verifyWebhook("whsec_x", body, { timestamp: ts, signature: sig })).toBe("ok");
-    expect(verifyWebhook("whsec_x", body + " ", { timestamp: ts, signature: sig })).toBe("bad_signature");
-    expect(verifyWebhook("other", body, { timestamp: ts, signature: sig })).toBe("bad_signature");
-    expect(verifyWebhook("whsec_x", body, { timestamp: String(Number(ts) - 3600), signature: signWebhook("whsec_x", Number(ts) - 3600, body) })).toBe("stale");
-    expect(verifyWebhook("whsec_x", body, { timestamp: null, signature: sig })).toBe("missing");
-  });
-  test("csv cells neutralise formulas and quote", () => {
-    expect(csvCell("=1+1")).toBe("'=1+1");
-    expect(csvCell("-2+3")).toBe("'-2+3");
-    expect(csvCell(-5)).toBe("-5");
-    expect(csvCell('a,"b"')).toBe('"a,""b"""');
-    expect(csvCell(null)).toBe("");
-  });
   test("withRetry: exponential backoff then success; timeout; gives up", async () => {
     const sleeps: number[] = [];
     let n = 0;

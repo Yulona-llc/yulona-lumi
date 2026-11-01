@@ -6,7 +6,7 @@ import type { ChatMessage, Session, UiEvent, WidgetRuntimeConfig, WireMessage } 
 const uuid = () => crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 
 export interface ChatState {
-  phase: "loading" | "prechat" | "ready" | "error";
+  phase: "loading" | "prechat" | "verify" | "ready" | "error" | "closed";
   config?: WidgetRuntimeConfig;
   messages: ChatMessage[];
   typing: boolean;
@@ -36,6 +36,10 @@ export class Chat {
   private typingTimer?: ReturnType<typeof setTimeout>;
   private lastTypingSent = 0;
   private started = false;
+  /** honeypot value (a real visitor never sees the field) and the single-use Turnstile token */
+  private hp = "";
+  private tsToken?: string;
+  private pendingVisitor?: Record<string, string>;
 
   constructor(private api: Api, private widgetKey: string, private opts: ChatOptions = {}) {
     this.p = loadState(widgetKey);
@@ -61,7 +65,7 @@ export class Chat {
       const config = await this.api.getConfig();
       const needsPreChat = !!config.preChat?.enabled && !this.p.session && !this.p.preChatDone;
       this.set({ config, phase: needsPreChat ? "prechat" : "ready" });
-      if (!needsPreChat) await this.connect();
+      if (!needsPreChat) await this.gate();
     } catch {
       this.set({ phase: "error" });
     }
@@ -77,7 +81,28 @@ export class Chat {
     this.p.preChatDone = true;
     this.persist();
     this.set({ phase: "ready" });
+    await this.gate(visitor);
+  }
+
+  /** Honeypot input value (bots fill it, people never see it). */
+  setHoneypot(v: string) {
+    this.hp = v;
+  }
+
+  /** Cloudflare Turnstile is enabled and there is no session yet: ask for a token before the conversation starts. */
+  private async gate(visitor?: Record<string, string>) {
+    if (this.state.config?.protection?.turnstile && !this.p.session && !this.tsToken) {
+      this.pendingVisitor = visitor;
+      return this.set({ phase: "verify" });
+    }
     await this.connect(visitor);
+  }
+
+  /** The visitor passed the Turnstile challenge. */
+  async submitVerification(token: string) {
+    this.tsToken = token;
+    this.set({ phase: "ready" });
+    await this.connect(this.pendingVisitor);
   }
 
   private restorePending() {
@@ -93,7 +118,9 @@ export class Chat {
 
   private async ensureSession(visitor?: Record<string, string>): Promise<Session> {
     if (this.p.session) return this.p.session;
-    const { session, messages } = await this.api.startConversation(visitor, this.p.visitorId);
+    const token = this.tsToken;
+    this.tsToken = undefined; // single use
+    const { session, messages } = await this.api.startConversation(visitor, this.p.visitorId, { hp: this.hp, turnstileToken: token });
     this.p.session = session;
     this.p.visitorId = session.visitorId ?? this.p.visitorId;
     this.persist();
@@ -117,6 +144,11 @@ export class Chat {
       this.scheduleRefresh();
       void this.flush();
     } catch (e) {
+      if (e instanceof ApiError && e.code === "contact_blocked") return this.close();
+      if (e instanceof ApiError && e.code === "turnstile_failed") {
+        this.pendingVisitor = visitor;
+        return this.set({ phase: "verify" }); // token rejected or expired: ask again
+      }
       if (e instanceof ApiError && !e.retryable) return this.set({ phase: "error" });
       this.set({ conn: "offline" });
       this.scheduleRetry(() => this.connect(visitor));
@@ -130,7 +162,17 @@ export class Chat {
     delete this.p.session;
     this.persist();
     this.set({ messages: [], answered: {}, typing: false });
-    await this.connect();
+    await this.gate();
+  }
+
+  /** The team ended this conversation and the visitor cannot start another one. */
+  private close() {
+    this.transport?.stop();
+    clearTimeout(this.refreshTimer);
+    clearTimeout(this.retryTimer);
+    this.p.outbox = [];
+    this.persist();
+    this.set({ phase: "closed" });
   }
 
   forget() {
@@ -243,7 +285,7 @@ export class Chat {
         try {
           const s = await this.ensureSession();
           // Idempotent per clientMessageId, so retrying after an ambiguous failure never duplicates.
-          const m = await this.api.send(s, item.text, item.clientId);
+          const m = await this.api.send(s, item.text, item.clientId, this.hp);
           this.p.outbox.shift();
           this.persist();
           this.retries = 0;
@@ -251,6 +293,8 @@ export class Chat {
           this.insert(m);
           this.setTyping(true);
         } catch (e) {
+          if (e instanceof ApiError && e.code === "contact_blocked") return this.close();
+          if (e instanceof ApiError && e.code === "turnstile_failed") return void this.set({ phase: "verify" }); // outbox kept; resumes after the challenge
           if (e instanceof ApiError && e.status === 401) {
             await this.reset();
             continue;

@@ -2,8 +2,10 @@ import type { z } from "zod";
 import { apiBase } from "../config";
 import {
   errorEnvelopeSchema,
+  impersonationSessionSchema,
   meSchema,
   sessionSchema,
+  type ImpersonationSession,
   type LoginRequest,
   type Me,
   type RegisterRequest,
@@ -28,6 +30,9 @@ let fetchImpl: FetchLike = (...a) => fetch(...a);
 export function setFetchImpl(f: FetchLike) {
   fetchImpl = f;
 }
+
+/** The same fetch the client uses (swapped in mock mode and tests), for calls that are not JSON (multipart upload, image bytes). */
+export const rawFetch: FetchLike = (...a) => fetchImpl(...a);
 
 // Access token lives in module memory only. Never persisted.
 let accessToken: string | null = null;
@@ -155,5 +160,8 @@ export const api = {
       accessToken = null;
     }
   },
+  /** Public: redeem the one-time code an admin console produced (60 s, single use). Returns a 15 minute impersonation session. */
+  exchangeImpersonation: (code: string): Promise<ImpersonationSession> =>
+    request("/auth/impersonation/exchange", { method: "POST", body: { code }, schema: impersonationSessionSchema }),
   me: (): Promise<Me> => request("/me", { auth: true, schema: meSchema }),
 };

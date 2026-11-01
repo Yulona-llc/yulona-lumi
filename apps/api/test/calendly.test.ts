@@ -175,7 +175,7 @@ describe.skipIf(!hasDb)("calendly provider (mock Calendly server)", () => {
     // a validly signed state whose PKCE challenge was never sent to Calendly: token exchange rejected, nothing stored
     const stray = signState(SECRET, { tenantId: B.tenantId, userId: B.userId });
     m.challenge = "something-else";
-    expect((await app.request(`/api/v1/calendar/calendly/callback?code=abc&state=${encodeURIComponent(stray)}`)).headers.get("location")).toContain("reason=exchange_failed");
+    expect((await app.request(`/api/v1/calendar/calendly/callback?code=abc&state=${encodeURIComponent(stray)}`)).headers.get("location")).toContain("reason=invalid_grant");
 
     // B sees nothing of A
     const bl = await ok("GET", "/calendar/connections", B.h);

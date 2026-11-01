@@ -53,7 +53,7 @@ export function createProvidersFromEnv(env: Env = process.env): Providers {
   const email = env.SMTP_HOST
     ? new SmtpEmailProvider({
         host: env.SMTP_HOST, port: env.SMTP_PORT ? Number(env.SMTP_PORT) : undefined, user: env.SMTP_USER, pass: env.SMTP_PASS,
-        secure: env.SMTP_SECURE === "true", from: env.EMAIL_FROM ?? "Yulona <no-reply@localhost>",
+        secure: env.SMTP_SECURE === "true", from: env.EMAIL_FROM ?? "Lumi <no-reply@localhost>",
       })
     : new ConsoleEmailProvider();
   const storage = env.S3_BUCKET && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY

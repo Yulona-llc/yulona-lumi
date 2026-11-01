@@ -57,7 +57,7 @@ function EraseDialog({ contactId, busy, onConfirm, onClose }: { contactId: strin
         <DialogHeader>
           <span className="mb-1 grid size-12 place-items-center rounded-2xl bg-destructive/10 text-destructive"><UserX className="size-6" /></span>
           <DialogTitle>Erase this contact?</DialogTitle>
-          <DialogDescription>This irreversibly anonymises the contact and replaces all their messages with "[erased]". Tickets, bookings and transactions referencing them are kept and listed for follow-up.</DialogDescription>
+          <DialogDescription>This irreversibly anonymises the contact and replaces all their messages with "[erased]". Tickets and bookings referencing them are kept and listed for follow-up.</DialogDescription>
         </DialogHeader>
         <p className="break-all rounded-lg bg-muted px-3 py-2 font-mono text-xs">{contactId}</p>
         <div className="grid gap-1.5">

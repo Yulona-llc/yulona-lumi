@@ -1,92 +1,102 @@
 ---
 title: Platform admin overview
-description: Create a platform admin, sign in to the console at /admin, and learn what each section lets you do.
+description: Run the separate platform admin service, create the first admin, and learn about roles, sign-in, two-factor authentication and network controls.
 icon: shield-check
 ---
 
-This section is for the people who run the hosted Yulona product: platform admins. The console manages every workspace on the platform, the AI providers behind them, plans and credits. It is separate from the workspace dashboard. Workspace owners and admins cannot sign in to it, and platform admins have no route into a workspace's data except through [impersonation](/platform-admin/tenants-and-impersonation).
+This section is for the people who run the hosted Lumi product: platform admins. The platform admin is a **separate service** (`admin-api`, default port 4100) with its own web app, its own signing key, its own database role and its own host. It is not part of the workspace API or the self-hosted bundle. Workspace owners and admins cannot sign in to it, and platform admins have no route into a workspace's data except through [impersonation](/platform-admin/tenants-and-impersonation).
 
 <Note>
-The console is mounted when `DEPLOYMENT_MODE=saas`, or when you set `SUPER_ADMIN_ENABLED=true`. A self-hosted install has it off by default, and its billing sections stay unavailable. See [Self-hosting overview](/self-hosting/overview).
+The workspace API no longer serves `/api/v1/admin/*`, and `SUPER_ADMIN_ENABLED` no longer exists. Platform operators use the admin service described here. The admin API contract is in `docs/api/platform-admin.md` and the generated spec in `docs/admin-openapi.json`.
 </Note>
 
-## Before you start
+## How it is isolated
 
-- The API must be running and the database migrated.
-- You need shell access to run a script with the database owner credentials. The runtime role cannot touch platform admin tables on purpose.
-- Platform admins are not workspace users. They have their own table, their own sign-in and their own token.
+- **Own signing key.** `ADMIN_JWT_SECRET` signs admin tokens. The service refuses to start if it is missing, shorter than 32 characters or equal to `JWT_SECRET`. A workspace token is never valid on the admin API, and an admin token is never valid on the workspace API.
+- **Own database role.** The service connects as `yulona_admin`, which can only EXECUTE the cross-tenant `sa_*` functions and has no table privileges. The workspace API's role (`yulona_app`) can no longer execute any `sa_*` function.
+- **Own cookie and origin.** The session cookie `yl_admin_rt` is `HttpOnly` and `SameSite=Strict`. CORS allows exactly one origin, `ADMIN_WEB_ORIGIN`. Responses carry strict security headers.
+- **Optional network allow-list.** `ADMIN_ALLOWED_CIDRS` (comma-separated IPv4/IPv6 CIDRs) limits who can reach the API. Behind Caddy the service trusts only the proxy-provided client IP (`TRUST_PROXY=true`).
 
-## Create a platform admin
+## Roles
 
-The script creates an admin, or resets the password of an existing one with the same email.
+| Role | Can do |
+|---|---|
+| `owner` | Everything: create, suspend, restore and delete customers, feature flags and per-customer overrides, LLM provider profiles, admin management, write-mode impersonation, audit export |
+| `support` | All reads, notes, tags, resend a pending invitation, retry or discard dead jobs, read-only impersonation |
+| `billing` | All reads, grant or adjust credits, change a customer's plan, plan limits, model rates, credit packs |
+
+Support sees health and metadata only: never message text, contact details or secrets. Reading a customer's conversations needs an audited impersonation. The role is read on every request, so a change or a deactivation applies at once.
+
+## Set up the service
 
 <Steps>
-  <Step title="Get the code and dependencies">
-    From a checkout of the repository, run `bun install`.
+  <Step title="Choose the secrets">
+    Generate `ADMIN_JWT_SECRET` (`openssl rand -base64 48`) and `ADMIN_DB_PASSWORD` (URL-safe), and decide `ADMIN_WEB_ORIGIN` (for example `https://admin.example.com`) and `ADMIN_SITE_ADDRESS`. Add them to `deploy/.env`. Do not pass `JWT_SECRET` to the admin service.
   </Step>
-  <Step title="Run the script with owner credentials">
+  <Step title="Create the database role login">
+    The migration creates the `yulona_admin` role without a login. With `ADMIN_DB_PASSWORD` set, the `migrate` service (or `bun run migrate` with `ADMIN_DB_PASSWORD` in the environment, run against your own database, never against a shared dev database by accident) enables the login. On a fresh Postgres volume the init script creates it directly.
+  </Step>
+  <Step title="Enable the host and the profile">
+    Copy `deploy/admin-site/admin.caddy.example` to `deploy/admin-site/admin.caddy`, set `COMPOSE_PROFILES=admin`, and run `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d`. Without that file Caddy serves no admin host.
+  </Step>
+  <Step title="Create the first admin">
+    Run the seed script from a host that can reach the database as the owner role. It never prints the password and reads it from `ADMIN_PASSWORD` or from stdin:
     ```bash
     OWNER_DATABASE_URL='postgres://yulona_owner:OWNER_PASSWORD@DB_HOST:5432/yulona' \
-    PLATFORM_ADMIN_EMAIL='ops@example.com' \
-    PLATFORM_ADMIN_PASSWORD='a-long-unique-password' \
-    PLATFORM_ADMIN_NAME='Ops Lead' \
-    bun apps/api/scripts/create-platform-admin.ts
+    ADMIN_PASSWORD='a-long-unique-password' \
+    bun apps/admin-api/scripts/seed-admin.ts --email ops@example.com --name "Ops Lead" --role owner
     ```
-    The password must be at least 12 characters. `PLATFORM_ADMIN_NAME` is optional and defaults to `Platform Admin`. On success the script prints `platform admin ready: ops@example.com`.
-  </Step>
-  <Step title="Sign in">
-    Open `https://<your-domain>/admin` and enter the email and password.
+    The password must be at least 12 characters. Re-running the script for the same email resets the password and role. The admin must change the password at first sign-in, unless you pass `--keep-password`. Create further admins from the Admins section (owner only): the invitation returns a temporary password once.
   </Step>
 </Steps>
 
 <Warning>
-The script is not part of the API container image, and in the bundled Compose stack Postgres is on an internal network with no published port. You must run the script from a place that can reach the database as the owner role, for example a trusted admin host or a container attached to the stack's `backend` network that has the repository and its installed dependencies mounted. Do not publish Postgres to the internet to make this work.
+Postgres is on an internal network in the bundled Compose stack. Run the seed script from a trusted host or a container on the `backend` network. Do not publish Postgres to make this work.
 </Warning>
+
+## Run the web app
+
+The admin console is the static app `apps/admin-web`. In Compose the `admin` profile starts it as `admin-web` behind the same Caddy admin host as the API (leave `ADMIN_WEB_API_URL` empty). For local development run `bun run dev:admin-api` and `bun run dev:admin-web` (port 5178), and set `ADMIN_WEB_ORIGIN=http://localhost:5178`. Then follow the [Admin console tour](/platform-admin/console-tour).
 
 ## Sign in and sessions
 
-The console has its own sign-in page, titled Platform admin, with a link back to workspace sign-in. Behind it:
+- **Sessions survive a reload.** The access token lasts 15 minutes and is held in memory. A rotating refresh token lives in the `HttpOnly` cookie for 7 days (`ADMIN_SESSION_TTL_DAYS`). Reusing an old refresh token revokes the whole session. Logging out or deactivating an admin revokes it immediately.
+- **Lockout.** After 5 failed sign-ins the account locks. The lock starts at 30 seconds, doubles with each further failure and is capped at 15 minutes.
+- **Rate limits.** Per admin, 30 reads and 10 writes per minute (`ADMIN_RATE_READ`, `ADMIN_RATE_WRITE`), plus limits on sign-in attempts per IP and per IP and email.
+- **Audit.** Every write is recorded in the platform audit log. Opening a customer's detail page and every export are recorded too (one entry per admin, customer and action every 10 minutes for views). Only owners can export the audit log.
 
-- **Short sessions.** The access token lasts 15 minutes and there is no refresh token. When it expires you sign in again. The token is held in memory only, so a page reload also signs you out.
-- **Separate realm.** The token is signed with a different key from workspace tokens, so neither type works on the other's routes.
-- **Lockout.** After 5 failed sign-ins the account locks. The lock starts at 30 seconds, doubles with each further failure, and is capped at 15 minutes. A successful sign-in clears it.
-- **Audit.** Every write is recorded in the platform audit log. Use Export audit CSV in the header to download it (up to 50,000 rows, newest first).
+### Two-factor authentication
+
+Every admin can enrol an authenticator app (TOTP) from their profile: `POST /api/v1/auth/2fa/setup` with the password returns a secret and an `otpauth` URL, `POST /api/v1/auth/2fa/confirm` with a code enables it and returns 10 single-use recovery codes, shown once. Once enrolled, sign-in asks for a code (or a recovery code). `ADMIN_REQUIRE_2FA` is `false` by default; set it to `true` later to make enrolment mandatory (admins without it get a restricted session until they enrol). An owner can reset another admin's 2FA. TOTP secrets are encrypted with `ENCRYPTION_KEY`; without it the 2FA endpoints answer `503`.
 
 ## The sections
 
+The admin web app (built separately) groups the admin API like this.
+
 | Section | What it does | Page |
 |---|---|---|
-| Overview | Health of the platform, tenant counts, estimated MRR, conversation volume, funnel and plan mix | This page |
-| Tenants | Find a workspace, see usage and limits, suspend or unsuspend it, adjust credits, impersonate its owner | [Tenants and impersonation](/platform-admin/tenants-and-impersonation) |
-| Credits | Four tabs: Providers, Model rates, Plan allowances, Credit packs | [Providers](/platform-admin/providers), [Plans, credits and rates](/platform-admin/plans-credits-and-rates) |
-| Feature flags | Platform defaults for features, with per-tenant overrides | [Feature flags](/platform-admin/feature-flags) |
+| Overview | KPIs with trends, customers by health, a needs-attention list, platform health | This page |
+| Customers | Search by name, id or member email; filter by status, plan, health, errors and credits; Customer 360 with team, setup, issues, usage, billing, timeline, flags, notes and tags | [Tenants and impersonation](/platform-admin/tenants-and-impersonation) |
+| Operations | Dead jobs (retry or discard), failed webhook deliveries | This page |
+| Credits | Providers, model rates, plan allowances, credit packs | [Providers](/platform-admin/providers), [Plans, credits and rates](/platform-admin/plans-credits-and-rates) |
+| Feature flags | Platform defaults, with per-customer overrides | [Feature flags](/platform-admin/feature-flags) |
+| Audit log | Filter by admin, customer, action and dates; export (owner) | This page |
+| Admins | Invite, change role, deactivate, reset 2FA or password (owner only; the last active owner is protected) | This page |
+
+### Customer health
+
+Each customer gets a score from 100 minus penalties, and a bucket: healthy (80 and above), watch (50 to 79) or at risk (below 50). Penalties: failed background jobs, failed webhook deliveries, channel errors and failed channel deliveries, failed knowledge ingests (all within 7 days), credits exhausted (25) or under 10% (10), a failed payment (25), no activity for 14 days (15), no agent ever published (10), and recent abuse blocks. The top reasons are returned with the score.
 
 ### System health
 
-The Overview page opens with a System health card that refreshes every 15 seconds and shows an overall badge of `ok`, `degraded` or `down`.
-
-| Tile | Meaning |
-|---|---|
-| Database | Reachable, with round-trip latency |
-| Queue | Jobs queued and running, dead jobs, and the age of the oldest queued job |
-| Worker | Alive when the last heartbeat is under 120 seconds old, otherwise Stale. The worker beats every 30 seconds |
-| Dead jobs | Jobs that used all their retries. Anything above zero needs attention |
-
-The overall status is `degraded` when the worker is stale or dead jobs exist.
-
-### Platform numbers
-
-Below health you see:
-
-- **Tenants** with active and suspended counts, **New in 30 days**.
-- **MRR (estimate)**, the sum of plan prices over active paid tenants. It is not accounting.
-- **Conversations, 30 days**, a per-day chart, the conversion funnel by stage, and tenants by plan.
+`GET /api/v1/health` reports an overall `ok`, `degraded` or `down`: the database and its latency, queue counts with the oldest queued job's age, and the worker heartbeat (alive when under 120 seconds old). The status is `degraded` when the worker is stale or dead jobs exist.
 
 ## Common problems
 
-- Sign-in says the account is locked: wait out the lock (up to 15 minutes), or reset the password with the same script, which also clears the lock.
-- The `/admin` page shows the workspace sign-in instead: the console is off. Check `DEPLOYMENT_MODE` and `SUPER_ADMIN_ENABLED`.
-- You are signed out unexpectedly: sessions last 15 minutes by design.
+- The service exits at start: check the message. Typical causes are a missing or short `ADMIN_JWT_SECRET`, `ADMIN_JWT_SECRET` equal to `JWT_SECRET`, no `ADMIN_DB_URL` or `ADMIN_DB_PASSWORD`, or (in production) an `ADMIN_WEB_ORIGIN` that is not https.
+- Sign-in says the account is locked: wait out the lock, or reset the password with the seed script, which also clears the lock.
+- `403 session_restricted`: the session must first change a temporary password or, with `ADMIN_REQUIRE_2FA=true`, enrol 2FA.
+- `403 forbidden` from everywhere: the client IP is not in `ADMIN_ALLOWED_CIDRS`, or the role does not allow the action.
 
 ## Next steps
 
@@ -105,4 +115,4 @@ Below health you see:
   </Card>
 </CardGroup>
 
-{/* source: apps/api/scripts/create-platform-admin.ts, docs/api/platform.md, docs/api/billing-admin.md, docs/adr/0002-defaults.md, packages/db/migrations/0101_platform_core.sql, apps/dashboard/src/features/admin/AdminRoutes.tsx, apps/dashboard/src/features/admin/OverviewPage.tsx */}
+{/* source: docs/api/platform-admin.md, apps/admin-api/src, apps/admin-api/scripts/seed-admin.ts, packages/db/migrations/0980-0990, deploy/docker-compose.yml, deploy/admin-site/admin.caddy.example */}

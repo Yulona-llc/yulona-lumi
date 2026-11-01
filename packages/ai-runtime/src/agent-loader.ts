@@ -1,6 +1,6 @@
 import type { Tx } from "@yulona/db";
 import { BUILTIN_TOOLS } from "./stage";
-import type { ToolManifest } from "@yulona/shared";
+import { abuseConfigSchema, DEFAULT_ABUSE_CONFIG, type AbuseConfig, type ToolManifest } from "@yulona/shared";
 import type { AgentConfig, CustomToolConfig } from "./types";
 
 export const DEFAULT_FALLBACK = "I'm not sure about that, so I'm connecting you with a teammate who can help.";
@@ -12,6 +12,12 @@ const num = (v: unknown, d: number, lo: number, hi: number): number => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
 };
 const s = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v : undefined);
+
+/** Strict defaults for agents saved before the `abuse` field existed (or with a malformed value). */
+function mapAbuse(raw: unknown): AbuseConfig {
+  const r = abuseConfigSchema.safeParse(raw ?? {});
+  return r.success ? r.data : DEFAULT_ABUSE_CONFIG;
+}
 
 /** Defensive mapping from an `agents` row (platform schema) to the runtime's AgentConfig. */
 export function mapAgentRow(row: Record<string, unknown>, tenantId: string): AgentConfig {
@@ -39,20 +45,32 @@ export function mapAgentRow(row: Record<string, unknown>, tenantId: string): Age
     enabledTools: enabled,
     customTools: custom,
     handoffAtQualified: pickv("handoffAtQualified") === true,
+    abuse: mapAbuse(pickv("abuse")),
   };
 }
 
+/**
+ * Loads the agent that answers customers. Only a published, non-archived agent with a published version is live:
+ * anything else (never published, archived, missing, or no agent at all) returns null and the caller must NOT call
+ * the model. There is no draft fallback and no "oldest agent" fallback. `draft: true` is for the sandbox only and
+ * uses the saved draft in `agents.config` regardless of status.
+ */
 export async function loadAgent(tx: Tx, tenantId: string, agentId: string | null, opts: { draft?: boolean } = {}): Promise<AgentConfig | null> {
-  const rows = agentId
-    ? await tx<Record<string, unknown>[]>`SELECT * FROM agents WHERE tenant_id = ${tenantId} AND id = ${agentId}`
-    : await tx<Record<string, unknown>[]>`SELECT * FROM agents WHERE tenant_id = ${tenantId} ORDER BY created_at ASC LIMIT 1`;
-  const row = rows[0];
+  if (!agentId) return null;
+  const [row] = await tx<Record<string, unknown>[]>`SELECT * FROM agents WHERE tenant_id = ${tenantId} AND id = ${agentId}`;
   if (!row) return null;
-  // Published agents run their published version; `draft: true` (sandbox only) uses the saved draft in agents.config.
-  if (!opts.draft && row.publishedVersion != null) {
-    const [v] = await tx<{ config: unknown }[]>`
-      SELECT config FROM agent_versions WHERE tenant_id = ${tenantId} AND agent_id = ${String(row.id)} AND version = ${row.publishedVersion as number}`;
-    if (v) return mapAgentRow({ ...row, config: v.config }, tenantId);
-  }
-  return mapAgentRow(row, tenantId);
+  if (opts.draft) return mapAgentRow(row, tenantId);
+  if (row.status !== "published" || row.publishedVersion == null) return null;
+  const [v] = await tx<{ config: unknown }[]>`
+    SELECT config FROM agent_versions WHERE tenant_id = ${tenantId} AND agent_id = ${String(row.id)} AND version = ${row.publishedVersion as number}`;
+  if (!v) return null;
+  return mapAgentRow({ ...row, config: v.config }, tenantId);
+}
+
+/** True when the agent would answer customers right now (published, not archived). */
+export async function isAgentLive(tx: Tx, tenantId: string, agentId: string | null): Promise<boolean> {
+  if (!agentId) return false;
+  const [r] = await tx<{ ok: boolean }[]>`
+    SELECT (status = 'published' AND published_version IS NOT NULL) AS ok FROM agents WHERE tenant_id = ${tenantId} AND id = ${agentId}`;
+  return r?.ok === true;
 }

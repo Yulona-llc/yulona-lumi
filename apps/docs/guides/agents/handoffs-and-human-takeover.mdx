@@ -29,6 +29,10 @@ A question the agent does answer resets the count. Greetings and thank-yous are 
 
 If a customer clearly asks for a human ("I want to talk to someone", "real person please", "not a bot"), or their message contains one of your **Escalation keywords**, the agent hands off **immediately** with your **Handoff message**. It skips the clarifying step. A message that merely contains the word "agent" does not trigger a handoff by itself.
 
+## Abusive visitors are not handed off
+
+When a visitor reaches the agent's strike limit ([Safety settings](/guides/agents/configure-your-agent#safety)) the conversation does not wait for a person. The agent says goodbye, the conversation is closed and the visitor is blocked, so the resume keyword no longer works for them. The team sees a **Blocked for abuse** item in [Needs attention](/guides/workspace/needs-attention).
+
 ## Customers are never stuck: the resume keyword
 
 Every handoff message ends with a short notice so the customer can choose not to wait:

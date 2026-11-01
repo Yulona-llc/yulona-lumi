@@ -1,10 +1,10 @@
 ---
 title: API reference
-description: Learn how to read the generated Yulona endpoint reference, pick the right authentication scheme and find the matching guide.
+description: Learn how to read the generated Lumi endpoint reference, pick the right authentication scheme and find the matching guide.
 icon: book-open
 ---
 
-The pages in the **Endpoints** group are generated from Yulona's OpenAPI 3.0 spec, so every route, parameter and response shape shown there comes from the running code. This page is for developers who use that reference. Read the guides first for concepts, then use the reference to look up exact fields.
+The pages in the **Endpoints** group are generated from Lumi's OpenAPI 3.0 spec, so every route, parameter and response shape shown there comes from the running code. This page is for developers who use that reference. Read the guides first for concepts, then use the reference to look up exact fields.
 
 ## Authentication schemes
 
@@ -15,7 +15,6 @@ Each operation lists the security scheme it needs. They map to the credentials e
 | `bearerAuth` | Dashboard endpoints such as `/api/v1/agents`, `/api/v1/webhooks`, `/api/v1/conversations` | The access token returned by `POST /api/v1/auth/login` |
 | `apiKeyAuth` | `/api/v1/public-api/*` and `/api/v1/key-info` | An API key (`yl_<prefix>_<secret>`) |
 | `widgetSession` | `/api/v1/public/widget/*` | The widget `sessionToken`, together with the `X-Widget-Key` header |
-| `platformAdminAuth` | `/api/v1/admin/*` | The token returned by `POST /api/v1/admin/auth/login` |
 
 To call an endpoint from the interactive playground, paste the credential into the authorization field for that scheme. Use a test workspace: the playground sends real requests, and write calls change real data.
 

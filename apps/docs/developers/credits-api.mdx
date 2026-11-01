@@ -44,7 +44,10 @@ if (credits.enabled) console.log(credits.remainingMicro / 1e6, "credits left");
   "remainingMicro": 38000000,
   "percentUsed": 24,
   "status": "ok",
-  "warnings": []
+  "warnings": [],
+  "creditsPerMessage": 2.1,
+  "estimatedMessages": 18,
+  "estimateBasis": "typical"
 }
 ```
 
@@ -56,6 +59,9 @@ if (credits.enabled) console.log(credits.remainingMicro / 1e6, "credits left");
 <ResponseField name="remainingMicro" type="integer | null">Allowance left plus top-up balance; `null` when unlimited or self-hosted.</ResponseField>
 <ResponseField name="percentUsed" type="integer | null">0 to 100, can exceed 100 on overshoot.</ResponseField>
 <ResponseField name="status" type="string">`ok`, `warning` (80% or more used) or `exhausted` (nothing remains).</ResponseField>
+<ResponseField name="creditsPerMessage" type="number | null">Average credits one answered message costs (2 decimals). `null` when unlimited or self-hosted.</ResponseField>
+<ResponseField name="estimatedMessages" type="integer | null">Whole answered messages the remaining credits cover. `null` when unlimited or self-hosted.</ResponseField>
+<ResponseField name="estimateBasis" type="string | null">`usage` when the workspace's 30-day average of `turn` events is used (at least 10 events), `typical` when it falls back to a message of 6,000 tokens in and 600 out at the default rate.</ResponseField>
 <ResponseField name="warnings" type="string[]">Subset of `warning_80` and `exhausted`. Each is also sent once per period as an admin/owner notification (`credits.warning_80`, `credits.exhausted`).</ResponseField>
 
 On self-hosted installs the same call returns `mode: "selfhosted"`, `enabled: false`, and `null` for allowance fields.
@@ -72,7 +78,7 @@ Buying a pack lifts the gate immediately.
 
 ## Usage over time
 
-`GET /api/v1/usage/ai?from=2026-09-20&to=2026-10-19&groupBy=agent` (minimum role `admin`). `from` and `to` are inclusive UTC dates (`YYYY-MM-DD`), defaulting to the last 30 days, with a maximum span of 366 days. `groupBy` is `day` (default), `agent`, `model` or `conversation`.
+`GET /api/v1/usage/ai?from=2026-09-20&to=2026-10-19&groupBy=agent` (minimum role `admin`). `from` and `to` are inclusive UTC dates (`YYYY-MM-DD`), defaulting to the last 30 days, with a maximum span of 366 days. `groupBy` is `day` (default), `agent`, `model`, `conversation` or `source` (`turn` for live chats, `sandbox`, `builder`, `tool_test`, so test and builder spend is separate from customer conversations).
 
 ```json
 {
@@ -84,7 +90,7 @@ Buying a pack lifts the gate immediately.
 }
 ```
 
-`key` and `label` depend on `groupBy`: a date for `day`; agent id and name for `agent` (`(unattributed)` or `(deleted agent)` when there is none); the model name for `model` (`(unknown)` when missing); the conversation id for `conversation` (top 200 by credits). `day` sorts ascending, the others by `creditsMicro` descending.
+`key` and `label` depend on `groupBy`: a date for `day`; agent id and name for `agent` (`(unattributed)` or `(deleted agent)` when there is none); the model name for `model` (`(unknown)` when missing); the conversation id for `conversation` (top 200 by credits); the source name for `source`: `turn` (customer chats), `sandbox`, `builder`, `tool_test`, `copilot` (Ask Lumi, never charged to credits, counted against its own `copilot_credits_monthly` allowance; see [Copilot API](/developers/copilot-api)) and `onboarding` (the one capped call of the setup wizard, never charged). `day` sorts ascending, the others by `creditsMicro` descending.
 
 `GET /api/v1/usage/ai/export` takes the same query and returns `text/csv` with the columns `key,label,promptTokens,completionTokens,totalTokens,requests,creditsMicro`.
 
@@ -108,15 +114,15 @@ Redirect the browser to `url`. After payment, the provider webhook (`POST /api/v
 
 ## Platform-admin endpoints
 
-For the people who run the SaaS, under `/api/v1/admin/...` with a platform-admin token ([Authentication](/developers/authentication)). Every write is recorded in the platform audit log.
+For the people who run the SaaS, on the separate admin API (`/api/v1/...` on the admin host) with a platform-admin token ([Platform admin overview](/platform-admin/overview)). Provider profiles are owner-only; rates, packs, plan limits and credit grants need the owner or billing role. Every write is recorded in the platform audit log.
 
 | Area | Endpoints |
 |---|---|
-| LLM provider profiles | `GET/POST /admin/llm-profiles`, `GET/PATCH/DELETE /admin/llm-profiles/:id`, `POST /admin/llm-profiles/:id/test`. Any OpenAI-compatible service; the API key is write-only and needs `ENCRYPTION_KEY`; the base URL is SSRF-checked. |
-| Model rates | `GET/PUT/DELETE /admin/model-rates`. The `*` default row cannot be deleted. |
-| Plan credit limits | `PUT /admin/plans/:key/limits/llm_credits_monthly` with `{ "limit": 1500 }` (whole credits, `null` for unlimited) |
-| Credit packs | `GET/POST /admin/credit-packs`, `PATCH/DELETE /admin/credit-packs/:id` (a purchased pack is deactivated, not deleted) |
-| Tenant credits | `GET /admin/tenants/:id/credits`, `POST /admin/tenants/:id/credits` with `{ "credits": 100, "reason": "Goodwill after outage" }` (negative values deduct; the reason is 3 to 300 characters) |
+| LLM provider profiles | `GET/POST /llm-profiles`, `GET/PATCH/DELETE /llm-profiles/:id`, `POST /llm-profiles/:id/test`. Any OpenAI-compatible service; the API key is write-only and needs `ENCRYPTION_KEY`; the base URL is SSRF-checked. |
+| Model rates | `GET/PUT/DELETE /model-rates`. The `*` default row cannot be deleted. |
+| Plan credit limits | `PUT /plans/:key/limits/llm_credits_monthly` with `{ "limit": 4980 }` (whole credits, `null` for unlimited) |
+| Credit packs | `GET/POST /credit-packs`, `PATCH/DELETE /credit-packs/:id` (a purchased pack is deactivated, not deleted) |
+| Tenant credits | `GET /tenants/:id/credits`, `POST /tenants/:id/credits` with `{ "credits": 100, "reason": "Goodwill after outage" }` (negative values deduct; the reason is 3 to 300 characters) |
 
 The platform-admin screens are described in the platform admin guide on [plans, credits and rates](/platform-admin/plans-credits-and-rates).
 

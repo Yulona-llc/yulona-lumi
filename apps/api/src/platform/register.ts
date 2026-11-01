@@ -9,7 +9,7 @@ import { agentRoutes } from "../routes/agents";
 import { apiKeyInfoRoutes, apiKeyRoutes } from "../routes/api-keys";
 import { auditRoutes } from "../routes/audit";
 import { flagRoutes } from "../routes/flags";
-import { adminRoutes, tenantRoutes } from "../routes/tenants";
+import { tenantRoutes } from "../routes/tenants";
 import { userRoutes } from "../routes/users";
 
 export interface PlatformDeps {
@@ -20,7 +20,7 @@ export interface PlatformDeps {
   providers?: Providers;
 }
 
-/** Mounts platform routes: tenant, users/invitations, agents, api keys, audit logs, flags, super-admin. */
+/** Mounts platform routes: tenant, users/invitations, agents, api keys, audit logs, flags. */
 export function registerPlatform(app: Hono<AppEnv>, { cfg, db, limiter, log, providers }: PlatformDeps) {
   const p = providers ?? createProvidersFromEnv();
   app.route("/api/v1", userRoutes({ cfg, db, limiter, providers: p, log }));
@@ -30,5 +30,4 @@ export function registerPlatform(app: Hono<AppEnv>, { cfg, db, limiter, log, pro
   app.route("/api/v1", apiKeyInfoRoutes({ db, limiter }));
   app.route("/api/v1", auditRoutes({ cfg, db }));
   app.route("/api/v1", flagRoutes({ cfg, db }));
-  if (cfg.superAdminEnabled) app.route("/api/v1/admin", adminRoutes({ cfg, db, limiter }));
 }

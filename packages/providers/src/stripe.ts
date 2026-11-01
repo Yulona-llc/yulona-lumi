@@ -15,6 +15,12 @@ export interface StripeConfig {
 
 type Obj = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+/** Invoice -> subscription id: top-level `subscription` (older API versions) or `parent.subscription_details.subscription` (2025+). */
+function invoiceSubscription(inv: Obj): string | undefined {
+  const v = inv.subscription ?? inv.parent?.subscription_details?.subscription;
+  return typeof v === "string" ? v : typeof v?.id === "string" ? v.id : undefined;
+}
+
 /** Stripe over plain REST (no SDK): customers, Checkout, Billing Portal, cancel, webhook verification. */
 export class StripeBillingProvider implements BillingProvider {
   readonly name = "stripe";
@@ -127,6 +133,8 @@ export class StripeBillingProvider implements BillingProvider {
           };
         }
         if (o.mode !== "subscription" || ev.type !== "checkout.session.completed") return base;
+        // delayed payment methods: the subscription is not paid yet; customer.subscription.updated activates it
+        if (o.payment_status === "unpaid") return base;
         return {
           ...base, action: "subscription_set", status: "active", customerId: o.customer, subscriptionId: o.subscription,
           tenantId: o.client_reference_id ?? o.metadata?.tenantId, planKey: o.metadata?.planKey,
@@ -141,10 +149,10 @@ export class StripeBillingProvider implements BillingProvider {
       case "customer.subscription.deleted":
         return { ...base, action: "subscription_deleted", customerId: o.customer, subscriptionId: o.id, tenantId: o.metadata?.tenantId };
       case "invoice.payment_failed":
-        return { ...base, action: "payment_failed", customerId: o.customer, subscriptionId: o.subscription };
+        return { ...base, action: "payment_failed", customerId: o.customer, subscriptionId: invoiceSubscription(o) };
       case "invoice.payment_succeeded":
       case "invoice.paid":
-        return { ...base, action: "payment_succeeded", customerId: o.customer, subscriptionId: o.subscription };
+        return { ...base, action: "payment_succeeded", customerId: o.customer, subscriptionId: invoiceSubscription(o) };
       default:
         return base;
     }

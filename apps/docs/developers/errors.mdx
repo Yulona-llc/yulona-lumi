@@ -1,6 +1,6 @@
 ---
 title: Errors
-description: Look up the error envelope and every Yulona error code, with when it occurs and how your client should handle it.
+description: Look up the error envelope and every Lumi error code, with when it occurs and how your client should handle it.
 icon: triangle-exclamation
 ---
 
@@ -43,7 +43,11 @@ Every failed request returns the same JSON envelope. This page is for developers
 | `rate_limited` | 429 | A rate limit was exceeded, or a realtime connection cap or per-session builder cap was reached. Carries `Retry-After` (seconds) on HTTP responses. | Wait `Retry-After` seconds, add jitter, retry. |
 | `service_unavailable` | 503 | `ENCRYPTION_KEY` is not configured for a feature that stores secrets, an upstream dependency is down (AI provider, calendar, payment provider), or the provider does not support the action. | Retry later with backoff. If persistent, the operator must fix configuration. |
 | `plan_limit_exceeded` | 402 | The workspace reached a plan limit (`seats`, `agents`, `widgets`, `api_keys`, `monthly_conversations`, `storage_mb`, `llm_tokens_monthly`). `details` is `{ metric, limit, used }`. | Delete unused items or upgrade the plan. Not retryable as is. |
+| `copilot_requires_plan` | 402 | Ask Lumi (the copilot) is used on a workspace that is not on a paid plan. `details` is `{ upgradePath }`. See [Copilot API](/developers/copilot-api). | Show an upgrade prompt. Do not retry. |
+| `copilot_limit_reached` | 402 | The monthly Ask Lumi allowance is used up. `details` is `{ limitCredits, usedMicro, resetsAt }`. | Tell the user it resets at `resetsAt`. |
 | `credits_exhausted` | 402 | SaaS only: the AI credit pool is empty and the call needs the model (sandbox, agent builder). `details` is `{ remainingMicro }`. | Buy a credit pack. See [Credits API](/developers/credits-api). |
+| `contact_blocked` | 403 | The widget visitor was blocked for abuse (by the AI or a teammate): they cannot start a conversation, send a message, or use a session that is still valid. The response never says why. | Stop retrying and show that the conversation has ended. A person must unblock the contact. See [Widget embed](/developers/widget-embed#bot-protection-and-blocked-visitors). |
+| `turnstile_failed` | 403 | `POST /public/widget/conversations` on a widget with Cloudflare Turnstile enabled: the `turnstileToken` is missing, rejected, expired or already used, Cloudflare could not be reached within 5 seconds, or the widget's keys are misconfigured. `details.reason` is one of `no_token`, `siteverify_rejected`, `siteverify_unreachable`, `siteverify_bad_response`, `misconfigured`. | Run the challenge again and send the new token. Tokens are single use. |
 | `tenant_suspended` | not emitted | Reserved in the code list. The current API does not emit it: a suspended workspace gets `401 unauthorized` on Bearer routes and `403 forbidden` on the widget API. | Treat `unauthorized` with "Workspace is not active" as suspension. Handle `tenant_suspended` too for forward compatibility. |
 | `internal_error` | 500 | An unhandled server error. The message is always generic. | Retry idempotent requests with backoff, then report the `requestId`. |
 
@@ -73,7 +77,7 @@ curl -i -X POST https://YOUR_HOST/api/v1/public-api/contacts \
 ```
 
 ```javascript fetch
-export class YulonaError extends Error {
+export class LumiError extends Error {
   constructor(status, body, retryAfter) {
     super(body.error.message);
     this.status = status;
@@ -84,15 +88,15 @@ export class YulonaError extends Error {
   }
 }
 
-export async function yulona(path, init = {}) {
+export async function lumi(path, init = {}) {
   const res = await fetch(`https://YOUR_HOST/api/v1${path}`, init);
   if (res.ok) return res.json();
   const body = await res.json().catch(() => ({ error: { code: "internal_error", message: res.statusText, requestId: "" } }));
-  throw new YulonaError(res.status, body, Number(res.headers.get("Retry-After")) || undefined);
+  throw new LumiError(res.status, body, Number(res.headers.get("Retry-After")) || undefined);
 }
 
 try {
-  await yulona("/public-api/contacts", { method: "POST", headers: { /* ... */ }, body: "{}" });
+  await lumi("/public-api/contacts", { method: "POST", headers: { /* ... */ }, body: "{}" });
 } catch (e) {
   if (e.code === "rate_limited") await new Promise((r) => setTimeout(r, e.retryAfter * 1000));
   else if (e.code === "plan_limit_exceeded") console.warn("Limit reached", e.details);

@@ -6,7 +6,7 @@ icon: address-book
 
 The **Contacts** page is for support leads and agents who want one place to see a customer across every channel. Each contact has a single profile with their details, custom attributes and a combined timeline of every conversation.
 
-**Role needed:** anyone can view contacts. Agents, admins and owners can create, edit and merge them.
+**Role needed:** anyone can view contacts. Agents, admins and owners can create, edit, merge and block them. Only admins and owners can unblock.
 
 ## Where contacts come from
 
@@ -71,7 +71,29 @@ A merge cannot be undone.
 
 ### Merge suggestions
 
-Yulona watches for likely duplicates. When a new contact arrives on a channel with the same email, the same phone number (at least 7 digits) or the same name as an existing contact, it records a suggestion. Admins and owners see these at the bottom of the **Channels** page under **Possible duplicate contacts**, with the reason (same email, same phone or same name). Click **Merge** to combine them, or **Dismiss** to hide the suggestion. Agents can dismiss suggestions through the API but cannot open the Channels page.
+Lumi watches for likely duplicates. When a new contact arrives on a channel with the same email, the same phone number (at least 7 digits) or the same name as an existing contact, it records a suggestion. Admins and owners see these at the bottom of the **Channels** page under **Possible duplicate contacts**, with the reason (same email, same phone or same name). Click **Merge** to combine them, or **Dismiss** to hide the suggestion. Agents can dismiss suggestions through the API but cannot open the Channels page.
+
+## Block abusive visitors
+
+Agents, admins and owners can block a contact who spams or abuses the chat. A blocked visitor cannot start a new conversation, cannot send messages, cannot reopen a resolved conversation and cannot use the resume keyword to get the AI back. On the website widget the visitor sees "This conversation has ended." Messages from a blocked person on WhatsApp, Messenger, Instagram, Telegram or Slack are dropped and no conversation is created.
+
+The AI also blocks visitors by itself when an agent's **Safety** limits are reached (see [Configure your agent](/guides/agents/configure-your-agent#safety)). The conversation is closed, a **Blocked for abuse** item appears in [Needs attention](/guides/workspace/needs-attention), and your owners and admins are notified once.
+
+<Steps>
+  <Step title="Block">
+    In the [Inbox](/guides/workspace/inbox), open the conversation and look at the contact panel on the right. Click **Block contact**, optionally add a **Reason**, and confirm. The conversation list shows a **Blocked** badge.
+  </Step>
+  <Step title="Review">
+    The panel shows **Blocked for abuse**, the reason, whether the AI or a teammate blocked the contact, and when. **Return to AI** is disabled while the contact is blocked.
+  </Step>
+  <Step title="Unblock">
+    Only **owners and admins** can click **Unblock**. Agents see a note that only an owner or admin can unblock. The AI can never unblock anyone.
+  </Step>
+</Steps>
+
+<Note>
+When a visitor is blocked, a new visitor on the same network (the same IP address) is also refused for 24 hours, to stop an immediate retry. Other networks are not affected. If you merge a blocked contact into another contact, the block carries over.
+</Note>
 
 ## What you should see
 
@@ -84,6 +106,7 @@ After a merge you land on the kept contact with a "Contacts merged" message, and
 | I cannot find a contact | Search by email or phone as well as name. Merged-away contacts are hidden. |
 | The same customer appears twice | Merge them as shown above. |
 | Save changes is greyed out | You have not changed anything yet. |
+| A real customer was blocked by mistake | An owner or admin opens the conversation, then clicks **Unblock** in the contact panel. The customer can start a new chat straight away. |
 
 <Note>
 There is no delete button for contacts in the dashboard. To remove a person's data completely, use an erasure request in [Privacy and data](/guides/account/privacy-and-data).
@@ -100,4 +123,4 @@ There is no delete button for contacts in the dashboard. To remove a person's da
   </Card>
 </CardGroup>
 
-{/* source: apps/dashboard/src/features/contacts/*; features/channels/ChannelsPage.tsx (Possible duplicate contacts); apps/api/src/channels/ingest.ts (suggestMerges); apps/api/src/routes/contacts.ts (viewer read-only, merge); docs/api/conversations.md (merge semantics, attribute rules) */}
+{/* source: apps/dashboard/src/features/contacts/*; features/channels/ChannelsPage.tsx (Possible duplicate contacts); apps/api/src/channels/ingest.ts (suggestMerges); apps/api/src/routes/contacts.ts (viewer read-only, merge, block/unblock); apps/dashboard/src/features/inbox/ContactPanel.tsx; packages/ai-runtime/src/abuse-store.ts; docs/api/conversations.md (merge semantics, attribute rules) */}

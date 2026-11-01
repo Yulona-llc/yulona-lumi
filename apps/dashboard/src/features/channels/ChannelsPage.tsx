@@ -110,7 +110,7 @@ function ConnectSheet({ spec, onClose }: { spec: AvailableChannel; onClose: () =
                   {m.isError && <Alert variant="destructive"><AlertTriangle /><AlertDescription>{errMsg(m.error)}</AlertDescription></Alert>}
                   <TextField label="Connection name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required />
                   <Select label="Answering agent" hint="Leave empty to use the default published agent." value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-                    <option value="">Default agent</option>
+                    <option value="">No agent (a team member replies)</option>
                     {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </Select>
                   {fields.map((f) => (
@@ -178,7 +178,7 @@ function ManageSheet({ conn, spec, onClose }: { conn: Connection; spec?: Availab
           {m.isError && <Alert variant="destructive"><AlertTriangle /><AlertDescription>{errMsg(m.error)}</AlertDescription></Alert>}
           <TextField label="Connection name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required />
           <Select label="Answering agent" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-            <option value="">Default agent</option>
+            <option value="">No agent (a team member replies)</option>
             {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </Select>
           <fieldset className="space-y-3 rounded-xl border p-4">

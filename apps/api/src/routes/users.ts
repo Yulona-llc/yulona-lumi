@@ -177,7 +177,7 @@ export function userRoutes({ cfg, db, limiter, providers, log }: { cfg: Config; 
     try {
       await providers.email.send({
         to: body.email,
-        subject: `You're invited to join ${tenantName} on Yulona`,
+        subject: `You're invited to join ${tenantName} on Lumi`,
         text: `You have been invited to join ${tenantName} as ${body.role}.\n\nAccept the invitation (valid 7 days): ${inviteUrl}\n`,
       });
     } catch (e) {

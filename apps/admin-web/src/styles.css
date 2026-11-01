@@ -1,0 +1,206 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Lumi design tokens, taken from yulona.co: Ember orange #f97316 on Midnight navy #0f1a2f, Mist #aebcd0 for quiet text.
+ * shadcn semantic variables first; the legacy names (ink, paper, line, brand...) alias them so older pages inherit the system.
+ */
+:root {
+  --radius: 0.75rem;
+  --background: #f4f6fa;
+  --foreground: #0f1a2f;
+  --card: #ffffff;
+  --card-foreground: #0f1a2f;
+  --popover: #ffffff;
+  --popover-foreground: #0f1a2f;
+  --primary: #f97316;
+  --primary-foreground: #0f1a2f;
+  --secondary: #eaeef5;
+  --secondary-foreground: #1b2b45;
+  --muted: #eaeef5;
+  --muted-foreground: #54657f;
+  --accent: #fff0e3;
+  --accent-foreground: #9a3412;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success: #15803d;
+  --warning: #b45309;
+  --info: #1d4ed8;
+  --border: #dfe5ee;
+  --input: #c5cedc;
+  --ring: #f97316;
+  --sidebar: #0f1a2f;
+  --sidebar-foreground: #e3e9f4;
+  --sidebar-muted: #aebcd0;
+  --sidebar-accent: #1a2a47;
+  --sidebar-border: #22324f;
+  --chart-1: #f97316;
+  --chart-2: #0f1a2f;
+  --chart-3: #fbbf24;
+  --chart-4: #64748b;
+  --chart-5: #25d366;
+}
+
+.dark {
+  --background: #0a1221;
+  --foreground: #e8edf6;
+  --card: #101b30;
+  --card-foreground: #e8edf6;
+  --popover: #101b30;
+  --popover-foreground: #e8edf6;
+  --primary: #f97316;
+  --primary-foreground: #0f1a2f;
+  --secondary: #17243d;
+  --secondary-foreground: #dbe3f0;
+  --muted: #17243d;
+  --muted-foreground: #9fb0c8;
+  --accent: #2a1d17;
+  --accent-foreground: #fdba74;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --info: #93c5fd;
+  --border: #1f2e49;
+  --input: #2c3e5e;
+  --ring: #fb923c;
+  --sidebar: #070e1b;
+  --sidebar-foreground: #e3e9f4;
+  --sidebar-muted: #8fa0bb;
+  --sidebar-accent: #13213a;
+  --sidebar-border: #16233b;
+  --chart-3: #fcd34d;
+  --chart-4: #94a3b8;
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Space Grotesk Variable", "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* legacy names used by pages written before the redesign */
+  --color-ink: var(--foreground);
+  --color-ink-2: var(--muted-foreground);
+  --color-ink-3: var(--sidebar-muted);
+  --color-paper: var(--background);
+  --color-line: var(--border);
+  --color-signal: var(--primary);
+  --color-danger: var(--destructive);
+  --color-brand: var(--accent-foreground);
+  --color-brand-d: var(--accent-foreground);
+
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-pulse-ring: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 8px transparent; } }
+@keyframes grow { from { transform: scaleX(0); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@layer base {
+  * { border-color: var(--border); }
+  html, body, #root { height: 100%; }
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.015em; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
+  ::selection { background: color-mix(in srgb, var(--primary) 30%, transparent); }
+  /* iOS zooms into inputs under 16px */
+  input, select, textarea { font-size: 16px; }
+  @media (min-width: 640px) { input, select, textarea { font-size: 14px; } }
+  button, [role="button"], a { touch-action: manipulation; }
+}
+
+/* Utility classes the older pages already use (.btn, .field...), now matching the shadcn Button/Input look. */
+@layer components {
+  .field {
+    display: block; width: 100%; min-height: 44px; border-radius: var(--radius-md); border: 1px solid var(--input);
+    background: var(--card); color: var(--foreground); padding: 0.55rem 0.8rem; transition: border-color .15s, box-shadow .15s;
+  }
+  .field::placeholder { color: var(--muted-foreground); opacity: .7; }
+  .field:hover { border-color: color-mix(in srgb, var(--input) 60%, var(--foreground)); }
+  .field:focus { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 25%, transparent); }
+  .field[aria-invalid="true"] { border-color: var(--destructive); }
+  @media (min-width: 640px) { .field { min-height: 40px; } }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 44px; padding: 0 1.1rem;
+    border-radius: var(--radius-md); font-weight: 600; font-size: .9375rem; white-space: nowrap;
+    background: var(--primary); color: var(--primary-foreground); cursor: pointer;
+    box-shadow: 0 1px 0 color-mix(in srgb, #fff 35%, transparent) inset, 0 1px 2px color-mix(in srgb, var(--foreground) 18%, transparent);
+    transition: transform .12s ease, background-color .15s, box-shadow .15s, border-color .15s;
+  }
+  .btn:hover { background: color-mix(in srgb, var(--primary) 88%, #000); }
+  .btn:active { transform: translateY(1px) scale(.99); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+  .btn-ghost { background: transparent; color: inherit; border: 1px solid var(--border); box-shadow: none; }
+  .btn-ghost:hover { background: var(--muted); }
+  @media (min-width: 640px) { .btn { min-height: 38px; } }
+}
+
+/* shimmer skeleton */
+.skeleton { background: linear-gradient(90deg, var(--muted) 25%, color-mix(in srgb, var(--muted) 55%, var(--card)) 50%, var(--muted) 75%); background-size: 200% 100%; animation: var(--animate-shimmer); border-radius: var(--radius-md); }
+
+.funnel-bar { height: 2.25rem; border-radius: 8px; transform-origin: left; animation: grow .9s cubic-bezier(.2,.8,.2,1) both; }
+.spinner { width: 1rem; height: 1rem; border-radius: 999px; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; display: inline-block; }
+
+/* safe areas for the mobile bottom bar */
+.pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  .spinner { animation-duration: 2s !important; animation-iteration-count: infinite !important; }
+}

@@ -1,0 +1,88 @@
+---
+title: HubSpot
+description: Send qualified leads from your Lumi agent to HubSpot as contacts, map lead fields to HubSpot properties and check the sync status.
+icon: address-book
+---
+
+This page is for admins and owners who want every qualified lead to appear in HubSpot without copying it by hand. Lumi creates or updates one HubSpot contact per lead, matched by email.
+
+<Note>
+Connect HubSpot under **Settings, then Connectors**, in the **CRM** section. Only **admins and owners** can connect, change or disconnect it. Agents and viewers cannot open this card.
+</Note>
+
+## What gets sent and when
+
+Lumi syncs a lead twice at most per conversation:
+
+- **Lead qualified.** The conversation reaches the *qualified* stage. This also happens when the agent hands the lead to a person at that point.
+- **Booking confirmed.** The customer books an appointment. You can switch this off with **Also sync when a booking is confirmed**.
+
+Each sync searches HubSpot for a contact with the same email. If one exists, Lumi updates it. Otherwise it creates a new contact. The same conversation is never sent twice for the same trigger, so retries and repeated messages do not create duplicates.
+
+A lead without an email address is skipped, and the sync list shows "No email address captured for this lead". The booking sync gives it a second chance if the customer shares an email later.
+
+## Before you start
+
+- A HubSpot account where you can create a **private app** (Settings, Integrations, Private Apps in HubSpot).
+- **Self-hosted:** the server needs `ENCRYPTION_KEY`, which stores the token encrypted. Without it the card says so and cannot connect. No other setting is needed. See [Configuration](/self-hosting/configuration).
+
+## Connect HubSpot
+
+<Steps>
+  <Step title="Create a private app in HubSpot">
+    Give it the scopes `crm.objects.contacts.read` and `crm.objects.contacts.write`, then copy its access token.
+  </Step>
+  <Step title="Paste the token in Lumi">
+    Go to **Settings**, then **Calendar**, find the **HubSpot** card and paste the token into **Private app access token**. Click **Connect HubSpot**.
+  </Step>
+  <Step title="Lumi checks the token">
+    Lumi makes a test call to HubSpot. If HubSpot rejects the token or the scopes are missing, the field shows the reason and nothing is saved. On success the card shows **Connected**.
+  </Step>
+</Steps>
+
+The token is stored encrypted and is never shown again. To change it, paste a new token and click **Replace token**.
+
+## Map lead fields to HubSpot properties
+
+Email, first name, last name and phone are always sent to HubSpot's standard properties. Other lead fields are sent only when you name a property for them under **Property mapping**:
+
+| Field | What it holds |
+|---|---|
+| **Need** | What the customer is looking for |
+| **Budget** | The budget they mentioned |
+| **Timeline** | When they want to start |
+| **Lead score** | The lead score, as a number |
+| **Conversation link** | A link back to the conversation in Lumi |
+| **Source** | The **Source value**, `Lumi chat` by default |
+
+Enter the HubSpot **internal name** of the property, for example `lead_need` (lower-case letters, digits and underscores). Create the property in HubSpot first: HubSpot rejects properties that do not exist, and the sync then fails with HubSpot's message. Click **Save mapping** to apply the change to future syncs.
+
+The contact's lifecycle stage is not changed by default. HubSpot only lets a stage move forward, so Lumi never overwrites it on existing contacts.
+
+## Send a test contact
+
+Under **Send a test contact**, enter an email address and click **Send test contact**. Lumi creates or updates that contact in HubSpot using your mapping, so you can open it in HubSpot and check the properties.
+
+## Check the sync status
+
+The card shows when HubSpot was connected, the **Last sync**, and **Recent syncs** with a result for each: Created, Updated, Failed, Skipped or Pending.
+
+- A failure caused by a temporary HubSpot problem or a rate limit is retried automatically with a delay. The failure message stays visible until a later sync succeeds.
+- If HubSpot rejects the token (revoked or missing scopes) the card shows **Needs attention** and the reason. Syncs for leads qualified meanwhile are marked Failed and are not retried. Paste a new token to reconnect.
+
+## Disconnect HubSpot
+
+Click **Disconnect**, then confirm. Lumi deletes the stored token and stops sending leads. Contacts already in HubSpot stay there.
+
+## Get the same event in your own system
+
+Every qualified lead also fires the `lead.qualified` webhook event, whether or not HubSpot is connected. See [Webhooks](/developers/webhooks).
+
+## Troubleshooting
+
+| You see | What to do |
+|---|---|
+| "HubSpot rejected the access token" | The token is wrong or revoked. Create a new one and paste it. |
+| "The HubSpot token is missing the crm.objects.contacts.read/write scopes" | Add both scopes to the private app, then reconnect. |
+| A failed sync that mentions a property | The property in your mapping does not exist in HubSpot, or the value does not fit its type. Fix the mapping or create the property. |
+| Skipped: "No email address captured" | The customer never gave an email. Collect it in the agent's [qualifying questions](/guides/agents/configure-your-agent). |

@@ -10,7 +10,7 @@ const likeEscape = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
 const convCols = (tx: Sql) => tx`c.id, c.channel, c.status, c.handler, c.assigned_user_id, c.agent_id, c.widget_id,
   c.last_message_at, c.last_message_preview, c.last_customer_message_at, c.created_at, c.resolved_at,
   to_char(c.last_message_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_ts,
-  ct.id AS contact_id, ct.name AS contact_name, ct.email AS contact_email, ct.phone AS contact_phone`;
+  ct.id AS contact_id, ct.name AS contact_name, ct.email AS contact_email, ct.phone AS contact_phone, ct.blocked_at AS contact_blocked_at`;
 
 export interface ConversationFilters {
   status?: string;
@@ -144,7 +144,7 @@ export class MessagesRepository extends TenantRepository {
 }
 
 // ------------------------------------------------------------------ contacts
-const contactSelect = (tx: Sql) => tx`ct.id, ct.name, ct.email, ct.phone, ct.custom_attributes, ct.first_seen_at, ct.last_seen_at, ct.created_at, ct.updated_at,
+const contactSelect = (tx: Sql) => tx`ct.id, ct.name, ct.email, ct.phone, ct.custom_attributes, ct.blocked_at, ct.blocked_reason, ct.blocked_by, ct.first_seen_at, ct.last_seen_at, ct.created_at, ct.updated_at,
   (SELECT coalesce(json_agg(json_build_object('channel', i.channel, 'externalId', i.external_id) ORDER BY i.created_at), '[]'::json)
      FROM contact_identities i WHERE i.tenant_id = ct.tenant_id AND i.contact_id = ct.id) AS identities`;
 
@@ -229,6 +229,34 @@ export class ContactsRepository extends TenantRepository {
       VALUES (${this.tenantId}, ${contactId}, ${channel}, ${externalId}) ON CONFLICT DO NOTHING`;
   }
 
+  /** Block (idempotent: keeps the first reason/actor). `by` null = the AI or a rule. */
+  async block(id: string, reason: string | null, by: string | null): Promise<boolean> {
+    const r = await this.tx`
+      UPDATE contacts SET blocked_at = now(), blocked_reason = ${reason?.slice(0, 500) ?? null}, blocked_by = ${by}, updated_at = now()
+      WHERE tenant_id = ${this.tenantId} AND id = ${id} AND blocked_at IS NULL`;
+    return r.count > 0;
+  }
+  async unblock(id: string): Promise<boolean> {
+    const r = await this.tx`
+      UPDATE contacts SET blocked_at = NULL, blocked_reason = NULL, blocked_by = NULL, updated_at = now()
+      WHERE tenant_id = ${this.tenantId} AND id = ${id} AND blocked_at IS NOT NULL`;
+    return r.count > 0;
+  }
+  async isBlocked(id: string): Promise<boolean> {
+    const [r] = await this.tx<{ b: boolean }[]>`SELECT (blocked_at IS NOT NULL) AS b FROM contacts WHERE tenant_id = ${this.tenantId} AND id = ${id}`;
+    return r?.b === true;
+  }
+  /** A contact blocked in the last `hours` hours had a widget session from this IP (shared networks: the window is short on purpose). */
+  async blockedRecentlyFromIp(ip: string, hours = 24): Promise<boolean> {
+    const [r] = await this.tx<{ n: number }[]>`
+      SELECT 1 AS n FROM widget_sessions ws
+      JOIN contacts ct ON ct.tenant_id = ws.tenant_id AND ct.id = ws.contact_id
+      WHERE ws.tenant_id = ${this.tenantId} AND ws.ip = ${ip} AND ct.blocked_at IS NOT NULL
+        AND ct.blocked_at > now() - make_interval(hours => ${hours}::int)
+      LIMIT 1`;
+    return !!r;
+  }
+
   async timeline(contactId: string, o: { cursor?: { ts: string; id: string } | null; limit: number }): Promise<TimelineRow[]> {
     const tx = this.tx;
     return tx<TimelineRow[]>`
@@ -262,6 +290,8 @@ export class ContactsRepository extends TenantRepository {
       UPDATE contacts p SET
         name = coalesce(p.name, s.name), email = coalesce(p.email, s.email), phone = coalesce(p.phone, s.phone),
         custom_attributes = s.custom_attributes || p.custom_attributes,
+        blocked_at = coalesce(p.blocked_at, s.blocked_at), blocked_reason = CASE WHEN p.blocked_at IS NULL THEN s.blocked_reason ELSE p.blocked_reason END,
+        blocked_by = CASE WHEN p.blocked_at IS NULL THEN s.blocked_by ELSE p.blocked_by END,
         first_seen_at = least(p.first_seen_at, s.first_seen_at), last_seen_at = greatest(p.last_seen_at, s.last_seen_at),
         updated_at = now()
       FROM contacts s
@@ -281,10 +311,12 @@ export interface WidgetRow {
   config: WidgetConfig;
   prechat: PrechatConfig;
   allowedDomains: string[];
+  hasTurnstileSecret: boolean;
+  avatarVersion: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }
-const widgetCols = (tx: Sql) => tx`id, name, widget_key, agent_id, enabled, config, prechat, allowed_domains, created_at, updated_at`;
+const widgetCols = (tx: Sql) => tx`id, name, widget_key, agent_id, enabled, config, prechat, allowed_domains, (turnstile_secret_enc IS NOT NULL) AS has_turnstile_secret, (SELECT a.etag FROM widget_avatars a WHERE a.tenant_id = widgets.tenant_id AND a.widget_id = widgets.id) AS avatar_version, created_at, updated_at`;
 
 export class WidgetsRepository extends TenantRepository {
   list(): Promise<WidgetRow[]> {
@@ -294,16 +326,17 @@ export class WidgetsRepository extends TenantRepository {
     const [r] = await this.tx<WidgetRow[]>`SELECT ${widgetCols(this.tx)} FROM widgets WHERE tenant_id = ${this.tenantId} AND id = ${id}`;
     return r;
   }
-  async create(i: { name: string; widgetKey: string; agentId?: string | null; enabled?: boolean; config?: unknown; prechat?: unknown; allowedDomains?: string[] }): Promise<WidgetRow> {
+  /** `turnstileSecretEnc` is the already-encrypted envelope (AAD needs the widget id, so create passes a pre-generated `id`). */
+  async create(i: { id?: string; name: string; widgetKey: string; agentId?: string | null; enabled?: boolean; config?: unknown; prechat?: unknown; allowedDomains?: string[]; turnstileSecretEnc?: string | null }): Promise<WidgetRow> {
     const [r] = await this.tx<WidgetRow[]>`
-      INSERT INTO widgets (tenant_id, name, widget_key, agent_id, enabled, config, prechat, allowed_domains)
-      VALUES (${this.tenantId}, ${i.name}, ${i.widgetKey}, ${i.agentId ?? null}, ${i.enabled ?? true},
+      INSERT INTO widgets (id, tenant_id, name, widget_key, agent_id, enabled, config, prechat, allowed_domains, turnstile_secret_enc)
+      VALUES (${i.id ?? crypto.randomUUID()}, ${this.tenantId}, ${i.name}, ${i.widgetKey}, ${i.agentId ?? null}, ${i.enabled ?? true},
               ${this.tx.json((i.config ?? {}) as never)}, ${this.tx.json((i.prechat ?? { enabled: false, fields: [] }) as never)},
-              ${this.tx.array(i.allowedDomains ?? [])}::text[])
+              ${this.tx.array(i.allowedDomains ?? [])}::text[], ${i.turnstileSecretEnc ?? null})
       RETURNING ${widgetCols(this.tx)}`;
     return r!;
   }
-  async update(id: string, p: { name?: string; agentId?: string | null; enabled?: boolean; config?: unknown; prechat?: unknown; allowedDomains?: string[] }): Promise<WidgetRow | undefined> {
+  async update(id: string, p: { name?: string; agentId?: string | null; enabled?: boolean; config?: unknown; prechat?: unknown; allowedDomains?: string[]; turnstileSecretEnc?: string | null }): Promise<WidgetRow | undefined> {
     const tx = this.tx;
     const [r] = await tx<WidgetRow[]>`
       UPDATE widgets SET
@@ -313,16 +346,42 @@ export class WidgetsRepository extends TenantRepository {
         config = ${p.config === undefined ? tx`config` : tx.json(p.config as never)},
         prechat = ${p.prechat === undefined ? tx`prechat` : tx.json(p.prechat as never)},
         allowed_domains = ${p.allowedDomains === undefined ? tx`allowed_domains` : tx`${tx.array(p.allowedDomains)}::text[]`},
+        turnstile_secret_enc = ${p.turnstileSecretEnc === undefined ? tx`turnstile_secret_enc` : p.turnstileSecretEnc},
         updated_at = now()
       WHERE tenant_id = ${this.tenantId} AND id = ${id}
       RETURNING ${widgetCols(tx)}`;
     return r;
+  }
+  /** Encrypted Turnstile secret envelope for server-side verification only (never in a DTO). */
+  async turnstileSecretEnc(id: string): Promise<string | null> {
+    const [r] = await this.tx<{ turnstileSecretEnc: string | null }[]>`SELECT turnstile_secret_enc FROM widgets WHERE tenant_id = ${this.tenantId} AND id = ${id}`;
+    return r?.turnstileSecretEnc ?? null;
   }
   async rotateKey(id: string, key: string): Promise<WidgetRow | undefined> {
     const [r] = await this.tx<WidgetRow[]>`
       UPDATE widgets SET widget_key = ${key}, updated_at = now() WHERE tenant_id = ${this.tenantId} AND id = ${id}
       RETURNING ${widgetCols(this.tx)}`;
     return r;
+  }
+  async setAvatar(id: string, a: { contentType: string; data: Uint8Array; etag: string; userId: string }): Promise<void> {
+    await this.tx`
+      INSERT INTO widget_avatars (tenant_id, widget_id, content_type, data, etag, updated_by)
+      VALUES (${this.tenantId}, ${id}, ${a.contentType}, ${a.data as never}, ${a.etag}, ${a.userId})
+      ON CONFLICT (tenant_id, widget_id) DO UPDATE SET content_type = EXCLUDED.content_type, data = EXCLUDED.data, etag = EXCLUDED.etag,
+        updated_by = EXCLUDED.updated_by, updated_at = now()`;
+  }
+  async removeAvatar(id: string): Promise<boolean> {
+    const r = await this.tx`DELETE FROM widget_avatars WHERE tenant_id = ${this.tenantId} AND widget_id = ${id}`;
+    return r.count > 0;
+  }
+  async getAvatar(id: string): Promise<{ contentType: string; data: Uint8Array; etag: string } | undefined> {
+    const [r] = await this.tx<{ contentType: string; data: Uint8Array; etag: string }[]>`
+      SELECT content_type, data, etag FROM widget_avatars WHERE tenant_id = ${this.tenantId} AND widget_id = ${id}`;
+    return r;
+  }
+  async avatarEtag(id: string): Promise<string | null> {
+    const [r] = await this.tx<{ etag: string }[]>`SELECT etag FROM widget_avatars WHERE tenant_id = ${this.tenantId} AND widget_id = ${id}`;
+    return r?.etag ?? null;
   }
   async delete(id: string): Promise<boolean> {
     const r = await this.tx`DELETE FROM widgets WHERE tenant_id = ${this.tenantId} AND id = ${id}`;
@@ -345,6 +404,13 @@ export class WidgetSessionsRepository extends TenantRepository {
       SELECT id FROM widget_sessions WHERE tenant_id = ${this.tenantId} AND id = ${id} AND widget_id = ${widgetId}
         AND conversation_id = ${conversationId} AND revoked_at IS NULL AND expires_at > now()`;
     return !!r;
+  }
+  /** Revoke every active session of a conversation (abuse block, conversation closed by the AI). */
+  async revokeForConversation(conversationId: string): Promise<void> {
+    await this.tx`UPDATE widget_sessions SET revoked_at = now() WHERE tenant_id = ${this.tenantId} AND conversation_id = ${conversationId} AND revoked_at IS NULL`;
+  }
+  async revokeForContact(contactId: string): Promise<void> {
+    await this.tx`UPDATE widget_sessions SET revoked_at = now() WHERE tenant_id = ${this.tenantId} AND contact_id = ${contactId} AND revoked_at IS NULL`;
   }
   async extend(id: string, expiresAt: Date): Promise<void> {
     await this.tx`UPDATE widget_sessions SET expires_at = ${expiresAt.toISOString()}::timestamptz WHERE tenant_id = ${this.tenantId} AND id = ${id}`;

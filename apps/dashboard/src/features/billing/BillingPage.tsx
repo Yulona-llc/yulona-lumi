@@ -12,9 +12,11 @@ import { toast } from "@/components/ui/sonner";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { cn } from "@/lib/utils";
 import { errMsg } from "../common/api";
-import { BarSeries } from "../admin/charts";
+import { BarSeries } from "../common/charts";
 import { ConfirmModal, ErrorState, fmtDate, Loading, PageHeader, RoleNotice, Select, useRole } from "../common/ui";
 import { CreditAlerts, CreditsReturnToast } from "../usage/CreditAlerts";
+import { useCredits } from "../usage/hooks";
+import { fmtNum, messagesLeftText } from "../usage/api";
 import { billingApi, METRIC_LABEL, type BillingInfo, type LimitRow } from "./api";
 
 const stateInfo: Record<BillingInfo["state"], { variant: "success" | "warning" | "destructive" | "secondary"; text: string }> = {
@@ -43,9 +45,26 @@ function UsageMeter({ l }: { l: LimitRow }) {
   );
 }
 
+const planLabel = (key: string) => key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ");
+
+/** Plan card allowance: credits and tokens per month, plus the estimated messages left (SaaS credits only). */
+function PlanAllowance({ b, credits }: { b: BillingInfo; credits: ReturnType<typeof useCredits>["data"] }) {
+  const lim = (m: string) => b.limits.find((l) => l.metric === m);
+  const cr = lim("llm_credits_monthly"), tk = lim("llm_tokens_monthly");
+  if (!credits?.enabled || !cr) return null;
+  const parts = [cr.limit === null ? "Unlimited AI credits" : `${fmtNum(cr.limit)} credits a month`, tk && tk.limit !== null ? `${fmtNum(tk.limit)} tokens` : null].filter(Boolean).join(" and ");
+  const left = messagesLeftText(credits.estimatedMessages);
+  return (
+    <p className="mt-1 text-sm text-muted-foreground" data-testid="plan-allowance">
+      {parts}{left ? <>, <span className="font-medium text-foreground">{left}</span></> : null}
+    </p>
+  );
+}
+
 export default function BillingPage() {
   const { isAdmin, isOwner } = useRole();
   const info = useQuery({ queryKey: ["billing"], queryFn: billingApi.info, enabled: isAdmin });
+  const cq = useCredits();
   const usage = useQuery({ queryKey: ["usage", 30], queryFn: () => billingApi.usage(30) });
   const [metric, setMetric] = useState("conversations");
   const [cancel, setCancel] = useState(false);
@@ -82,12 +101,13 @@ export default function BillingPage() {
               <p className="text-sm text-muted-foreground">Current plan</p>
               <p className="flex flex-wrap items-center gap-2 font-display text-2xl font-semibold">{b.plan.name} <Badge variant={st.variant}>{st.text}</Badge></p>
               {b.subscription.currentPeriodEnd && <p className="mt-1 text-sm text-muted-foreground">{b.subscription.cancelAtPeriodEnd ? "Ends" : "Renews"} {fmtDate(b.subscription.currentPeriodEnd)}</p>}
+              <PlanAllowance b={b} credits={cq.data} />
               {b.provider === "stub" && <p className="mt-1 text-sm text-muted-foreground">Payments are not configured on this installation.</p>}
             </div>
           </div>
           {isOwner ? (
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              {b.checkoutPlans.map((p) => b.plan.key !== p && <Button key={p} disabled={go.isPending} onClick={() => go.mutate(() => billingApi.checkout(p))}>{go.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}Upgrade to {p}</Button>)}
+              {b.checkoutPlans.map((p) => b.plan.key !== p && <Button key={p} disabled={go.isPending} onClick={() => go.mutate(() => billingApi.checkout(p))}>{go.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}Upgrade to {planLabel(p)}</Button>)}
               {b.subscription.status !== "none" && <Button variant="outline" disabled={go.isPending} onClick={() => go.mutate(billingApi.portal)}><CreditCard />Manage payment</Button>}
               {["active", "trialing", "past_due"].includes(b.subscription.status) && !b.subscription.cancelAtPeriodEnd && <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setCancel(true)}>Cancel plan</Button>}
             </div>

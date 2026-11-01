@@ -1,5 +1,5 @@
 /**
- * Offline licensing for self-hosted Yulona. Zero network access: nothing here ever sends tenant data anywhere.
+ * Offline licensing for self-hosted Lumi. Zero network access: nothing here ever sends tenant data anywhere.
  *
  *  - License: a compact JWT signed with Ed25519 (alg "EdDSA"), claims { iss, sub (customer id), customer, seats, features[], iat, exp }.
  *  - Update manifest: JSON { payload: {...}, signature } where signature = base64url(Ed25519(sign, canonical JSON of payload)).

@@ -1,10 +1,10 @@
 ---
 title: Multi-tenancy and security
-description: Learn how Yulona isolates tenants, encrypts secrets, blocks SSRF and limits abuse, and what you should do as an integrator.
+description: Learn how Lumi isolates tenants, encrypts secrets, blocks SSRF and limits abuse, and what you should do as an integrator.
 icon: shield-halved
 ---
 
-This page is for engineers and security reviewers who need to know how Yulona keeps one workspace's data away from another's, and which responsibilities stay with you when you integrate. Everything here describes the shipped behavior.
+This page is for engineers and security reviewers who need to know how Lumi keeps one workspace's data away from another's, and which responsibilities stay with you when you integrate. Everything here describes the shipped behavior.
 
 ## Three layers of tenant isolation
 
@@ -32,7 +32,7 @@ Platform admins use a separate token realm and have no route into tenant data. I
 
 ## Encryption at rest
 
-Credentials that Yulona must be able to read back (channel tokens, tool connection secrets, LLM provider keys, Google and Calendly tokens, inbound-webhook secrets) are encrypted with **AES-256-GCM envelope encryption** using `ENCRYPTION_KEY`.
+Credentials that Lumi must be able to read back (channel tokens, tool connection secrets, LLM provider keys, Google and Calendly tokens, inbound-webhook secrets) are encrypted with **AES-256-GCM envelope encryption** using `ENCRYPTION_KEY`.
 
 - `ENCRYPTION_KEY` is 32 bytes: base64 (`openssl rand -base64 32`) or 64 hex characters.
 - Each record gets a random data key; the data key is wrapped with the master key. The stored form is `v1.<wrapped key>.<ciphertext>`.
@@ -45,7 +45,7 @@ Secrets are write-only over the API. Responses return flags such as `hasSecret` 
 
 ## SSRF protections
 
-Any feature where Yulona fetches a URL you control is guarded the same way (outbound webhooks, tool calls, URL knowledge sources, LLM provider profiles):
+Any feature where Lumi fetches a URL you control is guarded the same way (outbound webhooks, tool calls, URL knowledge sources, LLM provider profiles):
 
 - Only `http` or `https`; no credentials in the URL; no `localhost`, `.local`, `.internal` or IP literals in private, loopback, link-local, CGNAT, multicast or reserved ranges (including IPv4-mapped IPv6).
 - The hostname is resolved and **every** returned address must be public, on every request.
@@ -94,7 +94,7 @@ Security-relevant actions write to the tenant audit log: logins (successful and 
     Keep API keys and webhook secrets in a secrets manager, one key per integration, with the narrowest scopes. Rotate by creating a new key, deploying it, then revoking the old one. Rotate webhook secrets with `POST /api/v1/webhooks/:id/rotate-secret`.
   </Accordion>
   <Accordion title="Verify what you receive">
-    Verify the HMAC signature on every webhook, reject stale timestamps, and de-duplicate on the event id. Verify the signature on requests Yulona makes to your tool backend if you use the `hmac` connection type.
+    Verify the HMAC signature on every webhook, reject stale timestamps, and de-duplicate on the event id. Verify the signature on requests Lumi makes to your tool backend if you use the `hmac` connection type.
   </Accordion>
   <Accordion title="Treat customer text as untrusted">
     Message content comes from anonymous visitors. Escape it before rendering, never build SQL or shell commands from it, and validate every tool argument on your backend; the model's arguments are validated against your `inputSchema`, but your backend is the last line of defense.

@@ -1,6 +1,7 @@
 import { withTenant, type Db } from "@yulona/db";
 import { canTransition, WIDGET_UI_SCHEMA_VERSION, type ChannelCapability, type ConversionStage } from "@yulona/shared";
-import { loadAgent } from "./agent-loader";
+import { applyAbuseBlock, isContactBlocked, loadAbuseContext } from "./abuse-store";
+import { loadAgent, mapAgentRow } from "./agent-loader";
 import { buildHandoffNotice, isResumeKeyword } from "./intent";
 import {
   hasReplyTo, insertAiMessage, lastCustomerMessageAt, loadConversation, loadHistory, loadMessage, setPendingHuman, updateContact,
@@ -10,7 +11,7 @@ import type { AiPorts } from "./ports";
 import { createKnowledgePort } from "./knowledge";
 import type { Resolver } from "./ssrf";
 import { getOrCreateState, mergeLead, returnConversationToAi, transitionStage } from "./stage";
-import { runTurn, type TurnOutcome } from "./turn";
+import { runTurn, summarize, type TurnOutcome } from "./turn";
 import type { ExternalToolProvider } from "./tools";
 import type { RuntimeEvent } from "./types";
 import { addUsage, creditsRemaining } from "./usage";
@@ -38,8 +39,12 @@ export interface RuntimeDeps {
    * Omitted => no gate (usage is still charged in SaaS mode through DEPLOYMENT_MODE).
    */
   credits?: { enabled: boolean; exhaustedMessage?: string };
+  /** customer-facing notice when the agent is not live (default DEFAULT_AGENT_UNAVAILABLE_MESSAGE) */
+  agentUnavailableMessage?: string;
 }
 
+/** Shown to the customer when the conversation's agent is not live (never published, archived, deleted or unassigned). */
+export const DEFAULT_AGENT_UNAVAILABLE_MESSAGE = "This assistant is not available right now. A team member will reply.";
 export const DEFAULT_CREDITS_EXHAUSTED_MESSAGE = "Our assistant is temporarily unavailable. A member of our team will get back to you shortly.";
 
 export interface InboundRef {
@@ -51,7 +56,7 @@ export interface InboundRef {
 export type InboundResult =
   | { status: "replied" | "handoff"; messageId: string; outcome: TurnOutcome }
   | { status: "resumed"; messageId: string }
-  | { status: "skipped"; reason: "message_not_found" | "not_customer_message" | "ai_paused" | "already_replied" | "no_agent" | "conversation_not_found" };
+  | { status: "skipped"; reason: "message_not_found" | "not_customer_message" | "ai_paused" | "already_replied" | "conversation_not_found" | "contact_blocked" };
 
 /**
  * message -> retrieve -> prompt -> LLM -> format -> persist. Called by the `ai.respond` job.
@@ -68,6 +73,8 @@ export async function handleInboundMessage(deps: RuntimeDeps, ref: InboundRef): 
     const msg = await loadMessage(tx, tenantId, conversationId, ref.messageId);
     if (!msg) return { skip: "message_not_found" as const };
     if (msg.senderType !== "contact") return { skip: "not_customer_message" as const };
+    // A blocked contact is never answered, never resumed and never reopens anything (only people unblock).
+    if (await isContactBlocked(tx, tenantId, conv.contactId)) return { skip: "contact_blocked" as const };
     const state = await getOrCreateState(tx, tenantId, conversationId);
     if (conv.status === "resolved") return { skip: "ai_paused" as const };
     const paused = conv.status === "pending_human" || conv.handler === "human" || state.aiPaused || state.stage === "handoff_requested";
@@ -85,7 +92,10 @@ export async function handleInboundMessage(deps: RuntimeDeps, ref: InboundRef): 
       if (!open) return { skip: "ai_paused" as const }; // a person is already talking to the customer: do not take over
       return { resume: true as const, agent };
     }
-    if (!agent) return { skip: "no_agent" as const };
+    if (!agent) {
+      // Not live (draft-only, archived, deleted or no agent): never call the model; hand the customer to a person.
+      return { unavailable: true as const, conv, msg, state, lastAt: await lastCustomerMessageAt(tx, tenantId, conversationId) };
+    }
     const history = await loadHistory(tx, tenantId, conversationId, msg.createdAt);
     const lastAt = await lastCustomerMessageAt(tx, tenantId, conversationId);
     let creditsGated = false;
@@ -98,11 +108,18 @@ export async function handleInboundMessage(deps: RuntimeDeps, ref: InboundRef): 
       SELECT NOT ops_in_business_hours(${tenantId}::uuid) AS closed,
              (SELECT out_of_hours_mode FROM ops_settings WHERE tenant_id = ${tenantId}) AS mode`;
     const handoffNotice = buildHandoffNotice({ keyword: agent.resumeKeyword, outOfHours: !!hrs?.closed, offlineNoticeSent: !!hrs?.closed && hrs.mode === "message" });
-    return { conv, msg, state, agent, history, lastAt, handoffNotice, creditsGated };
+    const abuseCtx = await loadAbuseContext(tx, tenantId, conversationId, msg.createdAt);
+    return { conv, msg, state, agent, history, lastAt, handoffNotice, creditsGated, abuseCtx };
   });
   if ("skip" in ctx) return { status: "skipped", reason: ctx.skip as never };
-  if ("resume" in ctx) return resumeFromKeyword(deps, ref, ctx.agent.name);
-  const { conv, msg, state, agent, history, lastAt, handoffNotice, creditsGated } = ctx;
+  if ("resume" in ctx) return resumeFromKeyword(deps, ref, ctx.agent!.name);
+  const { conv, msg, state, lastAt } = ctx;
+  // Unavailable: placeholder identity only so the shared turn/persist code runs; the model is never called.
+  const unavailable = "unavailable" in ctx;
+  const agent = "unavailable" in ctx ? mapAgentRow({ id: ctx.conv.agentId ?? "", name: "Assistant" }, tenantId) : ctx.agent;
+  const history = "unavailable" in ctx ? [] : ctx.history;
+  const handoffNotice = "unavailable" in ctx ? undefined : ctx.handoffNotice;
+  const creditsGated = "unavailable" in ctx ? false : ctx.creditsGated;
 
   const uiEventRaw = msg.metadata?.uiEvent as { type?: string; values?: Record<string, unknown> } | undefined;
   const outcome = await runTurn(deps.ports, {
@@ -117,7 +134,9 @@ export async function handleInboundMessage(deps: RuntimeDeps, ref: InboundRef): 
     uiEvent: uiEventRaw?.type === "form" && uiEventRaw.values ? { type: "form", values: uiEventRaw.values } : undefined,
     lastCustomerMessageAt: lastAt,
     unansweredTurns: state.unansweredTurns,
+    abuse: unavailable ? undefined : ctx.abuseCtx,
     handoffNotice,
+    unavailable: unavailable ? { message: deps.agentUnavailableMessage || DEFAULT_AGENT_UNAVAILABLE_MESSAGE } : undefined,
     creditsExhausted: creditsGated ? { message: deps.credits?.exhaustedMessage || DEFAULT_CREDITS_EXHAUSTED_MESSAGE } : undefined,
     resolver: deps.resolver,
     fetchImpl: deps.fetchImpl,
@@ -142,6 +161,9 @@ export async function handleInboundMessage(deps: RuntimeDeps, ref: InboundRef): 
     }
     await tx`UPDATE conversation_ai_state SET unanswered_turns = ${outcome.unansweredAfter ?? 0}, updated_at = now()
              WHERE tenant_id = ${tenantId} AND conversation_id = ${conversationId}`;
+    if (outcome.abuseStrikesAfter !== undefined) {
+      await tx`UPDATE conversation_ai_state SET abuse_strikes = ${outcome.abuseStrikesAfter} WHERE tenant_id = ${tenantId} AND conversation_id = ${conversationId}`;
+    }
     const reason = outcome.handoff ? `handoff:${outcome.handoff.type}` : outcome.leadPatch.need ? "lead_qualified" : "ai_turn";
     // External tools may have advanced the stage meanwhile (e.g. booking): only apply legal hops from the real current stage.
     let cur = (await getOrCreateState(tx, tenantId, conversationId)).stage;
@@ -164,7 +186,7 @@ export async function handleInboundMessage(deps: RuntimeDeps, ref: InboundRef): 
       ui: outcome.ui,
       metadata: {
         inReplyTo: ref.messageId,
-        agentId: agent.id,
+        agentId: agent.id || undefined,
         stage: outcome.stageAfter,
         guardTriggered: outcome.guardTriggered,
         sources: outcome.retrieved.map((c) => ({ sourceId: c.sourceId, name: c.sourceName, score: Number(c.score.toFixed(3)) })),
@@ -172,6 +194,13 @@ export async function handleInboundMessage(deps: RuntimeDeps, ref: InboundRef): 
         windowExpired: outcome.windowExpired,
       },
     });
+    if (outcome.abuse) {
+      // the farewell above is already stored; now close, hand off, block and revoke in this same transaction
+      await applyAbuseBlock(tx, tenantId, conversationId, {
+        contactId: conv.contactId, ...outcome.abuse, strikes: outcome.abuseStrikesAfter ?? agent.abuse.maxStrikes,
+        agentId: agent.id || undefined, messageId: ref.messageId, summary: summarize(history, msg.content),
+      });
+    }
     await addUsage(tx, tenantId, {
       ...outcome.usage, requests: outcome.usage.promptTokens > 0 ? 1 : 0, agentId: agent.id, conversationId, source: "turn",
       model: outcome.model ?? agent.model, profileId: outcome.profileId, charge: deps.credits?.enabled,

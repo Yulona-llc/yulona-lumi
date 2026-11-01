@@ -1,4 +1,4 @@
-# Yulona production stack. Run via deploy/setup.sh (generates .env) or:
+# Lumi production stack. Run via deploy/setup.sh (generates .env) or:
 #   docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --wait
 # Networks: only Caddy publishes ports (80/443). `backend` is internal (no egress, no host access):
 # postgres/redis live ONLY there. api/worker also join `edge` for Caddy + outbound calls (LLM providers etc.).
@@ -18,7 +18,6 @@ x-api-env: &api-env
   NODE_ENV: production
   PORT: "3000"
   DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-selfhosted}
-  SUPER_ADMIN_ENABLED: ${SUPER_ADMIN_ENABLED:-}
   DATABASE_URL: postgres://yulona_app:${APP_DB_PASSWORD:?run deploy/setup.sh}@postgres:5432/yulona
   REDIS_URL: redis://:${REDIS_PASSWORD:?run deploy/setup.sh}@redis:6379
   JWT_SECRET: ${JWT_SECRET:?run deploy/setup.sh}
@@ -45,6 +44,8 @@ x-api-env: &api-env
   AI_EXTRA_HEADERS: ${AI_EXTRA_HEADERS:-}
   AI_QUERY: ${AI_QUERY:-}
   AI_CHAT_PATH: ${AI_CHAT_PATH:-}
+  # Optional model for the Ask Lumi assistant (empty = provider default)
+  COPILOT_MODEL: ${COPILOT_MODEL:-}
   # SaaS only: text shown to customers when the tenant's AI credits are used up
   CREDITS_EXHAUSTED_MESSAGE: ${CREDITS_EXHAUSTED_MESSAGE:-}
   SMTP_HOST: ${SMTP_HOST:-}
@@ -81,8 +82,10 @@ services:
       - "443:443/udp"
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+      ADMIN_SITE_ADDRESS: ${ADMIN_SITE_ADDRESS:-admin.localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./admin-site:/etc/caddy/admin:ro   # optional admin host (see admin-site/admin.caddy.example)
       - caddy_data:/data
       - caddy_config:/config
     tmpfs: [/tmp]
@@ -132,6 +135,7 @@ services:
     environment:
       NODE_ENV: production
       MIGRATION_DATABASE_URL: postgres://yulona_owner:${POSTGRES_PASSWORD:?run deploy/setup.sh}@postgres:5432/yulona
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-}   # only when the admin profile is used: enables the yulona_admin login role
     tmpfs: [/tmp]
     networks: [backend]
     healthcheck: { disable: true }
@@ -156,6 +160,55 @@ services:
     healthcheck: { disable: true }
     depends_on:
       migrate: { condition: service_completed_successfully }
+
+  # Platform admin (profile "admin"; NOT part of the self-hosted bundle). Separate signing key, DB role (yulona_admin: EXECUTE on
+  # sa_* functions only, no table grants), cookie and host. Set ADMIN_JWT_SECRET, ADMIN_DB_PASSWORD, ADMIN_WEB_ORIGIN, ADMIN_SITE_ADDRESS (the service refuses to start without them).
+  # Note: JWT_SECRET is deliberately NOT passed; the service refuses to start if it is set to the same value as ADMIN_JWT_SECRET.
+  admin-api:
+    image: ${YULONA_ADMIN_API_IMAGE:-yulona/admin-api:local}
+    build: { context: .., dockerfile: apps/admin-api/Dockerfile }
+    profiles: [admin]
+    <<: *hardening
+    environment:
+      NODE_ENV: production
+      PORT: "4100"
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-selfhosted}
+      DATABASE_URL: postgres://yulona_app:unused@postgres:5432/yulona   # host and database only; the user and password are replaced by yulona_admin
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-}
+      ADMIN_WEB_ORIGIN: ${ADMIN_WEB_ORIGIN:-}
+      ADMIN_ALLOWED_CIDRS: ${ADMIN_ALLOWED_CIDRS:-}
+      ADMIN_REQUIRE_2FA: ${ADMIN_REQUIRE_2FA:-false}
+      ADMIN_CUSTOMER_APP_URL: ${ADMIN_CUSTOMER_APP_URL:-${APP_URL:-https://${SITE_ADDRESS:-localhost}}}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run deploy/setup.sh}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?run deploy/setup.sh}@redis:6379
+      TRUST_PROXY: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    tmpfs: [/tmp]
+    networks: [edge, backend]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+  # Platform admin web (profile "admin"): static SPA behind the Caddy admin site (deploy/admin-site/admin.caddy.example), same origin as
+  # admin-api so API_URL stays empty. Only needed when the admin profile is enabled; the self-hosted bundle never starts it.
+  admin-web:
+    image: ${YULONA_ADMIN_WEB_IMAGE:-yulona/admin-web:local}
+    build: { context: .., dockerfile: apps/admin-web/Dockerfile }
+    profiles: [admin]
+    <<: *hardening
+    environment:
+      API_URL: ${ADMIN_WEB_API_URL:-}
+    tmpfs: [/tmp]
+    networks: [edge]
+    deploy: { resources: { limits: { cpus: "0.25", memory: 64M } } }
 
   # Optional (COMPOSE_PROFILES=minio): S3-compatible object storage on the internal network.
   # Set S3_ENDPOINT=http://minio:9000, S3_BUCKET=yulona, S3_ACCESS_KEY_ID=$MINIO_ROOT_USER, S3_SECRET_ACCESS_KEY=$MINIO_ROOT_PASSWORD.
@@ -235,6 +288,7 @@ services:
       POSTGRES_USER: yulona_owner
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run deploy/setup.sh}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?run deploy/setup.sh}
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro

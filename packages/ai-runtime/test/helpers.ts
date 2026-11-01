@@ -55,9 +55,14 @@ export async function seedTenant(owner: postgres.Sql, label = "t") {
   return t!.id;
 }
 
-export async function seedAgent(owner: postgres.Sql, tenantId: string, config: Record<string, unknown> = {}) {
+/** Seeds an agent that is LIVE (published v1 with this config) unless `status` says otherwise. */
+export async function seedAgent(owner: postgres.Sql, tenantId: string, config: Record<string, unknown> = {}, status: "published" | "draft" | "archived" = "published") {
   const cfg = { similarityThreshold: 0.3, topK: 4, ...config };
   const [a] = await owner<{ id: string }[]>`INSERT INTO agents (tenant_id, name, config) VALUES (${tenantId}, 'Test Agent', ${JSON.stringify(cfg)}::text::jsonb) RETURNING id`;
+  if (status !== "draft") {
+    await owner`INSERT INTO agent_versions (tenant_id, agent_id, version, config) VALUES (${tenantId}, ${a!.id}, 1, ${JSON.stringify(cfg)}::text::jsonb)`;
+    await owner`UPDATE agents SET status = ${status}, published_version = 1 WHERE id = ${a!.id}`;
+  }
   return a!.id;
 }
 

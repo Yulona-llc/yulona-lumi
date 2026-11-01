@@ -1,0 +1,66 @@
+---
+title: Set up with Lumi
+description: Answer a few questions after you sign up and let Lumi prepare a draft agent, a chat window, your business hours and your goals.
+icon: wand-magic-sparkles
+---
+
+The setup wizard is the first thing a new workspace owner sees after creating a workspace. It asks about your business and builds a starter setup so you do not start from a blank page. This page is for workspace owners and admins.
+
+<Note>
+Only **owners and admins** see the wizard. Other roles are sent to the Overview. The wizard never publishes anything and costs you no credits.
+</Note>
+
+## Before you start
+
+- Know your business type, name and what you want Lumi to do for you.
+- Have your website address ready if you want Lumi to learn from it.
+- You can leave at any time: your answers are saved on the server, so you can continue later on another computer.
+
+## Go through the wizard
+
+<Steps>
+  <Step title="Choose your business type and name">
+    Pick a card such as **Clinic or health service** or **Restaurant or cafe**, then type your business name. Lumi uses the type to suggest sensible defaults for the next steps; suggested choices are marked **Suggested**.
+  </Step>
+  <Step title="Choose your goals">
+    Select everything you want Lumi to help with: **Answer customer questions**, **Capture leads**, **Take bookings** or **Something else**. The first goal you pick becomes the most important one on your [Overview](/guides/workspace/overview-by-goal).
+  </Step>
+  <Step title="Answer the optional questions">
+    Channels, tone, languages, business hours, website, brand colour and when customers should reach a person. Each of these has **Skip this step**, so you can answer only what you know.
+  </Step>
+  <Step title="Create your setup">
+    The last step lists what will be created. Click **Create my setup**. You land on the Overview with a **Try it, then publish** card.
+  </Step>
+</Steps>
+
+Use **Back** to change an earlier answer. Use **Skip setup for now** at the top right to leave; the Overview then shows **Finish your setup with Lumi** until you complete it.
+
+## What Lumi creates
+
+| Item | Details |
+|---|---|
+| Agent | A **draft** agent with a persona, greeting and tools that match your goals. It is not published. |
+| Chat window | A website chat widget with your business name and brand colour, attached to the draft agent. |
+| Knowledge | If you gave a website, a knowledge source that follows links up to 3 levels deep and reads up to 25 pages. It appears under [Knowledge](/guides/agents/knowledge-skills) while it is read. |
+| Business hours | If you set opening hours, they are saved under **Business hours**. Choosing "Only in business hours" for handovers makes Lumi take a message outside your hours. |
+| Goals | Saved to your workspace and used to choose the blocks on the Overview. |
+
+Lumi first builds all of this from templates. It then makes **one** short AI call, once per workspace, to polish the wording of the persona and greeting. That call is not charged to your credits. If the AI service is unavailable, you keep the template wording.
+
+<Warning>
+Your agent stays a draft. Try it in the [sandbox](/guides/agents/test-in-sandbox) and then [publish it](/guides/agents/publish-and-versions) when you are happy.
+</Warning>
+
+## Common problems
+
+- **"Plan limit reached for agents" or "widgets".** Your plan already has its agents or widgets. Archive one, or upgrade, then click **Create my setup** again.
+- **The website was not added.** Addresses that point to private networks are refused for safety. Add a public address under **Knowledge**.
+- **I skipped the wizard.** Click **Start setup** or **Continue setup** on the Overview.
+
+## Next steps
+
+- [Try your agent in the sandbox](/guides/agents/test-in-sandbox)
+- [Ask Lumi to adjust your setup](/guides/workspace/ask-lumi)
+- [Read your Overview by goal](/guides/workspace/overview-by-goal)
+
+{/* source: apps/dashboard/src/features/onboarding/*, apps/api/src/copilot/{onboarding,onboarding-steps,templates}.ts, docs/api/copilot.md */}

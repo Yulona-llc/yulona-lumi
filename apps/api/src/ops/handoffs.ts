@@ -63,7 +63,7 @@ export function handoffRoutes({ cfg, db }: OpsDeps) {
       SELECT type, count(*)::int AS n, (count(*) FILTER (WHERE assigned_user_id = ${userId}))::int AS mine
       FROM handoffs WHERE tenant_id = ${tenantId} AND resolved_at IS NULL GROUP BY type`);
     const n = (t: string) => rows.find((x) => x.type === t)?.n ?? 0;
-    return c.json({ uncertainty: n("uncertainty"), stage: n("stage"), system_failure: n("system_failure"), total: rows.reduce((a, x) => a + x.n, 0), mine: rows.reduce((a, x) => a + x.mine, 0) });
+    return c.json({ uncertainty: n("uncertainty"), stage: n("stage"), system_failure: n("system_failure"), abuse: n("abuse"), total: rows.reduce((a, x) => a + x.n, 0), mine: rows.reduce((a, x) => a + x.mine, 0) });
   });
 
   r.get("/needs-attention/:id", guard(cfg, "agent"), async (c) => {
@@ -153,7 +153,10 @@ export function handoffRoutes({ cfg, db }: OpsDeps) {
       // resolve every open handoff of the conversation (one conversation, one outcome)
       await tx`UPDATE handoffs SET resolved_at = now(), resolved_by = ${userId}, resolution_note = ${b.note ?? null}
                WHERE tenant_id = ${tenantId} AND conversation_id = ${h.convId} AND resolved_at IS NULL`;
-      if (b.returnToAi) {
+      // a blocked contact never goes back to the AI: the handoff is resolved, the conversation stays as it is
+      const [blk] = await tx<{ b: boolean }[]>`SELECT EXISTS (SELECT 1 FROM contacts ct JOIN conversations c ON c.tenant_id = ct.tenant_id AND c.contact_id = ct.id
+        WHERE c.tenant_id = ${tenantId} AND c.id = ${h.convId} AND ct.blocked_at IS NOT NULL) AS b`;
+      if (b.returnToAi && !blk?.b) {
         await tx`UPDATE conversations SET handler = 'ai', assigned_user_id = NULL, status = 'open', updated_at = now() WHERE tenant_id = ${tenantId} AND id = ${h.convId}`;
         await returnConversationToAi(tx, tenantId, h.convId);
         await tx`INSERT INTO messages (tenant_id, conversation_id, sender_type, content, metadata)

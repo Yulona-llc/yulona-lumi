@@ -99,7 +99,7 @@ export function requireDocsAuth(username: string, password: string, limiter: Rat
     const userOk = safeEqual(sha256(parsed?.user ?? "\0"), userHash);
     const passOk = safeEqual(sha256(parsed?.password ?? "\0"), passHash);
     if (!userOk || !passOk) {
-      return c.text("Authentication required", 401, { "WWW-Authenticate": 'Basic realm="Yulona API docs", charset="UTF-8"' });
+      return c.text("Authentication required", 401, { "WWW-Authenticate": 'Basic realm="Lumi API docs", charset="UTF-8"' });
     }
     await next();
   };
@@ -111,7 +111,7 @@ export const requireAuth = (cfg: Config): MiddlewareHandler<AppEnv> => async (c,
   if (!m) throw Errors.unauthorized();
   const claims = await verifyAccessToken(cfg.jwtSecret, m[1]!);
   if (!claims) throw Errors.unauthorized("Invalid or expired token");
-  c.set("auth", { userId: claims.sub, tenantId: claims.tid, role: claims.role, ...(claims.imp ? { impersonatorId: claims.imp, impersonationSessionId: claims.ims } : {}) });
+  c.set("auth", { userId: claims.sub, tenantId: claims.tid, role: claims.role, ...(claims.imp ? { impersonatorId: claims.imp, impersonationSessionId: claims.ims, ...(claims.ro ? { readOnly: true } : {}) } : {}) });
   await next();
 };
 

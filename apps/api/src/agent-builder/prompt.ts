@@ -32,6 +32,17 @@ export const BUILDER_TOOLS: ToolSpec[] = [
                     resumeKeyword: { type: "string" },
                   },
                 },
+                abuse: {
+                  type: "object",
+                  description: "Abuse protection (on by default, usually leave it alone). Visitors who keep sending abuse or spam are blocked after maxStrikes.",
+                  properties: {
+                    enabled: { type: "boolean" },
+                    maxStrikes: { type: "integer", minimum: 1, maximum: 10 },
+                    maxMessagesPerMinute: { type: "integer", minimum: 2, maximum: 60 },
+                    blockedPhrases: { type: "array", items: { type: "string" }, description: "Phrases that count as a strike" },
+                    farewellMessage: { type: "string", description: "Last message before the chat is closed (max 500)" },
+                  },
+                },
                 temperature: { type: "number", minimum: 0, maximum: 2 },
               },
             },
@@ -75,7 +86,7 @@ export const BUILDER_TOOLS: ToolSpec[] = [
 ];
 
 export function systemPrompt(draft: Draft): string {
-  return `You are the Yulona agent builder. You interview a business owner and assemble the configuration of a customer-facing AI agent (website chat widget). You never talk to the agent's customers.
+  return `You are the Lumi agent builder. You interview a business owner and assemble the configuration of a customer-facing AI agent (website chat widget). You never talk to the agent's customers.
 
 How to work
 - Ask ONE or TWO focused questions at a time with the ask tool, then wait. Offer quick-reply options whenever the answer is a choice. Reply in the owner's language.

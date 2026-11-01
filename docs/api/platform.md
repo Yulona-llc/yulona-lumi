@@ -1,3 +1,5 @@
+> Wave 6: the platform-admin (`/api/v1/admin/*`) routes described below moved to the separate `apps/admin-api` service; see `docs/api/platform-admin.md`. The customer API no longer serves them.
+
 # Platform API contract
 
 Base: `/api/v1`. JSON only, request bodies are strict (unknown fields => 400). Errors: `{ "error": { code, message, requestId, details? } }`. Tenant is always derived from the access JWT, never from body/path/query. New error codes: `plan_limit_exceeded` (HTTP 402, `details: {metric, limit, used}`), `tenant_suspended`. Roles: `owner > admin > agent > viewer`. "min role" = that role or higher. Machine-readable spec: `/api/v1/openapi.json`.
@@ -23,7 +25,7 @@ Agent object: `{ id, name, description, status: draft|published|archived, config
 - `POST /agents/:id/publish` (admin) `{ note? }` -> agent + `version`. Snapshots the draft as the next immutable version.
 - `POST /agents/:id/rollback` (admin) `{ version, note? }` -> republishes that version's config as a NEW version.
 - `GET /agents/:id/versions` -> `{ items: [{ version, note, createdBy, createdAt }] }` (newest first).
-- `DELETE /agents/:id` (admin) archives; `POST /agents/:id/unarchive` (admin).
+- `DELETE /agents/:id` (admin) archives; `POST /agents/:id/unarchive` (admin). Archive/unarchive return the agent; archiving adds `warning: { code: "agent_in_use", message, widgets: [{id,name}], channels: [{id,name,channel}] }` when a widget or channel connection still points at the agent. Only `published` agents answer customers (see ai-runtime.md).
 Runtime reads: `published_version` not null => `agent_versions.config` for `(agent_id, published_version)`; else `agents.config` (draft, sandbox only).
 
 ## API keys (admin)

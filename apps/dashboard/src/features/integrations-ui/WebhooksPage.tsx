@@ -62,7 +62,7 @@ function HookForm({ hook, onClose, onDone }: { hook?: Webhook; onClose: () => vo
     onError: (e) => { if (!planLimitFrom(e)) toast.error(errMsg(e)); },
   });
   return (
-    <Modal title={hook ? "Edit webhook" : "Add webhook"} description="Yulona sends a signed POST to this address for each selected event." onClose={onClose}>
+    <Modal title={hook ? "Edit webhook" : "Add webhook"} description="Lumi sends a signed POST to this address for each selected event." onClose={onClose}>
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (name.trim() && url.trim() && sel.length) m.mutate(); }}>
         {m.isError && !planLimitFrom(m.error) && <Alert variant="destructive"><AlertTriangle /><AlertDescription>{errMsg(m.error)}</AlertDescription></Alert>}
         <UpgradePrompt error={m.error} />
@@ -213,7 +213,7 @@ export default function WebhooksPage() {
       {add && <HookForm onClose={() => setAdd(false)} onDone={(s) => { setAdd(false); void qc.invalidateQueries({ queryKey: ["webhooks"] }); if (s) setSecret(s); }} />}
       {secret && (
         <Modal title="Signing secret" onClose={() => setSecret(null)}>
-          <Alert variant="warning" className="mb-4"><KeyRound /><AlertTitle>Shown only once</AlertTitle><AlertDescription>Store it now. Use it to verify the <code className="font-mono text-xs">X-Yulona-Signature</code> header.</AlertDescription></Alert>
+          <Alert variant="warning" className="mb-4"><KeyRound /><AlertTitle>Shown only once</AlertTitle><AlertDescription>Store it now. Use it to verify the <code className="font-mono text-xs">X-Lumi-Signature</code> header.</AlertDescription></Alert>
           <CopyField label="signing secret" value={secret} testId="webhook-secret" wrap />
           <div className="mt-5 flex justify-end"><Button onClick={() => setSecret(null)}>Done</Button></div>
         </Modal>

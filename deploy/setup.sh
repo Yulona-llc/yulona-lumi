@@ -63,7 +63,7 @@ else
 fi
 pw="$(printf '%s' "$creds" | sed -n 's/.*"password":"\([^"]*\)".*/\1/p' | tail -n1)"
 echo
-echo "Yulona is running: $url"
+echo "Lumi is running: $url"
 echo "Admin login : $email"
 echo "Password    : ${pw:-<see create-tenant output above>}    (shown once - change it after first login)"
 echo "Health      : curl -k ${url%% *}/readyz"

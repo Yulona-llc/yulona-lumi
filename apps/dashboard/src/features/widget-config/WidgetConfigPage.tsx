@@ -12,6 +12,8 @@ import { toast } from "@/components/ui/sonner";
 import { Spinner } from "../../components/ui";
 import { Badge, ConfirmModal, Empty, ErrorState, Loading, PageHeader, RoleNotice, Select, TextArea, TextField, useRole } from "../common/ui";
 import { CopyButton, DirtyDot, FormSection, StickyBar, useMediaQuery } from "../settings/parts";
+import { Advanced, ChipInput } from "../common/inputs";
+import { AppearanceFields, AvatarField, useAvatarCache } from "./Appearance";
 import { DraftCard, LiveFrame, previewDoc } from "./WidgetPreview";
 
 export default function WidgetConfigPage() {
@@ -55,25 +57,33 @@ function WidgetForm({ w }: { w: WidgetDto }) {
   const [agentId, setAgentId] = useState(w.agentId ?? "");
   const [cfg, setCfg] = useState<WidgetConfig>(w.config);
   const [pre, setPre] = useState<PrechatConfig>(w.prechat);
-  const [domains, setDomains] = useState(w.allowedDomains.join("\n"));
+  const [domains, setDomains] = useState<string[]>(w.allowedDomains);
   const [rot, setRot] = useState(false);
+  // Cloudflare Turnstile secret key: write-only (never returned by the API)
+  const [tsSecret, setTsSecret] = useState("");
+  const [clearSecret, setClearSecret] = useState(false);
   const [preview, setPreview] = useState(false);
   const [bump, setBump] = useState(0);
   const side = useMediaQuery("(min-width: 768px)");
-  useEffect(() => { setName(w.name); setEnabled(w.enabled); setAgentId(w.agentId ?? ""); setCfg(w.config); setPre(w.prechat); setDomains(w.allowedDomains.join("\n")); }, [w]);
+  useEffect(() => { setName(w.name); setEnabled(w.enabled); setAgentId(w.agentId ?? ""); setCfg(w.config); setPre(w.prechat); setDomains(w.allowedDomains); }, [w.id, w.updatedAt]); // not on avatar changes: those save on their own and must not discard unsaved edits
 
-  const list = domains.split("\n").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const list = domains;
   const badDomain = list.find((d) => !allowedDomainSchema.safeParse(d).success);
-  const colorBad = cfg.primaryColor !== undefined && !/^#[0-9a-fA-F]{6}$/.test(cfg.primaryColor);
+  const avatarCache = useAvatarCache();
+  const avatarQ = useQuery({ queryKey: ["widget-avatar", w.id, w.avatarVersion], queryFn: () => ag.avatarUrl(w.id), enabled: w.hasAvatar, staleTime: Infinity, gcTime: 0 });
   const avatarBad = !!cfg.avatarUrl && !/^https:\/\//.test(cfg.avatarUrl);
-  const invalid = !!badDomain || colorBad || avatarBad || !name.trim() || list.length > 50;
+  const ts = cfg.protection?.turnstile;
+  const honeypot = cfg.protection?.honeypot !== false;
+  const hasSecret = w.hasTurnstileSecret && !clearSecret;
+  const tsBad = !!ts?.enabled && (!ts.siteKey.trim() || (!hasSecret && tsSecret.trim().length < 8));
+  const invalid = !!badDomain || avatarBad || !name.trim() || list.length > 50 || tsBad;
   const dirty = useMemo(
-    () => name !== w.name || enabled !== w.enabled || agentId !== (w.agentId ?? "") || JSON.stringify(clean(cfg)) !== JSON.stringify(clean(w.config)) || JSON.stringify(pre) !== JSON.stringify(w.prechat) || JSON.stringify(list) !== JSON.stringify(w.allowedDomains),
-    [name, enabled, agentId, cfg, pre, list, w],
+    () => name !== w.name || enabled !== w.enabled || agentId !== (w.agentId ?? "") || JSON.stringify(clean(cfg)) !== JSON.stringify(clean(w.config)) || JSON.stringify(pre) !== JSON.stringify(w.prechat) || JSON.stringify(list) !== JSON.stringify(w.allowedDomains) || tsSecret !== "" || clearSecret,
+    [name, enabled, agentId, cfg, pre, list, w, tsSecret, clearSecret],
   );
   const save = useMutation({
-    mutationFn: () => ag.updateWidget(w.id, { name: name.trim(), enabled, agentId: agentId || null, config: clean(cfg), prechat: pre, allowedDomains: list }),
-    onSuccess: (r) => { qc.setQueryData(["widgets"], (old: WidgetDto[] | undefined) => old?.map((x) => (x.id === r.id ? r : x))); setBump((b) => b + 1); toast.success("Widget saved"); },
+    mutationFn: () => ag.updateWidget(w.id, { name: name.trim(), enabled, agentId: agentId || null, config: clean(cfg), prechat: pre, allowedDomains: list, ...(tsSecret.trim() ? { turnstileSecret: tsSecret.trim() } : clearSecret ? { turnstileSecret: null } : {}) }),
+    onSuccess: (r) => { setTsSecret(""); setClearSecret(false); qc.setQueryData(["widgets"], (old: WidgetDto[] | undefined) => old?.map((x) => (x.id === r.id ? r : x))); setBump((b) => b + 1); toast.success("Widget saved"); },
     onError: (e) => toast.error(errMsg(e)),
   });
   const rotate = useMutation({
@@ -85,7 +95,10 @@ function WidgetForm({ w }: { w: WidgetDto }) {
   const set = <K extends keyof WidgetConfig>(k: K, v: WidgetConfig[K] | "") => setCfg((c) => ({ ...c, [k]: v === "" ? undefined : v }));
   const setField = (n: (typeof PRE_FIELDS)[number], on: boolean) =>
     setPre((p) => ({ ...p, fields: on ? [...p.fields, { name: n, label: n[0]!.toUpperCase() + n.slice(1), required: false }] : p.fields.filter((f) => f.name !== n) }));
-  const discard = () => { setName(w.name); setEnabled(w.enabled); setAgentId(w.agentId ?? ""); setCfg(w.config); setPre(w.prechat); setDomains(w.allowedDomains.join("\n")); };
+  const setProt = (p: Partial<NonNullable<WidgetConfig["protection"]>>) => setCfg((c) => ({ ...c, protection: { honeypot: true, ...c.protection, ...p } }));
+  const setTs = (p: Partial<NonNullable<NonNullable<WidgetConfig["protection"]>["turnstile"]>>) =>
+    setProt({ turnstile: { enabled: false, siteKey: "", theme: "auto", size: "normal", appearance: "always", ...ts, ...p } });
+  const discard = () => { setTsSecret(""); setClearSecret(false); setName(w.name); setEnabled(w.enabled); setAgentId(w.agentId ?? ""); setCfg(w.config); setPre(w.prechat); setDomains(w.allowedDomains); };
 
   const liveProps = (() => {
     if (!embed.data) return null;
@@ -95,7 +108,7 @@ function WidgetForm({ w }: { w: WidgetDto }) {
 
   const aside: ReactNode = (
     <div className="space-y-5 2xl:sticky 2xl:top-4">
-      <FormSection title="Draft preview" description="Updates as you type. Not saved yet." className="max-2xl:hidden"><DraftCard cfg={cfg} prechatEnabled={pre.enabled} /></FormSection>
+      <FormSection title="Draft preview" description="Updates as you type. Not saved yet." className="max-2xl:hidden"><DraftCard cfg={cfg} prechatEnabled={pre.enabled} avatarSrc={avatarQ.data} /></FormSection>
       <FormSection title="Embed code" description="Paste before the closing body tag on your site.">
         {embed.data ? <>
           <pre className="overflow-x-auto rounded-xl border bg-muted p-3 font-mono text-xs" tabIndex={0} aria-label="Embed snippet">{embed.data.snippet}</pre>
@@ -120,24 +133,51 @@ function WidgetForm({ w }: { w: WidgetDto }) {
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField label="Title" value={cfg.title ?? ""} onChange={(e) => set("title", e.target.value)} disabled={ro} maxLength={60} />
               <TextField label="Subtitle" value={cfg.subtitle ?? ""} onChange={(e) => set("subtitle", e.target.value)} disabled={ro} maxLength={120} />
-              <div className="grid gap-1.5">
-                <TextField label="Primary color" value={cfg.primaryColor ?? ""} placeholder="#f97316" onChange={(e) => set("primaryColor", e.target.value)} disabled={ro} error={colorBad ? "Use a 6-digit hex color like #f97316" : undefined} />
-              </div>
               <TextField label="Launcher label" value={cfg.launcherLabel ?? ""} onChange={(e) => set("launcherLabel", e.target.value)} disabled={ro} maxLength={40} />
               <Select label="Theme" value={cfg.theme ?? "auto"} onChange={(e) => set("theme", e.target.value as WidgetConfig["theme"])} disabled={ro}><option value="auto">Match visitor</option><option value="light">Light</option><option value="dark">Dark</option></Select>
               <Select label="Position" value={cfg.position ?? "right"} onChange={(e) => set("position", e.target.value as WidgetConfig["position"])} disabled={ro}><option value="right">Bottom right</option><option value="left">Bottom left</option></Select>
-              <TextField label="Avatar image URL" type="url" value={cfg.avatarUrl ?? ""} onChange={(e) => set("avatarUrl", e.target.value)} disabled={ro} error={avatarBad ? "Must be an https URL" : undefined} />
               <TextField label="Input placeholder" value={cfg.inputPlaceholder ?? ""} onChange={(e) => set("inputPlaceholder", e.target.value)} disabled={ro} maxLength={80} />
             </div>
             <TextArea label="Welcome message" rows={2} value={cfg.welcomeMessage ?? ""} onChange={(e) => set("welcomeMessage", e.target.value)} disabled={ro} maxLength={500} />
           </FormSection>
+          <FormSection title="Appearance" description="Pick your brand colours and a picture. The preview updates as you go.">
+            <AppearanceFields cfg={cfg} setCfg={setCfg} ro={ro} avatarSrc={avatarQ.data} />
+            <AvatarField w={w} ro={ro} onChanged={avatarCache} />
+            <Advanced title="Advanced" summary="Use a picture from a web address instead">
+              <TextField label="Picture web address" type="url" value={cfg.avatarUrl ?? ""} onChange={(e) => set("avatarUrl", e.target.value)} disabled={ro} placeholder="https://" hint="Only needed if your picture already lives online. An uploaded picture is used first." error={avatarBad ? "The address must start with https://" : undefined} />
+            </Advanced>
+          </FormSection>
           <FormSection title="Behaviour" description="Who answers, and whether the widget is on.">
-            <Select label="Answering agent" value={agentId} onChange={(e) => setAgentId(e.target.value)} disabled={ro} hint="Default is your oldest agent."><option value="">Default agent</option>{(agents.data ?? []).filter((a) => a.status !== "archived").map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Select>
+            <Select label="Answering agent" value={agentId} onChange={(e) => setAgentId(e.target.value)} disabled={ro} hint="Only a published agent answers. With no agent, visitors see an offline notice and a team member replies."><option value="">No agent (offline)</option>{(agents.data ?? []).filter((a) => a.status !== "archived").map((a) => <option key={a.id} value={a.id}>{a.name}{a.status === "published" ? "" : " (not published)"}</option>)}</Select>
             <ToggleRow id="w-enabled" title="Widget enabled" hint="Turn off to hide the chat on every site." checked={enabled} onChange={setEnabled} disabled={ro} />
           </FormSection>
           <FormSection title="Allowed domains" description="Only these sites can show the widget.">
-            <TextArea label="One per line" hint="Examples: example.com, *.example.com (subdomains only), https://app.example.com:8443. An empty list blocks every site." rows={4} value={domains} onChange={(e) => setDomains(e.target.value)} disabled={ro} spellCheck={false}
-              error={badDomain ? `Invalid domain pattern: ${badDomain}` : undefined} />
+            <ChipInput label="Add your website" hint="Type your site address, like example.com, and press Enter. Use *.example.com to include every subdomain. With no sites, the chat cannot show anywhere." values={domains} onChange={setDomains} disabled={ro} max={50} placeholder="example.com"
+              normalize={(v) => (/^(https?:\/\/)?[^/?#]+/i.exec(v.trim())?.[0] ?? "").toLowerCase()}
+              check={(v) => (allowedDomainSchema.safeParse(v).success ? null : `"${v}" does not look like a website address. Try example.com`)} addLabel="Add" />
+            {badDomain && <p className="text-sm text-destructive">Invalid website: {badDomain}</p>}
+          </FormSection>
+          <FormSection title="Protection" description="Bots and spam are already blocked by default. Visitors who abuse the chat are blocked automatically (see the agent's Safety settings).">
+            <Advanced title="Advanced protection" summary={ts?.enabled ? "Cloudflare check on" : "Honeypot on by default"} defaultOpen={!!ts?.enabled}>
+            <ToggleRow id="w-hp" title="Honeypot field" hint="A hidden field that real visitors never see. Bots that fill it get a fake success and nothing is stored." checked={honeypot} onChange={(v) => setProt({ honeypot: v })} disabled={ro} />
+            <ToggleRow id="w-ts" title="Cloudflare Turnstile" hint="Visitors pass a Cloudflare challenge before the chat starts. You use your own Cloudflare keys, so you control the challenge in your Cloudflare dashboard." checked={!!ts?.enabled} onChange={(v) => setTs({ enabled: v })} disabled={ro} />
+            {ts?.enabled && <div className="space-y-4 rounded-xl border bg-muted/40 p-4">
+              <TextField label="Site key" value={ts.siteKey} onChange={(e) => setTs({ siteKey: e.target.value.trim() })} disabled={ro} maxLength={100} spellCheck={false} autoComplete="off"
+                error={!ts.siteKey.trim() ? "Enter the site key from Cloudflare" : undefined} />
+              <TextField label="Secret key" type="password" autoComplete="new-password" value={tsSecret} onChange={(e) => setTsSecret(e.target.value)} disabled={ro} maxLength={200}
+                placeholder={hasSecret ? "A secret key is stored. Type to replace it." : "Paste the secret key"}
+                hint={hasSecret ? "Stored encrypted. It is never shown again." : "Stored encrypted and never shown again."}
+                error={!hasSecret && tsSecret.trim().length < 8 ? "Enter the secret key from Cloudflare" : undefined} />
+              {w.hasTurnstileSecret && !clearSecret && !ro && <Button variant="outline" size="sm" type="button" onClick={() => { setClearSecret(true); setTsSecret(""); setTs({ enabled: false }); }}>Remove stored secret</Button>}
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Select label="Theme" value={ts.theme} onChange={(e) => setTs({ theme: e.target.value as typeof ts.theme })} disabled={ro}><option value="auto">Match visitor</option><option value="light">Light</option><option value="dark">Dark</option></Select>
+                <Select label="Size" value={ts.size} onChange={(e) => setTs({ size: e.target.value as typeof ts.size })} disabled={ro}><option value="normal">Normal</option><option value="compact">Compact</option><option value="flexible">Flexible</option></Select>
+                <Select label="Appearance" value={ts.appearance} onChange={(e) => setTs({ appearance: e.target.value as typeof ts.appearance })} disabled={ro}><option value="always">Always visible</option><option value="interaction-only">Only when needed</option></Select>
+              </div>
+              <TextField label="Action (optional)" value={ts.action ?? ""} onChange={(e) => setTs({ action: e.target.value || undefined })} disabled={ro} maxLength={32} hint="Shown in your Cloudflare analytics. Letters, digits, - and _." />
+              <p className="text-xs text-muted-foreground">To test locally, use Cloudflare's dummy keys: site key <code className="font-mono">1x00000000000000000000AA</code> with secret <code className="font-mono">1x0000000000000000000000000000000AA</code> always passes; <code className="font-mono">2x00000000000000000000AB</code> with <code className="font-mono">2x0000000000000000000000000000000AA</code> always fails.</p>
+            </div>}
+            </Advanced>
           </FormSection>
           <FormSection title="Pre-chat form" description="Collect details before the conversation starts.">
             <ToggleRow id="w-pre" title="Ask visitors for details before chatting" checked={pre.enabled} onChange={(v) => setPre({ ...pre, enabled: v })} disabled={ro} />
@@ -168,7 +208,7 @@ function WidgetForm({ w }: { w: WidgetDto }) {
       <Sheet open={preview} onOpenChange={setPreview}>
         <SheetContent side={side ? "right" : "bottom"} className="gap-0">
           <SheetHeader><SheetTitle>Draft preview</SheetTitle><SheetDescription>Updates as you type. Not saved yet.</SheetDescription></SheetHeader>
-          <div className="overflow-y-auto px-4 pb-4"><DraftCard cfg={cfg} prechatEnabled={pre.enabled} /></div>
+          <div className="overflow-y-auto px-4 pb-4"><DraftCard cfg={cfg} prechatEnabled={pre.enabled} avatarSrc={avatarQ.data} /></div>
         </SheetContent>
       </Sheet>
       {rot && <ConfirmModal danger title="Rotate the widget key?" body="The old key stops working immediately. Update the snippet on every site that embeds the widget." confirm="Rotate key" busy={rotate.isPending} onConfirm={() => rotate.mutate()} onClose={() => setRot(false)} />}

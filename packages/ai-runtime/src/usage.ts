@@ -1,6 +1,6 @@
 import type { Tx } from "@yulona/db";
 
-export type UsageSource = "turn" | "sandbox" | "builder" | "tool_test";
+export type UsageSource = "turn" | "sandbox" | "builder" | "tool_test" | "copilot" | "onboarding";
 
 export interface UsageDelta {
   promptTokens?: number;

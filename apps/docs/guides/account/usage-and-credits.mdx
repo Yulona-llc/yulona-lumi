@@ -18,12 +18,20 @@ A **credit** is the unit of AI usage on the hosted service. Each AI reply costs 
 - Some plans have no credit limit at all. The page then says "Your plan has no credit limit."
 
 <Note>
-Self-hosted installations run on your own AI provider account. Yulona never charges credits there and never pauses the AI for lack of credits. The **Usage** page shows the message "Usage on your own provider key is not charged" and lists tokens and requests so you can estimate your provider's bill.
+Self-hosted installations run on your own AI provider account. Lumi never charges credits there and never pauses the AI for lack of credits. The **Usage** page shows the message "Usage on your own provider key is not charged" and lists tokens and requests so you can estimate your provider's bill.
 </Note>
 
 ## Check your credits
 
 Open **Settings**, then **Usage**. At the top you see a gauge and, under **This month**, three figures: **Monthly allowance**, **Used this month** and **Top-up balance** (marked "Never expires"). The page also tells you the date your allowance resets. The **Overview** page shows a smaller **AI credits** card with the same meter.
+
+## How many messages is that?
+
+Next to the gauge you see "about N messages left". It is the credits you have left divided by what one answered customer message costs.
+
+- Once your assistants have answered at least 10 messages in the last 30 days, the estimate uses your own average. The note under it says "Based on your last 30 days".
+- Before that it uses a typical message (about 6,000 tokens in and 600 out, about 2.1 credits at the default rate). The note says it is an estimate for a typical message and adjusts as your assistants answer more.
+- The Billing page shows the same figure on the plan card. Long conversations, large knowledge passages and tool calls make a message cost more, so treat it as a guide.
 
 ## Warnings
 
@@ -36,8 +44,12 @@ When credits run out:
 
 - Customers see a short message such as "Our assistant is temporarily unavailable. A member of our team will get back to you shortly." The exact text is set by whoever operates the deployment.
 - Their chats wait in **Needs attention** until you add credits or a teammate replies.
-- Testing in the sandbox and the **Create with AI** builder stop working and tell you credits are used up.
+- Testing in the sandbox and the **Create with AI** builder stop working and tell you credits are used up. [Ask Lumi](/guides/workspace/ask-lumi) keeps its own allowance.
 - Buying a credit pack lifts the pause as soon as the payment clears.
+
+## Ask Lumi allowance
+
+Owners and admins on paid plans also see an **Ask Lumi** card on the Usage page, for example "148 of 150 credits left this month". [Ask Lumi](/guides/workspace/ask-lumi) has its own monthly allowance that is separate from your chat credits: using Ask Lumi never reduces the credits for customer chats, and running out of chat credits does not stop Ask Lumi. When the Ask Lumi allowance is used up it says so and works again on the first of next month (UTC). On Free workspaces the card links to the plans.
 
 ## Buy more credits
 

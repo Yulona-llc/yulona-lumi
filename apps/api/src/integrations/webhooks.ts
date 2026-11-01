@@ -79,7 +79,7 @@ class WebhooksRepository extends TenantRepository {
 export function webhookRoutes({ cfg, db }: IntegrationsDeps) {
   const r = new Hono<AppEnv>();
   // Per-route guard on purpose: `/api/v1/webhooks/*` also hosts public receivers owned by other areas
-  // (billing, channels, transactions), so a path-wide `use` would put them behind JWT auth.
+  // (billing, channels), so a path-wide `use` would put them behind JWT auth.
   const g = [requireAuth(cfg), requireMinRole("admin")] as const;
 
   const needKey = () => {
@@ -186,7 +186,7 @@ export function webhookRoutes({ cfg, db }: IntegrationsDeps) {
       const hook = await new WebhooksRepository(tx, tenantId).get(id);
       if (!hook) return null;
       const eventId = crypto.randomUUID();
-      const payload = { id: eventId, type: WEBHOOK_TEST_EVENT, createdAt: new Date().toISOString(), tenantId, data: { message: "Test event from Yulona", webhookId: id } };
+      const payload = { id: eventId, type: WEBHOOK_TEST_EVENT, createdAt: new Date().toISOString(), tenantId, data: { message: "Test event from Lumi", webhookId: id } };
       const [d] = await tx<{ id: string }[]>`
         INSERT INTO webhook_deliveries (tenant_id, webhook_id, event_id, event_type, payload, next_attempt_at)
         VALUES (${tenantId}, ${id}, ${eventId}, ${WEBHOOK_TEST_EVENT}, ${tx.json(payload as never)}, now()) RETURNING id`;

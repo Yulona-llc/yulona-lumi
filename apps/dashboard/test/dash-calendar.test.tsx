@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../src/auth/AuthProvider";
 import { setFetchImpl } from "../src/api/client";
 import CalendarSettings from "../src/features/bookings/CalendarSettings";
@@ -11,7 +11,9 @@ const uid = "11111111-1111-4111-8111-111111111111";
 const session = (role: string) => ({ accessToken: "t", expiresIn: 900, user: { id: uid, email: "a@b.co", name: "A", role }, tenant: { id: "22222222-2222-4222-8222-222222222222", name: "T" } });
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
 
-function mount(role: string, routes: Record<string, unknown>, at = "/") {
+const hubspotOff = { configured: true, connected: false, status: null, lastError: null, lastSyncAt: null, connectedAt: null, mapping: { properties: {}, sourceValue: "Lumi chat", syncOnBooked: true }, recent: [] };
+function mount(role: string, routes0: Record<string, unknown>, at = "/") {
+  const routes = { "/crm/hubspot": hubspotOff, ...routes0 };
   const calls: Array<{ url: string; method: string; body?: string }> = [];
   setFetchImpl((async (u: string, init?: RequestInit) => {
     const p = u.replace(/^.*\/api\/v1/, "");
@@ -67,6 +69,45 @@ describe("calendar settings", () => {
     expect(screen.getByRole("button", { name: "Connect Calendly" })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Calendly connected.");
   });
+  it("Connectors page: header, Calendar and CRM sections", async () => {
+    mount("admin", { "/calendar/connections": { items: [google, { provider: "calendly", configured: true, connected: false }], default: null } });
+    expect(await screen.findByRole("heading", { level: 1, name: "Connectors" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Calendar" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "CRM" })).toBeInTheDocument();
+  });
+
+  it("Calendly card shows the exact redirect URL with Copy and registration steps", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const uri = "https://api.example.test/api/v1/calendar/calendly/callback";
+    mount("admin", { "/calendar/connections": { items: [google, { provider: "calendly", configured: true, connected: false, redirectUri: uri, redirectSource: "PUBLIC_API_URL", redirectWarning: null, redirectError: null }], default: null } });
+    expect(await screen.findByTestId("calendly-redirect-url")).toHaveTextContent(uri);
+    expect(screen.getByText(/Register this exact URL as its Redirect URI/)).toBeInTheDocument();
+    expect(screen.getByText(/built from PUBLIC_API_URL/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Copy redirect URL" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(uri));
+    expect(screen.getByRole("button", { name: "Connect Calendly" })).toBeEnabled();
+  });
+
+  it("redirect warning is shown; a pre-flight error disables Connect", async () => {
+    mount("admin", { "/calendar/connections": { items: [google, { provider: "calendly", configured: true, connected: false, redirectUri: "http://localhost:4000/cb", redirectSource: "localhost_fallback", redirectWarning: null, redirectError: "PUBLIC_API_URL is not set, so the Calendly redirect URL fell back to localhost." }], default: null } });
+    expect((await screen.findAllByRole("alert")).some((a) => /fell back to localhost/.test(a.textContent ?? ""))).toBe(true);
+    expect(screen.getByRole("button", { name: "Connect Calendly" })).toBeDisabled();
+  });
+  it("redirect warning (not an error) keeps Connect enabled", async () => {
+    mount("admin", { "/calendar/connections": { items: [google, { provider: "calendly", configured: true, connected: false, redirectUri: "http://localhost:4000/cb", redirectSource: "localhost_fallback", redirectWarning: "PUBLIC_API_URL is not set, so the redirect URL uses localhost.", redirectError: null }], default: null } });
+    expect(await screen.findByRole("status")).toHaveTextContent(/PUBLIC_API_URL is not set/);
+    expect(screen.getByRole("button", { name: "Connect Calendly" })).toBeEnabled();
+  });
+
+  it("OAuth error flash uses plain language and Calendly's own description", async () => {
+    mount("admin", { "/calendar/connections": { items: [google, { provider: "calendly", configured: true, connected: false }], default: null } }, "/?calendar=error&provider=calendly&reason=invalid_grant&detail=redirect%20uri%20mismatch");
+    const alert = await screen.findByText(/Could not connect Calendly\./);
+    expect(alert).toHaveTextContent(/not exactly the one shown below/);
+    expect(screen.getByText(/Calendly said: redirect uri mismatch/)).toBeInTheDocument();
+    expect(screen.queryByText(/invalid_grant/)).toBeNull();
+  });
+
   it("agents cannot manage calendars", async () => {
     mount("agent", {});
     expect(await screen.findByText(/Only admins/)).toBeInTheDocument();

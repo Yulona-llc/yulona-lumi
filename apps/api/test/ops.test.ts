@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { SKIP_MESSAGE, seedTenantWithUser, setupTestDb } from "@yulona/db/testing";
-import { dispatchNotificationEmails, executeCalendarTool, GoogleCalendarClient, loadTenantCalendar, runSlaScan, signState, signWebhook } from "@yulona/ops";
+import { dispatchNotificationEmails, executeCalendarTool, GoogleCalendarClient, loadTenantCalendar, runSlaScan, signState } from "@yulona/ops";
 import { MockEmailProvider } from "@yulona/providers";
 import { createLogger } from "@yulona/shared";
 import { createApp } from "../src/app";
@@ -210,126 +210,6 @@ describe.skipIf(!hasDb)("ops domain", () => {
     expect((await ok("GET", "/tickets?slaBreached=true", A.h)).items.some((x: any) => x.id === t.id)).toBe(true);
     // B never sees A's notifications
     expect((await ok("GET", "/notifications", B.h)).items).toHaveLength(0);
-  });
-
-  // ------------------------------------------------------------ transactions
-  test("transactions: CRUD, filters, summary, CSV export, roles, isolation", async () => {
-    const { contactId } = await mkContactAndConv(A);
-    const a = await ok("POST", "/transactions", A.h, { amountCents: 12_500, currency: "usd", description: "Pro plan", externalId: "INV-1", contactId }, 201);
-    expect(a.currency).toBe("USD");
-    expect(a.source).toBe("manual");
-    await ok("POST", "/transactions", A.h, { amountCents: 500, currency: "USD", status: "pending", description: "=HYPERLINK(\"http://evil\")" }, 201);
-    await ok("POST", "/transactions", A.h, { amountCents: -2_000, currency: "USD", status: "refunded" }, 201);
-    expect((await call("POST", "/transactions", A.h, { amountCents: 1, currency: "USD", externalId: "INV-1" })).status).toBe(409);
-    expect((await call("POST", "/transactions", A.h, { amountCents: 1.5, currency: "USD" })).status).toBe(400);
-    expect((await call("POST", "/transactions", A.h, { amountCents: 1, currency: "DOLLARS" })).status).toBe(400);
-    expect((await call("POST", "/transactions", ViewerA.h, { amountCents: 1, currency: "USD" })).status).toBe(403);
-    expect((await call("GET", "/transactions", ViewerA.h)).status).toBe(403);
-
-    const all = await ok("GET", "/transactions", A.h);
-    expect(all.items).toHaveLength(3);
-    expect(all.summary.count).toBe(3);
-    expect(all.summary.totalCents).toBe(12_500); // completed only
-    expect((await ok("GET", "/transactions?status=pending,refunded", A.h)).items).toHaveLength(2);
-    expect((await ok("GET", `/transactions?contactId=${contactId}`, A.h)).items).toHaveLength(1);
-    expect((await ok("GET", "/transactions?minAmountCents=1000", A.h)).items).toHaveLength(1);
-    expect((await ok("GET", "/transactions?q=inv-1", A.h)).items).toHaveLength(1);
-    expect((await ok("GET", "/transactions?limit=2", A.h)).nextCursor).toBeTruthy();
-    expect((await ok("GET", "/transactions", B.h)).items).toHaveLength(0);
-
-    const upd = await ok("PATCH", `/transactions/${a.id}`, A.h, { status: "refunded", description: null });
-    expect(upd.status).toBe("refunded");
-    expect(upd.description).toBeNull();
-    expect((await call("GET", `/transactions/${a.id}`, B.h)).status).toBe(404);
-    expect((await call("PATCH", `/transactions/${a.id}`, B.h, { status: "failed" })).status).toBe(404);
-    expect((await call("DELETE", `/transactions/${a.id}`, AgentA.h)).status).toBe(403);
-
-    const csv = await call("GET", "/transactions/export.csv?status=pending,refunded,completed", A.h);
-    expect(csv.status).toBe(200);
-    expect(csv.headers.get("content-type")).toContain("text/csv");
-    expect(csv.headers.get("content-disposition")).toContain("attachment");
-    const text = await csv.text();
-    const lines = text.trim().split("\r\n");
-    expect(lines[0]).toBe("id,external_id,source,amount_cents,currency,status,description,contact_id,contact_name,conversation_id,occurred_at,created_at");
-    expect(lines).toHaveLength(4);
-    expect(text).toContain("'=HYPERLINK"); // formula neutralised
-    expect(text).not.toContain(",=HYPERLINK");
-    expect((await call("GET", "/transactions/export.csv", B.h)).status).toBe(200);
-    expect((await (await call("GET", "/transactions/export.csv", B.h)).text()).trim().split("\r\n")).toHaveLength(1);
-    expect((await call("GET", "/transactions/export.csv", ViewerA.h)).status).toBe(403);
-  });
-
-  test("transactions: CSV export streams across batches", async () => {
-    const t = await mkTenant("bulkcsv");
-    await owner`INSERT INTO transactions (tenant_id, amount_cents, currency, occurred_at) SELECT ${t.tenantId}, g, 'EUR', now() - (g || ' minutes')::interval FROM generate_series(1, 1203) g`;
-    const text = await (await call("GET", "/transactions/export.csv", t.h)).text();
-    const lines = text.trim().split("\r\n");
-    expect(lines).toHaveLength(1204);
-    expect(new Set(lines.slice(1).map((l) => l.split(",")[0])).size).toBe(1203);
-  });
-
-  test("transactions: inbound webhook HMAC, idempotency, rotation, disable, isolation", async () => {
-    expect((await call("POST", "/transactions/webhook-endpoints", AgentA.h, { name: "x" })).status).toBe(403);
-    const ep = await ok("POST", "/transactions/webhook-endpoints", A.h, { name: "Stripe-ish" }, 201);
-    expect(ep.secret).toMatch(/^whsec_/);
-    expect(ep.url).toContain(`/api/v1/webhooks/transactions/${ep.id}`);
-    // secret is stored encrypted, never returned again
-    const [row] = await owner`SELECT secret_encrypted FROM transaction_webhook_endpoints WHERE id = ${ep.id}`;
-    expect(row!.secret_encrypted).not.toContain(ep.secret);
-    expect(JSON.stringify(await ok("GET", "/transactions/webhook-endpoints", A.h))).not.toContain(ep.secret);
-
-    const { contactId } = await mkContactAndConv(A);
-    const [ct] = await owner`SELECT email FROM contacts WHERE id = ${contactId}`;
-    const body = JSON.stringify({ externalId: "evt_1", amountCents: 4200, currency: "usd", description: "Order 1", contactEmail: String(ct!.email).toUpperCase(), metadata: { sku: "a" } });
-    const send = (b: string, secret: string, tsOffset = 0, path = ep.id) => {
-      const ts = String(Math.floor(Date.now() / 1000) + tsOffset);
-      return app.request(`/api/v1/webhooks/transactions/${path}`, {
-        method: "POST", headers: { "content-type": "application/json", "x-yulona-timestamp": ts, "x-yulona-signature": signWebhook(secret, ts, b) }, body: b,
-      });
-    };
-    const r1 = await send(body, ep.secret);
-    expect(r1.status).toBe(200);
-    const o1 = await j(r1);
-    expect(o1.created).toBe(true);
-    const tx = await ok("GET", `/transactions/${o1.id}`, A.h);
-    expect(tx.source).toBe("webhook");
-    expect(tx.contactId).toBe(contactId);
-    expect(tx.amountCents).toBe(4200);
-    // replay => update, no duplicate
-    const r2 = await j(await send(JSON.stringify({ externalId: "evt_1", amountCents: 4200, currency: "USD", status: "refunded" }), ep.secret));
-    expect(r2).toEqual({ id: o1.id, created: false });
-    expect((await ok("GET", `/transactions/${o1.id}`, A.h)).status).toBe("refunded");
-    expect((await ok("GET", "/transactions?source=webhook", A.h)).items).toHaveLength(1);
-
-    // rejections: all 401 with the same message
-    const msgs = new Set<string>();
-    for (const res of [
-      await send(body, "wrong-secret"), await send(body, ep.secret, -3600), await send(body, ep.secret, 0, crypto.randomUUID()), await send(body, ep.secret, 0, "not-a-uuid"),
-      await app.request(`/api/v1/webhooks/transactions/${ep.id}`, { method: "POST", body }),
-    ]) {
-      expect(res.status).toBe(401);
-      msgs.add((await j(res)).error.message);
-    }
-    expect(msgs.size).toBe(1);
-    // strict body after a valid signature
-    expect((await send(JSON.stringify({ externalId: "e", amountCents: 1, currency: "USD", tenantId: B.tenantId }), ep.secret)).status).toBe(400);
-    expect((await send("not json", ep.secret)).status).toBe(400);
-    expect((await send("x".repeat(70_000), ep.secret)).status).toBe(413);
-
-    // B cannot manage A's endpoint
-    expect((await call("DELETE", `/transactions/webhook-endpoints/${ep.id}`, B.h)).status).toBe(404);
-    expect((await call("POST", `/transactions/webhook-endpoints/${ep.id}/rotate-secret`, B.h)).status).toBe(404);
-    // transactions created via A's endpoint stay in A
-    expect((await ok("GET", "/transactions", B.h)).items.every((x: any) => x.source !== "webhook")).toBe(true);
-
-    // rotate invalidates the old secret
-    const rot = await ok("POST", `/transactions/webhook-endpoints/${ep.id}/rotate-secret`, A.h);
-    expect((await send(body, ep.secret)).status).toBe(401);
-    expect((await send(JSON.stringify({ externalId: "evt_2", amountCents: 1, currency: "USD" }), rot.secret)).status).toBe(200);
-    // disable
-    await ok("PATCH", `/transactions/webhook-endpoints/${ep.id}`, A.h, { enabled: false });
-    expect((await send(body, rot.secret)).status).toBe(401);
-    await ok("DELETE", `/transactions/webhook-endpoints/${ep.id}`, A.h);
   });
 
   // ------------------------------------------------------------ calendar + bookings
@@ -730,14 +610,9 @@ describe.skipIf(!hasDb)("ops domain", () => {
 
   test("RLS: app role sees nothing without a tenant, owner rows are invisible across tenants", async () => {
     expect(await db`SELECT id FROM tickets`).toHaveLength(0);
-    expect(await db`SELECT id FROM transactions`).toHaveLength(0);
     expect(await db`SELECT id FROM bookings`).toHaveLength(0);
     expect(await db`SELECT tenant_id FROM calendar_connections`).toHaveLength(0);
     expect(await db`SELECT id FROM notifications`).toHaveLength(0);
-    expect(await db`SELECT id FROM transaction_webhook_endpoints`).toHaveLength(0);
-    // only the narrow resolver exposes the (encrypted) webhook secret across tenants
-    const [ep] = await owner<{ id: string }[]>`INSERT INTO transaction_webhook_endpoints (tenant_id, name, secret_encrypted) VALUES (${A.tenantId}, 'e', 'enc') RETURNING id`;
-    expect(await db`SELECT * FROM ops_txn_endpoint_resolve(${ep!.id}::uuid)`).toHaveLength(1);
     await expect((async () => { await db`INSERT INTO tickets (tenant_id, number, title) VALUES (${A.tenantId}, 999, 'x')`; })()).rejects.toThrow();
   });
 });

@@ -28,6 +28,8 @@ export interface LlmRequest {
   tools?: ToolSpec[];
   temperature?: number;
   maxTokens?: number;
+  /** forwarded as `reasoning_effort` when the provider supports it (AI_REASONING_EFFORT) */
+  reasoningEffort?: string;
   signal?: AbortSignal;
 }
 export interface LlmResult {

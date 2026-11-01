@@ -1,6 +1,6 @@
 ---
 title: Custom tools backend
-description: Build the HTTP backend that a Yulona agent calls as a tool, including request format, authentication, retries, response handling and testing.
+description: Build the HTTP backend that a Lumi agent calls as a tool, including request format, authentication, retries, response handling and testing.
 icon: server
 ---
 
@@ -10,11 +10,11 @@ A custom tool lets an agent call your own HTTP API during a conversation: look u
 
 1. A **connection** stores your backend's base URL and credential, encrypted. Create it with `POST /api/v1/tool-connections` (owner or admin).
 2. A **tool** is a manifest (version 2) saved in the agent's `config.customTools` and switched on by adding its name to `config.enabledTools`.
-3. When the model calls the tool, Yulona validates the arguments against `inputSchema`, builds the HTTP request from the manifest, adds the connection's credential, calls your backend from the **worker**, and hands the (mapped) response to the model. The credential never reaches the model, prompts, logs or API responses.
+3. When the model calls the tool, Lumi validates the arguments against `inputSchema`, builds the HTTP request from the manifest, adds the connection's credential, calls your backend from the **worker**, and hands the (mapped) response to the model. The credential never reaches the model, prompts, logs or API responses.
 
 Your backend is only called for live conversations. The agent sandbox never calls custom tools; it reports what it would call. Use `POST /tools/test` to exercise the real backend.
 
-## What Yulona sends
+## What Lumi sends
 
 | Part | Rule |
 |---|---|
@@ -22,7 +22,7 @@ Your backend is only called for live conversations. The agent sandbox never call
 | URL | Connection `baseUrl` (trailing slashes removed) plus `request.path`. `{{field}}` placeholders are URL-encoded; values `.`, `..` or containing backslashes or line breaks are rejected. The URL must stay on the base URL's origin and path prefix. |
 | Query | Fields with `in: "query"`, appended as `key=value`; array values repeat the key. Missing or `null` fields are skipped. |
 | Body | Only for `POST`, `PUT`, `PATCH`: the rendered `bodyTemplate`, otherwise a JSON object of the `in: "body"` fields. If there is nothing to send, no body. Maximum 100,000 characters. |
-| Headers | `Accept: application/json`, `User-Agent: YulonaBot/1.0`, `Content-Type: application/json` when there is a body, static `request.headers`, `in: "header"` fields, then the authentication headers. Header names are lowercased. |
+| Headers | `Accept: application/json`, `User-Agent: LumiBot/1.0`, `Content-Type: application/json` when there is a body, static `request.headers`, `in: "header"` fields, then the authentication headers. Header names are lowercased. |
 
 ## Authentication types
 
@@ -34,7 +34,7 @@ Authentication is always taken from the connection and cannot be overridden by t
 | `bearer` | `Authorization: Bearer <secret>` |
 | `api_key` | `<authHeaderName>: <secret>` (default header `X-API-Key`) |
 | `basic` | `Authorization: Basic base64(secret)`; the secret must be `username:password` |
-| `hmac` | `X-Yulona-Timestamp: <unix seconds>` and `X-Yulona-Signature: v1=<hex>` |
+| `hmac` | `X-Lumi-Timestamp: <unix seconds>` and `X-Lumi-Signature: v1=<hex>`, plus the same two values as `X-Yulona-Timestamp` and `X-Yulona-Signature` (older names, still sent) |
 
 ### HMAC signed requests
 
@@ -44,9 +44,9 @@ The signature is `HMAC-SHA256(secret, "<timestamp>.<raw request body>")`, hex-en
 ```javascript Node.js
 import crypto from "node:crypto";
 
-export function verifyYulona(req, rawBody, secret) {
-  const ts = req.headers["x-yulona-timestamp"] ?? "";
-  const sig = req.headers["x-yulona-signature"] ?? "";
+export function verifyLumi(req, rawBody, secret) {
+  const ts = req.headers["x-lumi-timestamp"] ?? "";
+  const sig = req.headers["x-lumi-signature"] ?? "";
   if (!Number.isFinite(Number(ts)) || Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;
   const expected = "v1=" + crypto.createHmac("sha256", secret).update(`${ts}.${rawBody}`).digest("hex");
   const a = Buffer.from(expected), b = Buffer.from(sig);
@@ -57,9 +57,9 @@ export function verifyYulona(req, rawBody, secret) {
 ```python Python
 import hashlib, hmac, time
 
-def verify_yulona(headers, raw_body: bytes, secret: str) -> bool:
-    ts = headers.get("X-Yulona-Timestamp", "")
-    sig = headers.get("X-Yulona-Signature", "")
+def verify_lumi(headers, raw_body: bytes, secret: str) -> bool:
+    ts = headers.get("X-Lumi-Timestamp", "")
+    sig = headers.get("X-Lumi-Signature", "")
     if not ts.isdigit() or abs(time.time() - int(ts)) > 300:
         return False
     expected = "v1=" + hmac.new(secret.encode(), ts.encode() + b"." + raw_body, hashlib.sha256).hexdigest()
@@ -70,8 +70,8 @@ def verify_yulona(headers, raw_body: bytes, secret: str) -> bool:
 ## Timeouts, retries and redirects
 
 - **Timeout:** `timeoutMs`, 500 to 30000 ms, default 10000. The deadline covers one attempt including redirects.
-- **Retries:** only for `GET`, `PUT` and `DELETE`, and only when the manifest sets `retry: { attempts: 2-4, baseMs: 50-5000 }`. Waits grow exponentially (`baseMs`, then `2 x baseMs`, and so on). Retries happen on timeouts, network errors, HTTP `5xx` and `429`. `POST` and `PATCH` are never retried, so a duplicate side effect cannot come from Yulona.
-- **Redirects:** up to 3, each hop re-validated against the SSRF rules. When a redirect goes to another origin (different scheme, host or port), Yulona removes the credential headers (`Authorization`, `X-API-Key` or your custom key header, `X-Yulona-Signature`, `X-Yulona-Timestamp`, `Cookie`) before following it, so a redirect never leaks your secret. Same-origin hops keep them. `301`/`302` on a POST and `303` switch to GET without a body; a `307`/`308` that would replay a request body to another origin is refused and reported as `ssrf_blocked`. Point the connection at the final URL to avoid relying on redirects.
+- **Retries:** only for `GET`, `PUT` and `DELETE`, and only when the manifest sets `retry: { attempts: 2-4, baseMs: 50-5000 }`. Waits grow exponentially (`baseMs`, then `2 x baseMs`, and so on). Retries happen on timeouts, network errors, HTTP `5xx` and `429`. `POST` and `PATCH` are never retried, so a duplicate side effect cannot come from Lumi.
+- **Redirects:** up to 3, each hop re-validated against the SSRF rules. When a redirect goes to another origin (different scheme, host or port), Lumi removes the credential headers (`Authorization`, `X-API-Key` or your custom key header, `X-Yulona-Signature`, `X-Yulona-Timestamp`, `Cookie`) before following it, so a redirect never leaks your secret. Same-origin hops keep them. `301`/`302` on a POST and `303` switch to GET without a body; a `307`/`308` that would replay a request body to another origin is refused and reported as `ssrf_blocked`. Point the connection at the final URL to avoid relying on redirects.
 - **Limits:** response bodies over 256 KB fail with `response_too_large`.
 
 ## What your backend should return
@@ -84,7 +84,7 @@ Return `2xx` with a JSON body. Any status below 400 is treated as success.
 
 Status handling:
 
-| Backend returns | Yulona treats it as |
+| Backend returns | Lumi treats it as |
 |---|---|
 | `2xx` or `3xx` without `Location` | Success |
 | `4xx` (except `429`) | Failure `http_error`, not retried. The response body is **not** shown to the model. |
@@ -179,7 +179,7 @@ Host: api.salon.example
 Authorization: Bearer YOUR_BACKEND_TOKEN
 Accept: application/json
 Content-Type: application/json
-User-Agent: YulonaBot/1.0
+User-Agent: LumiBot/1.0
 
 {"startsAt":"2026-10-22T09:00:00Z","service":"haircut","name":"Ada"}
 ```

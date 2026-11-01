@@ -49,7 +49,7 @@ const agent = await step("create + publish agent", async () => {
   must(p.status === 200 || p.status === 201, `publish ${p.status} ${JSON.stringify(p.body)}`); return c.body;
 });
 await step("add knowledge text (ingest job via worker)", async () => {
-  const r = await j("/api/v1/knowledge/sources/text", { method: "POST", token, body: JSON.stringify({ name: "FAQ", text: "Yulona opening hours are 9am to 5pm Monday to Friday. Refunds are processed within 5 business days.", agentId: agent?.id }) });
+  const r = await j("/api/v1/knowledge/sources/text", { method: "POST", token, body: JSON.stringify({ name: "FAQ", text: "Lumi opening hours are 9am to 5pm Monday to Friday. Refunds are processed within 5 business days.", agentId: agent?.id }) });
   must(r.status === 201, `status ${r.status} ${JSON.stringify(r.body)}`);
   for (let i = 0; i < 30; i++) {
     const s = await j(`/api/v1/knowledge/sources/${r.body.id}`, { token });

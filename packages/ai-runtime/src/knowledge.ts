@@ -1,4 +1,5 @@
 import { withTenant, type Db } from "@yulona/db";
+import { turnLimits } from "./limits";
 
 /**
  * Agent knowledge as "skills": every ready source is a skill folder (slug, name, description) of titled sections.
@@ -59,6 +60,7 @@ const toSection = (r: Row, score: number): SkillSection => ({
 });
 
 export function createKnowledgePort(db: Db, tenantId: string, agentId: string | null): KnowledgePort {
+  const readCap = turnLimits().readCapChars;
   const scope = (tx: Parameters<Parameters<typeof withTenant>[2]>[0]) =>
     tx`s.tenant_id = ${tenantId} AND s.status = 'ready' AND (s.agent_id IS NULL OR s.agent_id = ${agentId})`;
   const run = <T>(fn: (tx: Parameters<Parameters<typeof withTenant>[2]>[0]) => Promise<T>) => withTenant(db, tenantId, fn);
@@ -124,7 +126,7 @@ export function createKnowledgePort(db: Db, tenantId: string, agentId: string | 
           sections: rows.length, chars: rows.reduce((a, r) => a + r.content.length, 0),
         };
         if (section !== undefined) return { skill: summary, sections: rows.filter((r) => r.chunkIndex === section).map((r) => toSection(r, 1)) };
-        if (summary.chars <= 8000) return { skill: summary, sections: rows.map((r) => toSection(r, 1)) };
+        if (summary.chars <= readCap) return { skill: summary, sections: rows.map((r) => toSection(r, 1)) };
         return { skill: summary, sections: [], outline: rows.map((r) => ({ section: r.chunkIndex, title: r.title || `Section ${r.chunkIndex + 1}`, chars: r.content.length })) };
       }),
   };

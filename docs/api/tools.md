@@ -25,12 +25,12 @@ DTO (secrets are write-only; only `hasSecret` is returned):
 
 Fields:
 - `name` 1-100 chars, unique per tenant (409 on duplicate).
-- `baseUrl`: **https required in SaaS**, `http` also allowed when self-hosted. No credentials/query/fragment in the URL. Private, loopback and link-local hosts are always rejected (SSRF rules; also re-checked on every call and every redirect). On a redirect to another origin (scheme/host/port) `safeFetch` strips credential headers (authorization, proxy-authorization, x-api-key, x-yulona-signature/timestamp, cookie, plus the connection's custom auth header name via `sensitiveHeaders`); same-origin hops keep them. 301/302 POST and 303 become GET without body; 307/308 with a body to another origin is refused (`ssrf_blocked`).
+- `baseUrl`: **https required in SaaS**, `http` also allowed when self-hosted. No credentials/query/fragment in the URL. Private, loopback and link-local hosts are always rejected (SSRF rules; also re-checked on every call and every redirect). On a redirect to another origin (scheme/host/port) `safeFetch` strips credential headers (authorization, proxy-authorization, x-api-key, x-yulona-signature/timestamp, x-lumi-signature/timestamp, cookie, plus the connection's custom auth header name via `sensitiveHeaders`); same-origin hops keep them. 301/302 POST and 303 become GET without body; 307/308 with a body to another origin is refused (`ssrf_blocked`).
 - `authType`: `none | bearer | api_key | basic | hmac`.
   - `bearer`: `Authorization: Bearer <secret>`.
   - `api_key`: header `authHeaderName` (default `X-API-Key`) = secret.
   - `basic`: secret must be `"username:password"`; sent as `Authorization: Basic base64(secret)`.
-  - `hmac`: secret is a signing secret. Each request carries `X-Yulona-Timestamp: <unix seconds>` and `X-Yulona-Signature: v1=<hex>` where the signature is `HMAC-SHA256(secret, "<timestamp>.<raw request body>")` (empty string body for GET/DELETE). Same scheme as outbound webhooks; receivers should reject timestamps older than 5 minutes.
+  - `hmac`: secret is a signing secret. Each request carries `X-Lumi-Timestamp: <unix seconds>` and `X-Lumi-Signature: v1=<hex>` (also sent as `X-Yulona-Timestamp` / `X-Yulona-Signature`) where the signature is `HMAC-SHA256(secret, "<timestamp>.<raw request body>")` (empty string body for GET/DELETE). Same scheme as outbound webhooks; receivers should reject timestamps older than 5 minutes.
   - `none` must not have a `secret`; every other type requires one on create.
 - `secret` up to 2000 chars. Stored AES-256-GCM encrypted (AAD `toolconn:{tenant}:{id}`). **503 `service_unavailable`** when the server has no `ENCRYPTION_KEY`.
 

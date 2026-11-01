@@ -30,8 +30,9 @@ describe.skipIf(!hasDb)("RLS posture (catalog-level)", () => {
       SELECT c.relname AS t FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public' AND c.relkind = 'r'
         AND NOT EXISTS (SELECT 1 FROM information_schema.columns k WHERE k.table_schema = 'public' AND k.table_name = c.relname AND k.column_name = 'tenant_id')`;
-    // global/platform tables: RLS-protected (tenants, platform_admins, worker_heartbeats) or read-only reference data for yulona_app
-    const allowed = new Set(["schema_migrations", "tenants", "plans", "plan_limits", "plan_prices", "feature_flags", "platform_admins", "worker_heartbeats", "llm_model_rates", "credit_packs", "llm_provider_profiles"]);
+    // global/platform tables: RLS-protected (tenants, platform_admins, admin_sessions, worker_heartbeats; owner-only policies, no grants to yulona_app
+    // or yulona_admin) or read-only reference data for yulona_app
+    const allowed = new Set(["schema_migrations", "tenants", "plans", "plan_limits", "plan_prices", "feature_flags", "platform_admins", "worker_heartbeats", "llm_model_rates", "credit_packs", "llm_provider_profiles", "platform_audit_logs", "admin_sessions"]);
     const unexpected = rows.map((r) => r.t).filter((t) => !allowed.has(t));
     // Anything not allow-listed must be reviewed: either add tenant_id + RLS, or justify here.
     expect(unexpected).toEqual([]);
@@ -40,6 +41,12 @@ describe.skipIf(!hasDb)("RLS posture (catalog-level)", () => {
       WHERE grantee = 'yulona_app' AND table_name IN ('plans','plan_limits','plan_prices','feature_flags','schema_migrations','platform_admins')
         AND privilege_type IN ('INSERT','UPDATE','DELETE','TRUNCATE')`;
     expect([...writable]).toEqual([]);
+    // wave 6: platform tables (admins, sessions, audit, notes, tags, impersonation codes/sessions) are granted to NO application role
+    const leaked = await b.owner<{ t: string; g: string }[]>`
+      SELECT table_name AS t, grantee AS g FROM information_schema.role_table_grants
+      WHERE grantee IN ('yulona_app', 'yulona_admin', 'PUBLIC')
+        AND table_name IN ('platform_admins','platform_audit_logs','admin_sessions','tenant_notes','tenant_tags','impersonation_codes','impersonation_sessions','billing_events','worker_heartbeats','llm_provider_profiles')`;
+    expect([...leaked]).toEqual([]);
   });
 
   test("yulona_app is not superuser, has no BYPASSRLS, does not own tables", async () => {

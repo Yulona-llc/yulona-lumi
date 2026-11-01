@@ -28,6 +28,8 @@ export const contactsApi = {
   patch: (id: string, b: ContactPatch) => request(`/contacts/${id}`, { method: "PATCH", auth: true, body: b, schema: contactSchema }),
   remove: (id: string) => request(`/contacts/${id}`, { method: "DELETE", auth: true }),
   timeline: (id: string, cursor?: string) => request(`/contacts/${id}/timeline${qs({ limit: 30, cursor })}`, { auth: true, schema: timelinePage }),
+  block: (id: string, reason?: string) => request(`/contacts/${id}/block`, { method: "POST", auth: true, body: reason ? { reason } : {}, schema: contactSchema }),
+  unblock: (id: string) => request(`/contacts/${id}/unblock`, { method: "POST", auth: true, schema: contactSchema }),
   merge: (id: string, sourceContactId: string) => request(`/contacts/${id}/merge`, { method: "POST", auth: true, body: { sourceContactId } }),
 };
 

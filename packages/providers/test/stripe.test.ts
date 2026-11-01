@@ -32,6 +32,21 @@ describe("stripe provider", () => {
     expect((await p.parseWebhook(other, sign(other))).action).toBeUndefined();
   });
 
+  test("invoice events: newer API shape (parent.subscription_details), checkout with unpaid delayed payment", async () => {
+    const p = mk();
+    const inv = (type: string, object: object) => JSON.stringify({ id: "evt_" + type, type, data: { object } });
+    const paid = inv("invoice.paid", { customer: "cus_1", parent: { subscription_details: { subscription: "sub_new" } } });
+    expect(await p.parseWebhook(paid, sign(paid))).toMatchObject({ action: "payment_succeeded", customerId: "cus_1", subscriptionId: "sub_new" });
+    const failed = inv("invoice.payment_failed", { customer: "cus_1", subscription: "sub_old" });
+    expect(await p.parseWebhook(failed, sign(failed))).toMatchObject({ action: "payment_failed", subscriptionId: "sub_old" });
+    const del = inv("customer.subscription.deleted", { id: "sub_1", customer: "cus_1", metadata: { tenantId: "t1" } });
+    expect(await p.parseWebhook(del, sign(del))).toMatchObject({ action: "subscription_deleted", subscriptionId: "sub_1", tenantId: "t1" });
+    const unpaid = inv("checkout.session.completed", { mode: "subscription", payment_status: "unpaid", customer: "cus_1", subscription: "sub_1", client_reference_id: "t1" });
+    expect((await p.parseWebhook(unpaid, sign(unpaid))).action).toBeUndefined();
+    const ok = inv("checkout.session.completed", { mode: "subscription", payment_status: "paid", customer: "cus_1", subscription: "sub_1", client_reference_id: "t1", metadata: { planKey: "pro" } });
+    expect(await p.parseWebhook(ok, sign(ok))).toMatchObject({ action: "subscription_set", status: "active", planKey: "pro", tenantId: "t1" });
+  });
+
   test("REST calls: customer, checkout (price + tenant metadata), portal, errors", async () => {
     const calls: { url: string; body: string }[] = [];
     const f = (async (url: string, init: RequestInit) => {

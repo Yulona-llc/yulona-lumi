@@ -25,7 +25,7 @@ export async function dispatchNotificationEmails(
       await email.send({
         to: r.toEmail,
         subject: r.title,
-        text: `Hi ${r.toName},\n\n${r.title}${r.body ? `\n\n${r.body}` : ""}\n\n${opts.appUrl ? `Open Yulona: ${opts.appUrl}\n` : ""}`,
+        text: `Hi ${r.toName},\n\n${r.title}${r.body ? `\n\n${r.body}` : ""}\n\n${opts.appUrl ? `Open Lumi: ${opts.appUrl}\n` : ""}`,
       });
       await db`SELECT ops_notification_email_done(${r.id}::uuid, true, NULL)`;
       sent++;

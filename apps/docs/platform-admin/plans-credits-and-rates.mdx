@@ -4,7 +4,7 @@ description: Set plan allowances, model rates and credit packs, grant credits to
 icon: coins
 ---
 
-This page is for platform admins of the hosted product. Credits are how Yulona meters AI usage: every model call costs credits based on its tokens, each plan includes a monthly allowance, and customers can buy more. Open the Credits section of the console to manage it all.
+This page is for platform admins of the hosted product. Credits are how Lumi meters AI usage: every model call costs credits based on its tokens, each plan includes a monthly allowance, and customers can buy more. Open the Credits section of the console to manage it all.
 
 <Note>
 Credits apply only when `DEPLOYMENT_MODE=saas`. On a self-hosted install usage is still recorded for the Usage page, but nothing is charged or blocked. See [Self-hosting overview](/self-hosting/overview).
@@ -21,7 +21,15 @@ Credits apply only when `DEPLOYMENT_MODE=saas`. On a self-hosted install usage i
 
 Credits, Plan allowances. Each plan has a Credits per month field and an Unlimited checkbox. Click Save for that plan. The value is a whole number of credits.
 
-The seeded placeholder values are 50 for `free`, 1,500 for `pro`, and unlimited for `enterprise` and `self_hosted`. Change them to match your pricing.
+The seeded values are 50 for `free`, 4,980 for `pro` (the $49 plan), and unlimited for `enterprise` and `self_hosted`. Change them to match your pricing.
+
+Under each plan name the console shows an estimate: the credits, the monthly tokens and "about N messages". The estimate assumes a typical message (about 6,000 tokens in and 600 out) at the Default (*) rate, so it follows any rate change you make. At the default rate a typical message costs 2.1 credits.
+
+The Pro allowance is derived from the default rate: 14,000,000 input tokens at 0.25 credits per 1,000 plus 1,480,000 output tokens at 1 credit per 1,000 is 3,500 + 1,480 = 4,980 credits, or 15,480,000 tokens. The token limit is for display; credits are the one pooled meter. If you change the model rates, revisit the allowance.
+
+### Ask Lumi allowance
+
+Each plan row also has **Ask Lumi credits per month** with its own **Unlimited** checkbox and **Save** button. This is the limit `copilot_credits_monthly`: the monthly allowance of the Ask Lumi assistant in the customer dashboard, separate from the chat credits above. The seeded placeholders are 0 for `free` (which locks Ask Lumi), 150 for `pro`, 600 for `enterprise` and unlimited for `self_hosted`; set real values before launch. Ask Lumi is available only to workspaces with an active or trialing paid subscription, so the allowance only matters for them. Usage is recorded as AI usage with the source `copilot` and shows in the customer's Usage page; it is never taken from their credits. The change applies on the next message.
 
 Plans also carry other limits, such as seats, agents, widgets, API keys, monthly conversations, storage and monthly tokens. The console edits only the credit allowance; the other limits are set through the platform admin API with `PUT /api/v1/admin/plans/:key/limits/:metric` and a body of `{ "limit": 25 }` (`null` means unlimited).
 

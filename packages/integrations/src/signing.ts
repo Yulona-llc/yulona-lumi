@@ -4,6 +4,11 @@ export const SIGNATURE_HEADER = "X-Yulona-Signature";
 export const TIMESTAMP_HEADER = "X-Yulona-Timestamp";
 export const EVENT_HEADER = "X-Yulona-Event";
 export const DELIVERY_HEADER = "X-Yulona-Delivery";
+/** The product is now called Lumi: the same four headers are also sent under the X-Lumi-* names. Receivers may use either. */
+export const LUMI_SIGNATURE_HEADER = "X-Lumi-Signature";
+export const LUMI_TIMESTAMP_HEADER = "X-Lumi-Timestamp";
+export const LUMI_EVENT_HEADER = "X-Lumi-Event";
+export const LUMI_DELIVERY_HEADER = "X-Lumi-Delivery";
 
 /** `whsec_<43 chars>`; shown to the user exactly once. */
 export function generateWebhookSecret(): string {

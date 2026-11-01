@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "preact/hooks"
 import type { Chat, ChatState } from "./chat";
 import { Blocks, FieldInput, type Interact } from "./render/Blocks";
 import { normalize, safeUrl } from "./render/normalize";
-import type { ChatMessage, PreChatField } from "./types";
+import { renderTurnstile } from "./turnstile";
+import type { ChatMessage, PreChatField, WidgetRuntimeConfig } from "./types";
 
 function useChat(chat: Chat): ChatState {
   const [s, setS] = useState(chat.state);
@@ -18,6 +19,21 @@ export function readableOn(hex: string): string {
   const lin = (c: number) => ((c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
   return L > 0.4 ? "#14161f" : "#fff";
+}
+const mixHex = (a: string, b: string) => {
+  const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
+  const ch = (sh: number) => Math.round((((x >> sh) & 255) + ((y >> sh) & 255)) / 2);
+  return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, "0")}`;
+};
+/** CSS variables for the brand fill. `--c` is the solid accent (mid colour for gradients), `--cbg` the fill, `--c-fg` the text on it. Old configs fall back to a solid `primaryColor`. */
+export function brandStyle(cfg: Pick<WidgetRuntimeConfig, "primaryColor" | "appearance"> | undefined): Record<string, string> {
+  const ap = cfg?.appearance;
+  const c1 = safeColor(ap?.color ?? cfg?.primaryColor, "#4f46e5");
+  const c2 = ap?.mode === "gradient" && ap.color2 && /^#[0-9a-f]{6}$/i.test(ap.color2) ? ap.color2 : undefined;
+  if (!c2) return { "--c": c1, "--cbg": c1, "--c-fg": readableOn(c1) };
+  const mid = mixHex(c1, c2);
+  const angle = Math.min(360, Math.max(0, Math.round(Number.isFinite(ap?.angle) ? (ap!.angle as number) : 135)));
+  return { "--c": mid, "--cbg": `linear-gradient(${angle}deg, ${c1}, ${c2})`, "--c-fg": readableOn(mid) };
 }
 export const safeColor = (c: string | undefined, d: string) => (c && /^#[0-9a-f]{6}$/i.test(c) ? c : d);
 
@@ -60,8 +76,7 @@ export function App({ chat, startOpen, root }: { chat: Chat; startOpen?: boolean
     else if (!e.shiftKey && active === last) (e.preventDefault(), first.focus());
   };
 
-  const color = safeColor(cfg?.primaryColor, "#4f46e5");
-  const style = { "--c": color, "--c-fg": readableOn(color) } as Record<string, string>;
+  const style = brandStyle(cfg);
   const logo = safeUrl(cfg?.logoUrl);
 
   return (
@@ -69,7 +84,7 @@ export function App({ chat, startOpen, root }: { chat: Chat; startOpen?: boolean
       {open && (
         <div class="y-panel" role="dialog" aria-modal="true" aria-label={cfg?.title ?? "Chat"} ref={panel} onKeyDown={onKeyDown} tabIndex={-1}>
           <header class="y-head">
-            {logo && <img src={logo} alt="" referrerpolicy="no-referrer" />}
+            {logo && <img src={logo} alt="" referrerpolicy="origin" />}
             <h2>{cfg?.title ?? "Chat"}{cfg?.subtitle && <small class="y-sub">{cfg.subtitle}</small>}</h2>
             {s.phase === "ready" && s.conn !== "live" && <span class="y-st">{s.conn === "offline" ? "Offline" : "Reconnecting…"}</span>}
             <button class="y-x" type="button" aria-label="Close chat" onClick={() => setOpen(false)}>
@@ -84,6 +99,14 @@ export function App({ chat, startOpen, root }: { chat: Chat; startOpen?: boolean
             </div>
           )}
           {s.phase === "prechat" && cfg?.preChat && <PreChat intro={cfg.preChat.intro} fields={cfg.preChat.fields} onSubmit={(v) => void chat.submitPreChat(v)} />}
+          {s.phase === "verify" && cfg?.protection?.turnstile && <Verify o={cfg.protection.turnstile} onToken={(t) => void chat.submitVerification(t)} />}
+          {s.phase === "closed" && <div class="y-center" role="alert"><span>This conversation has ended.</span></div>}
+          {cfg?.protection?.honeypot !== false && (s.phase === "prechat" || s.phase === "verify" || s.phase === "ready") && (
+            <div class="y-hp" aria-hidden="true">
+              <input type="text" name="website" tabIndex={-1} autoComplete="off" onInput={(e) => chat.setHoneypot(e.currentTarget.value)} />
+            </div>
+          )}
+          {s.phase === "ready" && cfg?.unavailable && <div class="y-off" role="status">This assistant is offline right now. Leave a message and a team member will reply.</div>}
           {s.phase === "ready" && <Conversation chat={chat} s={s} />}
         </div>
       )}
@@ -98,6 +121,29 @@ export function App({ chat, startOpen, root }: { chat: Chat; startOpen?: boolean
       >
         <Icon d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" />
       </button>
+    </div>
+  );
+}
+
+function Verify({ o, onToken }: { o: NonNullable<NonNullable<WidgetRuntimeConfig["protection"]>["turnstile"]>; onToken(t: string): void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [failed, setFailed] = useState(0);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    if (!box.current) return;
+    setError(false);
+    return renderTurnstile(box.current, o, { onToken, onError: () => setError(true), onExpire: () => {} });
+  }, [failed]);
+  return (
+    <div class="y-center">
+      <span>Please confirm you are human to start the chat.</span>
+      <div ref={box} />
+      {error && (
+        <>
+          <span role="alert">The check could not load.</span>
+          <button class="y-primary" type="button" onClick={() => setFailed(failed + 1)}>Try again</button>
+        </>
+      )}
     </div>
   );
 }

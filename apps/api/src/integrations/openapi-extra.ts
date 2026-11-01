@@ -17,7 +17,8 @@ const asQuery = (s: z.ZodType) => {
 const source = z.object({
   id: z.uuid(), agentId: z.uuid().nullable(), type: z.enum(["file", "url", "text"]), name: z.string(), skill: z.string(), description: z.string().nullable(), status: z.enum(["pending", "processing", "ready", "failed"]),
   error: z.string().nullable(), sourceUrl: z.string().nullable(), fileName: z.string().nullable(), sizeBytes: z.number(), chunkCount: z.number().int(),
-  attempts: z.number().int(), maxPages: z.number().int().optional(), lastIngestedAt: z.string().nullable(), createdAt: z.string(), updatedAt: z.string(),
+  attempts: z.number().int(), maxPages: z.number().int().optional(), maxDepth: z.number().int().optional(), followLinks: z.boolean().optional(), includeSubdomains: z.boolean().optional(),
+  crawlProgress: z.object({ pagesCrawled: z.number().int(), pagesFound: z.number().int(), pagesSkipped: z.number().int(), truncated: z.boolean().optional(), done: z.boolean() }).nullable().optional(), lastIngestedAt: z.string().nullable(), createdAt: z.string(), updatedAt: z.string(),
 });
 
 /** Knowledge + sandbox endpoints (owned by ai-runtime) were missing from the spec; documented here. */
@@ -89,7 +90,7 @@ export function polishOpenApi<T extends { paths: Record<string, Record<string, u
   }
   dropEmptyRequired(doc.paths);
   const info = { ...(doc.info ?? {}) };
-  info.description ??= "Yulona API. Dashboard endpoints use a user JWT (bearerAuth); `/api/v1/public-api/*` uses a tenant API key (apiKeyAuth); `/api/v1/public/widget/*` uses a widget session. Webhook deliveries are signed: see docs/api/integrations.md.";
+  info.description ??= "Lumi API. Dashboard endpoints use a user JWT (bearerAuth); `/api/v1/public-api/*` uses a tenant API key (apiKeyAuth); `/api/v1/public/widget/*` uses a widget session. Webhook deliveries are signed: see docs/api/integrations.md.";
   const components = { ...(doc.components ?? {}) } as { securitySchemes?: Record<string, unknown> };
   components.securitySchemes = { apiKeyAuth: { type: "http", scheme: "bearer", bearerFormat: "yl_<prefix>_<secret>" }, ...(components.securitySchemes ?? {}) };
   return { ...doc, info, components, servers: [{ url: serverUrl }] } as T;

@@ -18,5 +18,5 @@ export const billingApi = {
 };
 export const METRIC_LABEL: Record<string, string> = {
   seats: "Team seats", agents: "AI agents", widgets: "Widgets", api_keys: "API keys",
-  monthly_conversations: "Conversations this month", storage_mb: "Knowledge storage (MB)", llm_tokens_monthly: "AI tokens this month", llm_credits_monthly: "AI credits this month",
+  monthly_conversations: "Conversations this month", storage_mb: "Knowledge storage (MB)", llm_tokens_monthly: "AI tokens this month", llm_credits_monthly: "AI credits this month", copilot_credits_monthly: "Ask Lumi credits this month",
 };

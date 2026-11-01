@@ -4,7 +4,7 @@ description: Field-by-field reference for version 1 and version 2 tool manifests
 icon: file-code
 ---
 
-A tool manifest is the JSON document that tells an agent what a custom tool does, which arguments it takes, and how Yulona calls your backend. This reference is for developers who write manifests by hand or generate them. For the HTTP contract your backend must follow, see [Custom tools backend](/developers/custom-tools-backend).
+A tool manifest is the JSON document that tells an agent what a custom tool does, which arguments it takes, and how Lumi calls your backend. This reference is for developers who write manifests by hand or generate them. For the HTTP contract your backend must follow, see [Custom tools backend](/developers/custom-tools-backend).
 
 ## Where manifests live
 
@@ -67,7 +67,7 @@ Version 2 uses a **connection** for the base URL and credential. All objects are
 Validation rules for `request`:
 
 - Every `{{placeholder}}` in `path` needs a field with `in: "path"`, and every `in: "path"` field must appear in the path.
-- Header names (in `fields` and `headers`) cannot be `authorization`, `proxy-authorization`, `cookie`, `host`, `content-length`, `connection`, `transfer-encoding`, `x-yulona-signature` or `x-yulona-timestamp`, and must match `A-Za-z0-9-` up to 64 characters.
+- Header names (in `fields` and `headers`) cannot be `authorization`, `proxy-authorization`, `cookie`, `host`, `content-length`, `connection`, `transfer-encoding`, `x-yulona-signature`, `x-yulona-timestamp`, `x-lumi-signature` or `x-lumi-timestamp`, and must match `A-Za-z0-9-` up to 64 characters.
 - `bodyTemplate` must be valid JSON once placeholders are replaced. Put placeholders **inside strings**: `"{{qty}}"` as a whole string keeps the value's type (a number stays a number); `"Order {{id}}"` interpolates text. Without a template, `in: "body"` fields are sent as a JSON object.
 - At runtime the final URL must remain on the connection's origin and path prefix.
 

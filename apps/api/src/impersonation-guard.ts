@@ -1,8 +1,10 @@
 import type { MiddlewareHandler } from "hono";
-import type { Db } from "@yulona/db";
+import { AuditLogRepository, withTenant, type Db } from "@yulona/db";
 import type { AppEnv } from "./context";
 import { Errors } from "./errors";
 import { verifyAccessToken } from "./security";
+
+export const IMPERSONATION_TTL_S = 900;
 
 /** True unless the (impersonation) session behind the token has been ended/expired/deleted. */
 export async function impersonationSessionActive(db: Db, sessionId: string, tenantId: string): Promise<boolean> {
@@ -27,7 +29,26 @@ export const impersonationGuard = (db: Db, secret: string): MiddlewareHandler<Ap
     if (claims) {
       if (!(await tenantActive(db, claims.tid))) throw Errors.unauthorized("Workspace is not active");
       if (claims.ims && !(await impersonationSessionActive(db, claims.ims, claims.tid))) throw Errors.unauthorized("Impersonation session ended");
+      // read-only impersonation (platform support): the token may only read
+      if (claims.ro && !["GET", "HEAD", "OPTIONS"].includes(c.req.method)) throw Errors.forbidden("This impersonation session is read-only");
     }
   }
   await next();
+};
+
+/**
+ * Records every state-changing request made with an impersonation token in the tenant's audit log
+ * (tenant side of "audit both sides"). Registered globally; a no-op for normal tokens.
+ */
+export const impersonationAudit = (db: Db): MiddlewareHandler<AppEnv> => async (c, next) => {
+  await next();
+  const a = c.get("auth");
+  if (!a?.impersonatorId || ["GET", "HEAD", "OPTIONS"].includes(c.req.method)) return;
+  try {
+    await withTenant(db, a.tenantId, (tx) => new AuditLogRepository(tx, a.tenantId).record({
+      actorUserId: a.userId, action: "impersonation.request", resourceType: "http", resourceId: `${c.req.method} ${c.req.path}`.slice(0, 200),
+      metadata: { impersonatorId: a.impersonatorId, sessionId: a.impersonationSessionId ?? null, status: c.res.status },
+      ip: c.get("ip"), requestId: c.get("requestId"),
+    }));
+  } catch { /* never fail the response because the audit write failed; the request log still has it */ }
 };

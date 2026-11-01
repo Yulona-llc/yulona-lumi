@@ -7,6 +7,47 @@ export type FileKind = "pdf" | "docx" | "text" | "html";
 
 export class UnsupportedFileError extends Error {}
 
+const INVISIBLE = /[\u200B-\u200D\u2060\uFEFF\u00AD]/g;
+/**
+ * Clean extracted text without losing paragraph structure: every kind of space (tabs, NBSP, ideographic, line
+ * separators) becomes one space, trailing/leading spaces on a line go, line endings become `\n`, and runs of
+ * blank lines collapse to one blank line. Used on every text branch before sectionizing.
+ */
+export function normalizeWs(text: string): string {
+  return text
+    .replace(/\r\n?|[\u2028\u2029\u0085]/g, "\n")
+    .replace(INVISIBLE, "")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+/** Single-line variant for titles, names and descriptions: all whitespace runs become one space. */
+export const normalizeInline = (s: string): string => s.replace(INVISIBLE, "").replace(/\s+/g, " ").trim();
+
+const TRACKING_PARAM = /^(utm_|fbclid$|gclid$|mc_cid$|mc_eid$|igshid$|_ga$)/i;
+/**
+ * Canonical form used to dedupe crawl URLs: http(s) only, lowercase host, no fragment, no default port, no tracking
+ * parameters, sorted query, no duplicate/trailing slashes and no `index.html`. Returns null when not http(s).
+ */
+export function normalizeUrl(raw: string, base?: string | URL): string | null {
+  let u: URL;
+  try {
+    u = new URL(raw.trim(), base);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  u.hash = "";
+  const keep = [...u.searchParams.entries()].filter(([k]) => !TRACKING_PARAM.test(k)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  u.search = "";
+  for (const [k, v] of keep) u.searchParams.append(k, v);
+  let path = u.pathname.replace(/\/{2,}/g, "/").replace(/\/index\.html?$/i, "/");
+  if (path.length > 1) path = path.replace(/\/+$/, "");
+  u.pathname = path || "/";
+  return u.toString();
+}
+
 function ext(name: string): string {
   return name.toLowerCase().split(".").pop() ?? "";
 }
@@ -62,28 +103,47 @@ export function htmlToText(html: string): { title: string | null; text: string }
   const text = html
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<(script|style|noscript|svg|template|head)[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<h([1-4])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, n: string, inner: string) => `\n\n${"#".repeat(Number(n))} ${inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()}\n\n`)
+    .replace(/<h([1-4])[^>]*>([\s\S]*?)<\/h\1>/gi, (_m, n: string, inner: string) => `\n\n${"#".repeat(Number(n))} ${normalizeInline(inner.replace(/<[^>]+>/g, " "))}\n\n`)
     .replace(/<(br|\/p|\/div|\/h[1-6]|\/li|\/tr|\/section|\/article|\/ul|\/ol|\/table)\s*\/?>/gi, "\n")
     .replace(/<[^>]+>/g, " ");
   return {
-    title: title ? decodeEntities(title).replace(/\s+/g, " ").trim() : null,
-    text: decodeEntities(text).replace(/[ \t\f\v]+/g, " ").replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim(),
+    title: title ? normalizeInline(decodeEntities(title)) || null : null,
+    text: normalizeWs(decodeEntities(text)),
   };
 }
 
-/** Same-origin http(s) links found in an HTML page (fragment-stripped, deduped). */
-export function extractLinks(html: string, base: URL): string[] {
-  const out = new Set<string>();
-  for (const m of html.matchAll(/<a\s[^>]*href\s*=\s*["']([^"'#]+)[^"']*["']/gi)) {
+const NON_PAGE = /\.(png|jpe?g|gif|svg|css|js|mjs|zip|gz|tar|ico|webp|avif|mp4|mp3|wav|mov|woff2?|ttf|eot|xml|json|exe|dmg)$/i;
+function attr(tag: string, name: string): string | null {
+  const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag);
+  return m ? (m[1] ?? m[2] ?? m[3] ?? "") : null;
+}
+
+/**
+ * http(s) links found in an HTML page, normalized (`normalizeUrl`) and deduped. Honours `<base href>` and skips
+ * `rel="nofollow"` links and obvious non-pages (images, scripts, archives). By default only same-origin links are
+ * returned; pass `accept` to apply a different rule (for example same site including subdomains).
+ */
+export function extractLinks(html: string, pageUrl: URL, accept: (u: URL) => boolean = (u) => u.origin === pageUrl.origin): string[] {
+  let base = pageUrl;
+  const baseTag = /<base\s[^>]*>/i.exec(html);
+  const baseHref = baseTag ? attr(baseTag[0], "href") : null;
+  if (baseHref) {
     try {
-      const u = new URL(decodeEntities(m[1]!), base);
-      if ((u.protocol === "http:" || u.protocol === "https:") && u.origin === base.origin && !/\.(png|jpe?g|gif|svg|css|js|zip|ico|webp|mp4)$/i.test(u.pathname)) {
-        u.hash = "";
-        out.add(u.toString());
-      }
+      base = new URL(decodeEntities(baseHref), pageUrl);
     } catch {
-      /* ignore */
+      /* ignore a broken <base> */
     }
+  }
+  const out = new Set<string>();
+  for (const m of html.matchAll(/<a\s[^>]*>/gi)) {
+    const href = attr(m[0], "href");
+    if (!href || /^\s*#/.test(href)) continue;
+    if (/\bnofollow\b/i.test(attr(m[0], "rel") ?? "")) continue;
+    const norm = normalizeUrl(decodeEntities(href), base);
+    if (!norm) continue;
+    const u = new URL(norm);
+    if (NON_PAGE.test(u.pathname) || !accept(u)) continue;
+    out.add(norm);
   }
   return [...out];
 }
@@ -94,15 +154,15 @@ export async function extractFromFile(name: string, bytes: Uint8Array): Promise<
     case "pdf": {
       const pdf = await getDocumentProxy(new Uint8Array(bytes));
       const { text } = await extractText(pdf, { mergePages: true });
-      return (Array.isArray(text) ? text.join("\n\n") : text).trim();
+      return normalizeWs(Array.isArray(text) ? text.join("\n\n") : text);
     }
     case "docx": {
       const r = await mammoth.extractRawText({ buffer: Buffer.from(bytes) });
-      return r.value.trim();
+      return normalizeWs(r.value);
     }
     case "html":
       return htmlToText(new TextDecoder().decode(bytes)).text;
     default:
-      return new TextDecoder().decode(bytes).trim();
+      return normalizeWs(new TextDecoder().decode(bytes));
   }
 }

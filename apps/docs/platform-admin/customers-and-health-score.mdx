@@ -1,0 +1,44 @@
+---
+title: Customers and the health score
+description: Search and filter customers, read the health score and its reasons, and use the Customer 360 tabs.
+icon: building-2
+---
+
+This page is for support, success and billing admins. The Customers page lists every workspace and Customer 360 shows one workspace in detail. You see health and metadata only: never message text, contact details or secrets.
+
+## The customer list
+
+Search by name, ID or the email of any team member. Open **Filters** to narrow by status, plan, health, credits state, inactivity (7, 14 or 30 days), errors in the last 7 days, tag and creation dates. Select a column heading to sort. Search, filters, sort and page are kept in the URL, so you can share a view. Use the density buttons for comfortable or compact rows, **Export CSV** to download the filtered list (audited), and the row menu to open, copy the ID or owner email, or suspend and restore (owner). Select rows to **Tag** several customers at once (owner and support).
+
+## The health score
+
+Every active customer starts at 100 and loses points for problems in the last 7 days. The score has a bucket: **Healthy** (80 and above), **Watch** (50 to 79) and **At risk** (below 50). The reasons are listed with their points, largest first.
+
+| Reason | Maximum points |
+|---|---|
+| Failed background jobs | 20 |
+| Failed webhook deliveries | 15 |
+| Channel errors | 20 |
+| Failed knowledge ingests | 10 |
+| Credits used up | 25 |
+| Fewer than 10% of credits left | 10 |
+| Latest payment failed | 25 |
+| No customer messages for 14 days or more | 15 |
+| No agent has ever been published | 10 |
+| Abuse blocks | 10 |
+
+## Customer 360
+
+The header shows the status, health, plan and owner, and the actions your role allows: **Impersonate**, **Change plan**, **Grant credits**, **Suspend** or **Restore access**, and under the menu **Rename** and **Delete customer** (owner). The tabs:
+
+- **Overview.** Health with reasons, key facts, plan limits, internal notes, tags and quick actions.
+- **Team.** Members with role, status and last sign-in, and pending invitations you can resend.
+- **Setup.** Agents, widgets, channels, knowledge sources, webhooks, connections, calendar and CRM with their status and last error.
+- **Issues.** Failures with a kind filter, a period filter, a CSV export and a "what to check" hint for each.
+- **Usage and credits.** Credit balance, AI usage by day and model, and grant or adjust.
+- **Billing.** Plan, subscription, top-ups and billing events.
+- **Timeline.** Customer and admin events, filterable by source.
+- **Flags.** Per-customer feature flag overrides (owner).
+- **Audit.** What admins did on this customer and the impersonation history.
+
+Opening a customer and exporting are recorded in the [audit log](/platform-admin/operations#audit-log).

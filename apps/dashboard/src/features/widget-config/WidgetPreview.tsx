@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { WidgetConfig } from "@yulona/shared";
+import { appearanceOf, fillOf } from "./brand";
 
 /** Builds the iframe document that boots the real apps/widget bundle through its public mount API (window.YulonaConfig + widget.js). */
 export function previewDoc(o: { widgetKey: string; apiBase: string; scriptUrl: string }): string {
@@ -9,21 +10,23 @@ export function previewDoc(o: { widgetKey: string; apiBase: string; scriptUrl: s
 }
 
 /** Instant, local approximation of the unsaved draft (colors, text, position). */
-export function DraftCard({ cfg, prechatEnabled }: { cfg: WidgetConfig; prechatEnabled: boolean }) {
-  const color = cfg.primaryColor ?? "#f97316";
+export function DraftCard({ cfg, prechatEnabled, avatarSrc }: { cfg: WidgetConfig; prechatEnabled: boolean; avatarSrc?: string | null }) {
+  const fill = fillOf(appearanceOf(cfg));
   const dark = cfg.theme === "dark";
   return (
     <div className={`flex ${cfg.position === "left" ? "justify-start" : "justify-end"}`}>
       <div className="w-full max-w-xs overflow-hidden rounded-2xl border shadow-lg" style={{ background: dark ? "#14171f" : "#fff", color: dark ? "#e8ecf4" : "#0f1b2d" }} aria-label="Draft widget preview" role="img">
-        <div className="px-4 py-3 text-white" style={{ background: color }}>
-          <p className="font-semibold">{cfg.title || "Chat with us"}</p><p className="text-xs opacity-90">{cfg.subtitle || "We reply in minutes"}</p>
+        <div className="flex items-center gap-2.5 px-4 py-3" style={fill}>
+          {avatarSrc && <img src={avatarSrc} alt="" className="size-8 rounded-full object-cover" />}
+          <div><p className="font-semibold">{cfg.title || "Chat with us"}</p><p className="text-xs opacity-90">{cfg.subtitle || "We reply in minutes"}</p></div>
         </div>
         <div className="space-y-2 p-4 text-sm">
           <p className="inline-block rounded-2xl px-3 py-2" style={{ background: dark ? "#232837" : "#eef1f6" }}>{cfg.welcomeMessage || "Hi! How can we help?"}</p>
+          <p className="ml-auto w-fit rounded-2xl px-3 py-2" style={fill}>I'd like to book a visit</p>
           {prechatEnabled && <p className="text-xs opacity-70">Visitors fill the pre-chat form first.</p>}
           <div className="rounded-lg border px-3 py-2 opacity-70" style={{ borderColor: dark ? "#3a4256" : "#dde3ec" }}>{cfg.inputPlaceholder || "Type your message"}</div>
         </div>
-        <div className="px-4 pb-3 text-right"><span className="inline-block rounded-full px-3 py-1 text-xs font-semibold text-white" style={{ background: color }}>{cfg.launcherLabel || "Chat"}</span></div>
+        <div className="px-4 pb-3 text-right"><span className="inline-block rounded-full px-3 py-1 text-xs font-semibold" style={fill}>{cfg.launcherLabel || "Chat"}</span></div>
       </div>
     </div>
   );

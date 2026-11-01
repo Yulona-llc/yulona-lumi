@@ -1,10 +1,10 @@
 ---
 title: Developer overview
-description: Understand how the Yulona services fit together, how a customer message becomes an AI reply, and which integration surface to use.
+description: Understand how the Lumi services fit together, how a customer message becomes an AI reply, and which integration surface to use.
 icon: sitemap
 ---
 
-This section is for engineers who integrate with Yulona or extend it: calling the API, receiving webhooks, embedding the widget, or exposing their own backend to an agent as a tool. If you only configure agents in the dashboard, start with the guides instead.
+This section is for engineers who integrate with Lumi or extend it: calling the API, receiving webhooks, embedding the widget, or exposing their own backend to an agent as a tool. If you only configure agents in the dashboard, start with the guides instead.
 
 ## Components
 
@@ -62,7 +62,7 @@ Because events come from database triggers inside the writer's transaction, an e
 |---|---|---|
 | Tenants | Many; public sign-up optional (`ALLOW_PUBLIC_SIGNUP`) | Exactly one, created at setup; sign-up never allowed |
 | Billing and credits | Stripe billing routes mounted; credits charged and gated | Billing routes not mounted; usage recorded, never charged or gated |
-| Platform admin console | On (`/api/v1/admin`) | Off unless `SUPER_ADMIN_ENABLED=true` |
+| Platform admin | Separate admin service (not in this API) | Not included |
 | Tool connection URLs | https required | http also allowed |
 
 <Note>

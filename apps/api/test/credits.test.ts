@@ -18,10 +18,8 @@ describe.skipIf(!hasDb)("credits + usage + provider config", () => {
   let owner: Awaited<ReturnType<typeof setupTestDb>>["owner"];
   let db: Awaited<ReturnType<typeof setupTestDb>>["app"];
   let app: ReturnType<typeof createApp>;
-  let sh: ReturnType<typeof createApp>; // self-hosted deployment (super-admin enabled so the admin routes can be tested over real HTTP)
+  let sh: ReturnType<typeof createApp>; // self-hosted deployment
   let limiter: MemoryRateLimiter;
-  let adminToken = "";
-  let shAdminToken = "";
   const stripeForms: Record<string, string>[] = [];
 
   const fakeFetch = (async (url: string, init: RequestInit) => {
@@ -39,11 +37,7 @@ describe.skipIf(!hasDb)("credits + usage + provider config", () => {
     const log = createLogger({ level: "silent" });
     const billing = new StripeBillingProvider({ secretKey: "sk_test", webhookSecret: WH, prices: { pro: "price_pro" }, fetch: fakeFetch });
     app = createApp({ cfg: testConfig({ ENCRYPTION_KEY: ENC }, open), db, limiter, log, providers: { ...createMockProviders(), billing } });
-    sh = createApp({ cfg: testConfig({ ENCRYPTION_KEY: ENC, DEPLOYMENT_MODE: "selfhosted", SUPER_ADMIN_ENABLED: "true" }, open), db, limiter, log, providers: createMockProviders() });
-    const e1 = uniqueEmail("sa");
-    await owner`INSERT INTO platform_admins (email, name, password_hash) VALUES (${e1}, 'SA', ${await hashPassword(PASSWORD)})`;
-    adminToken = ((await (await app.request("/api/v1/admin/auth/login", json({ email: e1, password: PASSWORD }))).json()) as { accessToken: string }).accessToken;
-    shAdminToken = ((await (await sh.request("/api/v1/admin/auth/login", json({ email: e1, password: PASSWORD }))).json()) as { accessToken: string }).accessToken;
+    sh = createApp({ cfg: testConfig({ ENCRYPTION_KEY: ENC, DEPLOYMENT_MODE: "selfhosted" }, open), db, limiter, log, providers: createMockProviders() });
   });
   afterAll(async () => {
     // pending credit emails would crowd the 25-row batch of the ops email-dispatch test sharing this database
@@ -87,21 +81,14 @@ describe.skipIf(!hasDb)("credits + usage + provider config", () => {
     data: { object: { id: session, mode: "payment", payment_status: over.paid === false ? "unpaid" : "paid", customer: "cus_x", client_reference_id: tenantId, amount_total: credits * 2,
       metadata: { kind: over.kind ?? "credit_topup", packId: crypto.randomUUID(), credits: String(credits), tenantId } } },
   });
-  const platformAudit = async (action: string) => owner<{ metadata: Record<string, any> }[]>`SELECT metadata FROM platform_audit_logs WHERE action = ${action} ORDER BY created_at DESC`; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-  test("auth required everywhere; role gates; realms are separate", async () => {
+  test("auth required everywhere; role gates", async () => {
     const id = crypto.randomUUID();
     for (const [m, p] of [["GET", "/usage/credits"], ["GET", "/usage/ai"], ["GET", "/usage/ai/export"], ["GET", "/billing/credit-packs"], ["POST", "/billing/credits/checkout"]] as const) {
       expect([p, (await call(app, m, p, null, m === "POST" ? {} : undefined)).status]).toEqual([p, 401]);
     }
-    for (const [m, p] of [["GET", "/admin/llm-profiles"], ["POST", "/admin/llm-profiles"], ["GET", `/admin/llm-profiles/${id}`], ["PATCH", `/admin/llm-profiles/${id}`], ["DELETE", `/admin/llm-profiles/${id}`],
-      ["POST", `/admin/llm-profiles/${id}/test`], ["GET", "/admin/model-rates"], ["PUT", "/admin/model-rates"], ["DELETE", "/admin/model-rates?model=x"], ["GET", "/admin/credit-packs"],
-      ["POST", "/admin/credit-packs"], ["PATCH", `/admin/credit-packs/${id}`], ["DELETE", `/admin/credit-packs/${id}`], ["GET", `/admin/tenants/${id}/credits`], ["POST", `/admin/tenants/${id}/credits`]] as const) {
-      expect([p, (await call(app, m, p, null, ["POST", "PUT", "PATCH"].includes(m) ? {} : undefined)).status]).toEqual([p, 401]);
-    }
     const t = await newTenant("pro"); // free plans only have 2 seats
-    expect((await call(app, "GET", "/admin/llm-profiles", t.token)).status).toBe(401); // tenant token is not an admin token
-    expect((await call(app, "GET", "/usage/credits", adminToken)).status).toBe(401); // and vice versa
+    expect((await call(app, "GET", "/admin/llm-profiles", t.token)).status).toBe(404); // platform administration is not served here
     const agent = await addUser(t, "agent");
     expect((await call(app, "GET", "/usage/credits", agent)).status).toBe(200);
     expect((await call(app, "GET", "/usage/ai", agent)).status).toBe(403);
@@ -126,9 +113,9 @@ describe.skipIf(!hasDb)("credits + usage + provider config", () => {
     // unlimited plan
     const ent = await newTenant("enterprise");
     expect(await j(await call(app, "GET", "/usage/credits", ent.token))).toMatchObject({ unlimited: true, allowanceMicro: null, remainingMicro: null, percentUsed: null, status: "ok" });
-    // plan change applies immediately (pro = 1500 credits)
+    // plan change applies immediately (pro = 4980 credits)
     await owner`UPDATE tenants SET plan_key = 'pro' WHERE id = ${t.tenantId}`;
-    expect(await j(await call(app, "GET", "/usage/credits", t.token))).toMatchObject({ allowanceMicro: 1500 * MICRO, status: "ok" });
+    expect(await j(await call(app, "GET", "/usage/credits", t.token))).toMatchObject({ allowanceMicro: 4980 * MICRO, status: "ok" });
   });
 
   test("GET /usage/ai: grouping, totals, CSV, strict validation, tenant isolation", async () => {
@@ -255,183 +242,6 @@ describe.skipIf(!hasDb)("credits + usage + provider config", () => {
     // the sandbox is never gated
     const agent = (await j(await call(sh, "POST", "/agents", t.token, { name: "Bot" }))).id as string;
     expect((await call(sh, "POST", "/knowledge/sandbox", t.token, { agentId: agent, message: "hello" })).status).toBe(200);
-  });
-
-  test("provider profiles: CRUD, SSRF on URLs, key is write-only and encrypted, default switching, audit", async () => {
-    const mk = (over: Record<string, unknown> = {}) => ({ name: "P-" + crypto.randomUUID().slice(0, 6), baseUrl: "https://93.184.216.34/v1", defaultModel: "m-default", apiKey: "sk-live-very-secret-1234567890", ...over });
-    // SSRF / URL rules (SaaS: https only, public hosts only)
-    for (const baseUrl of ["http://93.184.216.34/v1", "https://localhost/v1", "https://127.0.0.1/v1", "https://10.0.0.5/v1", "https://169.254.169.254/latest", "https://[::1]/v1", "https://192.168.1.1/", "ftp://example.com", "https://user:pw@93.184.216.34/", "https://93.184.216.34/v1?x=1", "not a url"]) {
-      const r = await call(app, "POST", "/admin/llm-profiles", adminToken, mk({ baseUrl }));
-      expect([baseUrl, r.status]).toEqual([baseUrl, 400]);
-    }
-    expect((await call(app, "POST", "/admin/llm-profiles", adminToken, mk({ extra: 1 }))).status).toBe(400);
-    expect((await call(app, "POST", "/admin/llm-profiles", adminToken, mk({ authScheme: "digest" }))).status).toBe(400);
-    expect((await call(app, "POST", "/admin/llm-profiles", adminToken, mk({ extraHeaders: { Host: "evil" } }))).status).toBe(400);
-    expect((await call(app, "POST", "/admin/llm-profiles", adminToken, mk({ chatPath: "/../x" }))).status).toBe(400);
-
-    const p1 = mk({ authHeader: "api-key", authScheme: "raw", extraHeaders: { "x-org": "acme" }, queryParams: { "api-version": "2024-06-01" }, chatPath: "/deployments/a/chat/completions", enabledModels: ["m1", "m2"], isDefault: true });
-    const r1 = await call(app, "POST", "/admin/llm-profiles", adminToken, p1);
-    expect(r1.status).toBe(201);
-    const raw1 = await r1.text();
-    expect(raw1).not.toContain("sk-live");
-    const c1 = JSON.parse(raw1);
-    expect(c1).toMatchObject({ name: p1.name, authHeader: "api-key", authScheme: "raw", extraHeaders: { "x-org": "acme" }, queryParams: { "api-version": "2024-06-01" }, enabledModels: ["m1", "m2"], isDefault: true, enabled: true, hasCredentials: true });
-    expect(Object.keys(c1)).not.toContain("apiKey");
-    const [stored] = await owner<{ credentials_encrypted: string }[]>`SELECT credentials_encrypted FROM llm_provider_profiles WHERE id = ${c1.id}`;
-    expect(stored!.credentials_encrypted.startsWith("v1.")).toBe(true);
-    expect(stored!.credentials_encrypted).not.toContain("sk-live");
-    expect((await call(app, "POST", "/admin/llm-profiles", adminToken, { ...p1, baseUrl: "https://93.184.216.35/v1" })).status).toBe(409); // duplicate name
-    expect(JSON.stringify(await j(await call(app, "GET", "/admin/llm-profiles", adminToken)))).not.toContain("sk-live");
-    expect(JSON.stringify(await j(await call(app, "GET", `/admin/llm-profiles/${c1.id}`, adminToken)))).not.toContain("credentials");
-
-    // second profile becomes the default atomically; PATCH validates, can clear the key
-    const c2 = await j(await call(app, "POST", "/admin/llm-profiles", adminToken, mk({ isDefault: true })));
-    const list = await j(await call(app, "GET", "/admin/llm-profiles", adminToken));
-    expect(list.items.filter((x: any) => x.isDefault).map((x: any) => x.id)).toEqual([c2.id]);
-    const patched = await call(app, "PATCH", `/admin/llm-profiles/${c1.id}`, adminToken, { defaultModel: "m9", apiKey: null, isDefault: true });
-    expect(await j(patched)).toMatchObject({ defaultModel: "m9", hasCredentials: false, isDefault: true });
-    expect((await j(await call(app, "GET", `/admin/llm-profiles/${c2.id}`, adminToken))).isDefault).toBe(false);
-    expect((await call(app, "PATCH", `/admin/llm-profiles/${c1.id}`, adminToken, { baseUrl: "https://10.1.1.1/v1" })).status).toBe(400);
-    expect((await call(app, "PATCH", `/admin/llm-profiles/${c1.id}`, adminToken, {})).status).toBe(400);
-    expect((await call(app, "PATCH", `/admin/llm-profiles/${crypto.randomUUID()}`, adminToken, { name: "zz" })).status).toBe(404);
-    const re = await call(app, "PATCH", `/admin/llm-profiles/${c1.id}`, adminToken, { apiKey: "sk-new-key-abcdefgh" });
-    expect((await j(re)).hasCredentials).toBe(true);
-    // disabling the default profile clears the default flag (the platform falls back to env)
-    expect((await j(await call(app, "PATCH", `/admin/llm-profiles/${c1.id}`, adminToken, { enabled: false }))).isDefault).toBe(false);
-    expect((await call(app, "DELETE", `/admin/llm-profiles/${c2.id}`, adminToken)).status).toBe(200);
-    expect((await call(app, "DELETE", `/admin/llm-profiles/${c2.id}`, adminToken)).status).toBe(404);
-    expect((await call(app, "DELETE", `/admin/llm-profiles/${c1.id}`, adminToken)).status).toBe(200);
-
-    // audit rows exist and never contain the key
-    const created = await platformAudit("llm_profile.create");
-    expect(created.length).toBeGreaterThanOrEqual(2);
-    const all = JSON.stringify([...created, ...(await platformAudit("llm_profile.update")), ...(await platformAudit("llm_profile.delete"))]);
-    expect(all).not.toContain("sk-live");
-    expect(all).not.toContain("sk-new-key");
-    expect((await platformAudit("llm_profile.update")).some((a) => a.metadata.credentialsChanged === true)).toBe(true);
-  });
-
-  test("profile without ENCRYPTION_KEY: 503 when a key is supplied", async () => {
-    const noKey = createApp({ cfg: testConfig({}, (c) => { for (const k of Object.keys(c.rateLimits) as (keyof typeof c.rateLimits)[]) c.rateLimits[k] = { limit: 1e6, windowMs: 60_000 }; }), db, limiter, log: createLogger({ level: "silent" }), providers: createMockProviders() });
-    const r = await call(noKey, "POST", "/admin/llm-profiles", adminToken, { name: "nokey-" + crypto.randomUUID().slice(0, 6), baseUrl: "https://93.184.216.34/v1", defaultModel: "m", apiKey: "sk-x" });
-    expect(r.status).toBe(503);
-    expect((await call(noKey, "POST", "/admin/llm-profiles", adminToken, { name: "nokey2-" + crypto.randomUUID().slice(0, 6), baseUrl: "https://93.184.216.34/v1", defaultModel: "m" })).status).toBe(201); // no key, no problem
-  });
-
-  test("profile test endpoint: real HTTP round trip (self-hosted deployment), never leaks the key", async () => {
-    const seen: { headers: Headers; path: string; search: string; body: any }[] = [];
-    let mode: "ok" | "fail" = "ok";
-    const fake = Bun.serve({
-      port: 0,
-      async fetch(req) {
-        const u = new URL(req.url);
-        seen.push({ headers: req.headers, path: u.pathname, search: u.search, body: await req.json() });
-        if (mode === "fail") return new Response("invalid api key sk-test-ABCDEFGH12345678 and Bearer sk-test-ABCDEFGH12345678", { status: 401 });
-        return Response.json({ model: "upstream-model", choices: [{ message: { content: "OK" }, finish_reason: "stop" }], usage: { prompt_tokens: 5, completion_tokens: 1 } });
-      },
-    });
-    try {
-      const create = await call(sh, "POST", "/admin/llm-profiles", shAdminToken, {
-        name: "local-" + crypto.randomUUID().slice(0, 6), baseUrl: `http://localhost:${fake.port}/v1`, defaultModel: "local-m", apiKey: "sk-test-ABCDEFGH12345678",
-        authHeader: "api-key", authScheme: "raw", extraHeaders: { "x-org": "acme" }, queryParams: { "api-version": "2024-06-01" },
-      });
-      expect(create.status).toBe(201); // private hosts are fine on a self-hosted deployment
-      const id = (await j(create)).id;
-      const ok = await j(await call(sh, "POST", `/admin/llm-profiles/${id}/test`, shAdminToken, {}));
-      expect(ok).toMatchObject({ ok: true, model: "upstream-model", error: null });
-      expect(typeof ok.latencyMs).toBe("number");
-      expect(seen[0]).toMatchObject({ path: "/v1/chat/completions", search: "?api-version=2024-06-01" });
-      expect(seen[0]!.headers.get("api-key")).toBe("sk-test-ABCDEFGH12345678");
-      expect(seen[0]!.headers.get("x-org")).toBe("acme");
-      expect(seen[0]!.body.model).toBe("local-m");
-      await call(sh, "POST", `/admin/llm-profiles/${id}/test`, shAdminToken, { model: "other" });
-      expect(seen[1]!.body.model).toBe("other");
-      mode = "fail";
-      const bad = await call(sh, "POST", `/admin/llm-profiles/${id}/test`, shAdminToken, {});
-      const badBody = await bad.text();
-      expect(bad.status).toBe(200);
-      expect(JSON.parse(badBody)).toMatchObject({ ok: false });
-      expect(badBody).toContain("401");
-      expect(badBody).not.toContain("sk-test-ABCDEFGH12345678");
-      expect((await call(sh, "POST", `/admin/llm-profiles/${crypto.randomUUID()}/test`, shAdminToken, {})).status).toBe(404);
-    } finally { fake.stop(true); }
-  });
-
-  test("model rates: upsert, list, protected default, audit; rates drive event cost", async () => {
-    const model = "test-model-" + crypto.randomUUID().slice(0, 6);
-    const list0 = await j(await call(app, "GET", "/admin/model-rates", adminToken));
-    expect(list0.items[0]).toMatchObject({ model: "*", inputMicroPer1k: 250000, outputMicroPer1k: 1000000, enabled: true });
-    for (const bad of [{ model, inputMicroPer1k: -1, outputMicroPer1k: 1 }, { model, inputMicroPer1k: 1.5, outputMicroPer1k: 1 }, { model: "bad model!", inputMicroPer1k: 1, outputMicroPer1k: 1 }, { model, inputMicroPer1k: 1, outputMicroPer1k: 1, x: 1 }]) {
-      expect((await call(app, "PUT", "/admin/model-rates", adminToken, bad)).status).toBe(400);
-    }
-    expect((await call(app, "PUT", "/admin/model-rates", adminToken, { model, inputMicroPer1k: 3000, outputMicroPer1k: 9000 })).status).toBe(200);
-    expect((await call(app, "PUT", "/admin/model-rates", adminToken, { model, inputMicroPer1k: 4000, outputMicroPer1k: 9000, enabled: false })).status).toBe(200);
-    const list = await j(await call(app, "GET", "/admin/model-rates", adminToken));
-    expect(list.items.find((x: any) => x.model === model)).toMatchObject({ inputMicroPer1k: 4000, outputMicroPer1k: 9000, enabled: false });
-    expect((await call(app, "DELETE", "/admin/model-rates?model=*", adminToken)).status).toBe(400);
-    expect((await call(app, "DELETE", `/admin/model-rates?model=${model}`, adminToken)).status).toBe(200);
-    expect((await call(app, "DELETE", `/admin/model-rates?model=${model}`, adminToken)).status).toBe(404);
-    expect((await call(app, "DELETE", "/admin/model-rates", adminToken)).status).toBe(400);
-    expect((await platformAudit("model_rate.set")).some((a) => a.metadata.model === model)).toBe(true);
-    expect((await platformAudit("model_rate.delete")).some((a) => a.metadata.model === model)).toBe(true);
-    // the app role cannot write rates directly
-    await expect((async () => { await db`INSERT INTO llm_model_rates (model, input_micro_per_1k, output_micro_per_1k) VALUES ('hack', 0, 0)`; })()).rejects.toThrow();
-  });
-
-  test("plan credit limits via the existing plans endpoint (sa_set_plan_limit) take effect and are audited", async () => {
-    const t = await newTenant("pro");
-    expect((await j(await call(app, "GET", "/usage/credits", t.token))).allowanceMicro).toBe(1500 * MICRO);
-    const put = await call(app, "PUT", "/admin/plans/pro/limits/llm_credits_monthly", adminToken, { limit: 2000 });
-    expect(put.status).toBe(200);
-    expect((await j(await call(app, "GET", "/usage/credits", t.token))).allowanceMicro).toBe(2000 * MICRO);
-    const plans = await j(await call(app, "GET", "/admin/plans", adminToken));
-    expect(plans.items.find((p: any) => p.key === "pro").limits.llm_credits_monthly).toBe(2000);
-    expect((await call(app, "PUT", "/admin/plans/pro/limits/llm_credits_monthly", adminToken, { limit: 1500 })).status).toBe(200);
-    expect((await platformAudit("plan.limit")).some((a) => a.metadata.metric === "llm_credits_monthly")).toBe(true);
-  });
-
-  test("credit packs admin: validation, update, delete vs deactivate-when-purchased, inactive hidden from tenants", async () => {
-    const mkPack = { name: "Promo " + crypto.randomUUID().slice(0, 4), credits: 100, priceCents: 500 };
-    for (const bad of [{ ...mkPack, credits: 0 }, { ...mkPack, credits: 1.5 }, { ...mkPack, priceCents: -1 }, { ...mkPack, name: "" }, { ...mkPack, x: 1 }]) {
-      expect((await call(app, "POST", "/admin/credit-packs", adminToken, bad)).status).toBe(400);
-    }
-    const created = await j(await call(app, "POST", "/admin/credit-packs", adminToken, mkPack));
-    expect(created).toMatchObject({ ...mkPack, active: true, currency: "usd" });
-    const upd = await j(await call(app, "PATCH", `/admin/credit-packs/${created.id}`, adminToken, { credits: 150, active: false }));
-    expect(upd).toMatchObject({ credits: 150, priceCents: 500, active: false });
-    const t = await newTenant();
-    expect((await j(await call(app, "GET", "/billing/credit-packs", t.token))).items.some((p: any) => p.id === created.id)).toBe(false);
-    expect((await call(app, "POST", "/billing/credits/checkout", t.token, { packId: created.id })).status).toBe(404); // inactive
-    expect((await j(await call(app, "GET", "/admin/credit-packs", adminToken))).items.some((p: any) => p.id === created.id)).toBe(true);
-    expect((await call(app, "PATCH", `/admin/credit-packs/${crypto.randomUUID()}`, adminToken, { name: "x" })).status).toBe(404);
-    expect(await j(await call(app, "DELETE", `/admin/credit-packs/${created.id}`, adminToken))).toMatchObject({ ok: true, result: "deleted" });
-    // purchased packs are only deactivated
-    const kept = await j(await call(app, "POST", "/admin/credit-packs", adminToken, { ...mkPack, name: mkPack.name + "b" }));
-    await owner`INSERT INTO credit_topups (ref, tenant_id, pack_id, credits_micro) VALUES (${"cs_" + crypto.randomUUID()}, ${t.tenantId}, ${kept.id}, 1000000)`;
-    expect(await j(await call(app, "DELETE", `/admin/credit-packs/${kept.id}`, adminToken))).toMatchObject({ result: "deactivated" });
-    expect((await call(app, "DELETE", `/admin/credit-packs/${crypto.randomUUID()}`, adminToken)).status).toBe(404);
-    expect((await platformAudit("credit_pack.upsert")).length).toBeGreaterThanOrEqual(2);
-  });
-
-  test("grant/adjust tenant credits: audited with reason, tenant-scoped, validated", async () => {
-    const a = await newTenant();
-    const b = await newTenant();
-    expect((await call(app, "POST", `/admin/tenants/${a.tenantId}/credits`, adminToken, { credits: 100, reason: "x" })).status).toBe(400); // reason too short
-    expect((await call(app, "POST", `/admin/tenants/${a.tenantId}/credits`, adminToken, { credits: 0, reason: "nothing to do" })).status).toBe(400);
-    expect((await call(app, "POST", `/admin/tenants/${a.tenantId}/credits`, adminToken, { credits: 1e9, reason: "way too much" })).status).toBe(400);
-    expect((await call(app, "POST", `/admin/tenants/${a.tenantId}/credits`, adminToken, { credits: 5, reason: "ok reason", tenantId: b.tenantId })).status).toBe(400);
-    expect((await call(app, "POST", `/admin/tenants/${crypto.randomUUID()}/credits`, adminToken, { credits: 5, reason: "unknown tenant" })).status).toBe(404);
-    expect((await call(app, "GET", `/admin/tenants/${crypto.randomUUID()}/credits`, adminToken)).status).toBe(404);
-    const g = await j(await call(app, "POST", `/admin/tenants/${a.tenantId}/credits`, adminToken, { credits: 100.5, reason: "Goodwill after outage" }));
-    expect(g).toMatchObject({ topupMicro: 100_500_000, remainingMicro: 150_500_000, planKey: "free" });
-    expect(await j(await call(app, "POST", `/admin/tenants/${a.tenantId}/credits`, adminToken, { credits: -50.5, reason: "Correction" }))).toMatchObject({ topupMicro: 50 * MICRO });
-    expect(await j(await call(app, "GET", `/admin/tenants/${a.tenantId}/credits`, adminToken))).toMatchObject({ topupMicro: 50 * MICRO });
-    expect((await j(await call(app, "GET", "/usage/credits", a.token))).topupMicro).toBe(50 * MICRO);
-    expect((await j(await call(app, "GET", "/usage/credits", b.token))).topupMicro).toBe(0);
-    const aud = (await platformAudit("credits.grant")).find((x) => x.metadata.reason === "Goodwill after outage");
-    expect(aud?.metadata).toMatchObject({ creditsMicro: 100_500_000 });
-    expect((await owner`SELECT 1 FROM audit_logs WHERE tenant_id = ${a.tenantId} AND action = 'billing.credits_adjusted'`).length).toBe(2);
-    expect((await owner`SELECT 1 FROM notifications WHERE tenant_id = ${a.tenantId} AND type = 'credits.granted'`).length).toBe(1);
   });
 
   test("RLS: the app role sees only its tenant's events/credits and cannot read provider credentials", async () => {

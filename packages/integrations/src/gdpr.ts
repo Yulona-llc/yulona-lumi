@@ -8,7 +8,7 @@ export const GDPR_ERASE_JOB = "gdpr.erase";
 export const EXPORT_TTL_DAYS = 7;
 const ROW_CAP = 100_000;
 /** Tables owned by other waves; included only when present and carrying the expected columns. */
-const OPTIONAL_CONTACT_TABLES = ["tickets", "bookings", "transactions"] as const;
+const OPTIONAL_CONTACT_TABLES = ["tickets", "bookings"] as const;
 
 export const exportKey = (tenantId: string, requestId: string) => `gdpr/${tenantId}/${requestId}.json`;
 

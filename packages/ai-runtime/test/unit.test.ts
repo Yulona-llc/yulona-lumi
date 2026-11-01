@@ -189,7 +189,7 @@ describe("prompt + stage gating", () => {
   });
   test("tool specs offered to the model follow the stage", () => {
     const tools = resolveTools(agent());
-    expect(toolSpecsForStage(tools, "visitor").map((t) => t.name).sort()).toEqual(["collect_contact", "escalate_to_human"]);
+    expect(toolSpecsForStage(tools, "visitor").map((t) => t.name).sort()).toEqual(["collect_contact", "escalate_to_human", "flag_abuse"]);
     expect(toolSpecsForStage(tools, "engaged").map((t) => t.name)).toContain("qualify_lead");
     expect(toolSpecsForStage(tools, "handoff_requested")).toEqual([]);
   });

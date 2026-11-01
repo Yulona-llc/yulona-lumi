@@ -30,14 +30,18 @@ export async function seedAll(b: Booted, label: string, tenant?: Tenant): Promis
   ids.tags = await id(o`INSERT INTO tags (tenant_id, name) VALUES (${tid}, ${`${mark}-tag-${label}`}) RETURNING id`);
   await o`INSERT INTO ticket_counters (tenant_id, last) VALUES (${tid}, 2)`;
   ids.tickets = await id(o`INSERT INTO tickets (tenant_id, number, title) VALUES (${tid}, 1, ${`${mark}-ticket-${label}`}) RETURNING id`);
-  ids.transactions = await id(o`INSERT INTO transactions (tenant_id, amount_cents, currency, description) VALUES (${tid}, 1500, 'USD', ${`${mark}-tx-${label}`}) RETURNING id`);
-  ids["webhook-endpoints"] = await id(o`INSERT INTO transaction_webhook_endpoints (tenant_id, name, secret_encrypted) VALUES (${tid}, ${`${mark}-txep`}, ${encryptCredentials(ENC_KEY, { s: "x" })}) RETURNING id`);
   ids.webhooks = await id(o`INSERT INTO webhooks (tenant_id, name, url, secret_encrypted, events) VALUES (${tid}, ${`${mark}-hook`}, 'https://hooks.example.test/x', ${encryptCredentials(ENC_KEY, { s: "x" })}, ${["message.created"]}) RETURNING id`);
   const evId = crypto.randomUUID();
   ids["webhook-deliveries"] = await id(o`INSERT INTO webhook_deliveries (tenant_id, webhook_id, event_id, event_type, payload) VALUES (${tid}, ${ids.webhooks}, ${evId}, 'message.created', ${o.json({ marker: mark } as never)}) RETURNING id`);
   ids.connections = await id(o`INSERT INTO channel_connections (tenant_id, channel, name, credentials_encrypted) VALUES (${tid}, 'telegram', ${`${mark}-conn-${label}`}, ${encryptCredentials(ENC_KEY, { botToken: "tok" })}) RETURNING id`);
   ids["tool-connections"] = await id(o`INSERT INTO tool_connections (tenant_id, name, base_url, auth_type, secret_encrypted) VALUES (${tid}, ${`${mark}-toolconn-${label}`}, 'https://shop.example.test', 'bearer', ${encryptCredentials(ENC_KEY, { secret: "x" })}) RETURNING id`);
   ids.sessions = await id(o`INSERT INTO builder_sessions (tenant_id, user_id) VALUES (${tid}, ${t.userId}) RETURNING id`);
+  ids["copilot-sessions"] = await id(o`INSERT INTO copilot_sessions (tenant_id, user_id) VALUES (${tid}, ${t.userId}) RETURNING id`);
+  await o`INSERT INTO copilot_messages (tenant_id, session_id, role, content) VALUES (${tid}, ${ids["copilot-sessions"]}, 'user', ${`${mark}-copilot-message`})`;
+  const copilotToken = `tok-${crypto.randomUUID().replace(/-/g, "")}`;
+  await o`INSERT INTO copilot_pending_actions (tenant_id, session_id, user_id, kind, params, token_hash, expires_at)
+          VALUES (${tid}, ${ids["copilot-sessions"]}, ${t.userId}, 'publish_agent', ${o.json({ agentId: ids.agents })}, ${(await import("../../apps/api/src/security")).sha256(copilotToken)}, now() + interval '10 minutes')`;
+  ids["copilot-token"] = copilotToken;
   ids["api-keys"] = await id(o`INSERT INTO api_keys (tenant_id, name, prefix, key_hash) VALUES (${tid}, ${`${mark}-key`}, ${`yl_${label}`}, ${crypto.randomUUID()}) RETURNING id`);
   ids.invitations = await id(o`INSERT INTO invitations (tenant_id, email, role, token_hash, expires_at) VALUES (${tid}, ${`inv-${label}@example.test`}, 'agent', ${crypto.randomUUID()}, now() + interval '1 day') RETURNING id`);
   ids.bookings = await id(o`INSERT INTO bookings (tenant_id, title, start_at, end_at, contact_id) VALUES (${tid}, ${`${mark}-booking-${label}`}, now() + interval '1 day', now() + interval '1 day 1 hour', ${ids.contacts}) RETURNING id`);

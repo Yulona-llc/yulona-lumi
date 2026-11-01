@@ -4,14 +4,14 @@ description: Authenticate dashboard sessions, API keys, widget sessions and plat
 icon: key
 ---
 
-Yulona has four separate credential types. This page is for developers building a custom dashboard client, a server integration, or a widget client. Pick the credential for your use case; each one is rejected by the other surfaces.
+Lumi has four separate credential types. This page is for developers building a custom dashboard client, a server integration, or a widget client. Pick the credential for your use case; each one is rejected by the other surfaces.
 
 | Credential | Used for | Lifetime | Sent as |
 |---|---|---|---|
 | Dashboard session | `/api/v1/*` dashboard endpoints | Access token 15 minutes; refresh cookie 30 days by default | `Authorization: Bearer <accessToken>` |
 | API key | `/api/v1/public-api/*` and `/api/v1/key-info` | Until revoked or `expiresAt` | `Authorization: Bearer yl_...` |
 | Widget session token | `/api/v1/public/widget/*` | 24 hours by default | `X-Widget-Key` plus `Authorization: Bearer <sessionToken>` |
-| Platform-admin token | `/api/v1/admin/*` | 15 minutes, no refresh | `Authorization: Bearer <accessToken>` |
+| Platform-admin token | The separate admin API only (not this API) | 15 minutes, refresh cookie on the admin host | `Authorization: Bearer <accessToken>` |
 
 The tenant is always derived from the credential. Never send a `tenantId` in a body, path or query.
 
@@ -174,15 +174,16 @@ Browsers talking to the public widget API send the widget's public key plus a se
 
 ## Platform-admin realm
 
-Platform operators sign in at `POST /api/v1/admin/auth/login` with `{ "email", "password" }` and receive `{ accessToken, expiresIn: 900, admin }`. There is no refresh token; sign in again. The token is signed with a different key than tenant tokens, so neither realm validates the other, and platform admins have no route into tenant data. The admin routes exist only when `SUPER_ADMIN_ENABLED` is true (on by default in `saas`, off in `selfhosted`).
+Platform operators use a separate service (the admin API) with its own signing key, cookie and database role. This API serves no `/api/v1/admin/*` routes, a platform-admin token is not valid here and a workspace token is not valid there. See [Platform admin overview](/platform-admin/overview).
 
 ## Impersonation tokens
 
-A platform admin can open a support session with `POST /api/v1/admin/tenants/:id/impersonate` and a `reason` of 5 to 500 characters. The result is a normal 15-minute access token with two extra claims, `imp` (admin id) and `ims` (session id), and its role capped at `admin`. As an integrator, you will see these effects:
+A platform admin starts a support session in the admin service, which returns a one-time code. The customer app redeems it with `POST /api/v1/auth/impersonation/exchange` and `{ "code" }` (no authentication; rate limited to 20 per minute per IP; the code is single use and valid 60 seconds; a bad code is `400 validation_error`). The result is a normal 15-minute access token with extra claims `imp` (admin id) and `ims` (session id), and its role capped at `admin`. Read-only sessions (the default for support) add `ro: true`. As an integrator, you will see these effects:
 
-- The session is checked on every request. Ending it (`POST /api/v1/admin/impersonation/:sessionId/end`) invalidates the token at once.
+- The session is checked on every request. Ending it in the admin service invalidates the token at once.
+- A read-only token may only call `GET` and `HEAD`; every other request is `403 forbidden`.
 - It cannot be exchanged for a refresh token, cannot change roles or ownership, and cannot manage billing.
-- `GET /api/v1/me` returns `impersonation: { active: true, impersonatorId, sessionId }`, and every write made during the session is recorded in your audit log with `metadata.impersonatorId`.
+- `GET /api/v1/me` returns `impersonation: { active: true, impersonatorId, sessionId, readOnly }`, and every write made during the session is recorded in your audit log with `metadata.impersonatorId`.
 
 Next, see [Multi-tenancy and security](/developers/multi-tenancy-and-security) and [Errors](/developers/errors).
 

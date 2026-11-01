@@ -17,7 +17,11 @@ export const ERROR_CODES = [
   "service_unavailable",
   "plan_limit_exceeded",
   "credits_exhausted",
+  "copilot_requires_plan",
+  "copilot_limit_reached",
   "tenant_suspended",
+  "contact_blocked",
+  "turnstile_failed",
   "internal_error",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

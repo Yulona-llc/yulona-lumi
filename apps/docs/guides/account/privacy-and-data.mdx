@@ -1,6 +1,6 @@
 ---
 title: Privacy and data
-description: Export or erase a contact's data on request, set how long records are kept, review the audit log, and understand what Yulona stores and how API keys are handled.
+description: Export or erase a contact's data on request, set how long records are kept, review the audit log, and understand what Lumi stores and how API keys are handled.
 icon: shield
 ---
 
@@ -8,7 +8,7 @@ This page is for owners and admins who answer privacy requests from customers an
 
 **Role needed:** admin or owner. These pages are hidden from agents and viewers.
 
-## What Yulona stores
+## What Lumi stores
 
 | Data | Where you see it |
 |---|---|
@@ -16,7 +16,7 @@ This page is for owners and admins who answer privacy requests from customers an
 | Conversations and every message, including internal notes | **Inbox**, contact **Timeline** |
 | What the AI learned: stage and lead card | Inbox side panel, **Needs attention** |
 | Website chat sessions: the visitor's IP address and browser details | Included in privacy exports |
-| Tickets, bookings and transactions | Their own pages |
+| Tickets and bookings | Their own pages |
 | Knowledge you upload | **Knowledge** |
 | Tool and webhook delivery logs | Retained per your retention settings |
 | Who changed what | **Audit log** |
@@ -37,7 +37,7 @@ Secrets are protected: passwords are stored hashed, API keys are stored hashed, 
   </Step>
 </Steps>
 
-A contact export contains the contact, channel identities, all conversations with every message including internal notes, handoffs, the AI's lead data, chat sessions, and any tickets, bookings and transactions that reference them. A workspace export adds users, agents, widgets, knowledge source details, webhooks, API key details and the audit log, but never passwords or secrets.
+A contact export contains the contact, channel identities, all conversations with every message including internal notes, handoffs, the AI's lead data, chat sessions, and any tickets and bookings that reference them. A workspace export adds users, agents, widgets, knowledge source details, webhooks, API key details and the audit log, but never passwords or secrets.
 
 Exports expire after 7 days. Up to five requests can be in progress at once.
 
@@ -56,7 +56,7 @@ Exports expire after 7 days. Up to five requests can be in progress at once.
 Erasure is permanent. The contact is anonymised, their channel identities are deleted, and every message in their conversations is replaced with "[erased]", including internal notes. Earlier exports of that contact are deleted. Conversation structure and timestamps stay so your reports remain consistent.
 </Warning>
 
-Tickets, bookings and transactions that mention the contact are kept, because you may need them for legal or accounting reasons. The request result lists them so you can follow up. Workspace-wide exports taken before the erasure are not changed; they expire after 7 days.
+Tickets and bookings that mention the contact are kept, because you may need them for legal or accounting reasons. The request result lists them so you can follow up. Workspace-wide exports taken before the erasure are not changed; they expire after 7 days.
 
 ## Set how long data is kept
 
@@ -79,7 +79,7 @@ Click **Export CSV** or **Export JSON** to download up to 50,000 of the matching
 
 ## API keys
 
-API keys let your own systems talk to Yulona. Manage them under **Settings**, **API keys**.
+API keys let your own systems talk to Lumi. Manage them under **Settings**, **API keys**.
 
 - Click **Create key**, give it a **Name** that says what will use it, choose its **Scopes** (conversations, contacts, bookings or knowledge, each read or write) and the **Requests per minute** limit.
 - The full key is shown only once, in **Copy your new key**. Copy it into a secret manager before clicking **Done**. After that only the prefix is visible.

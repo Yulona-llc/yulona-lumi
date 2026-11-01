@@ -6,20 +6,18 @@ import { StripeBillingProvider, createMockProviders } from "@yulona/providers";
 import { createApp } from "../src/app";
 import { checkLimit } from "../src/platform/limits";
 import { MemoryRateLimiter } from "../src/ratelimit";
-import { hashPassword } from "../src/security";
 import { PASSWORD, hasDb, json, testConfig, uniqueEmail } from "./helpers";
 
 if (!hasDb) console.warn(SKIP_MESSAGE);
 
 const WH = "whsec_test_billing";
 
-describe.skipIf(!hasDb)("billing + admin", () => {
+describe.skipIf(!hasDb)("billing + plan enforcement", () => {
   let owner: Awaited<ReturnType<typeof setupTestDb>>["owner"];
   let db: Awaited<ReturnType<typeof setupTestDb>>["app"];
   let app: ReturnType<typeof createApp>;
   let limiter: MemoryRateLimiter;
   const stripeCalls: string[] = [];
-  let adminToken = "";
 
   const fakeFetch = (async (url: string, init: RequestInit) => {
     stripeCalls.push(`${init.method} ${url}`);
@@ -36,11 +34,6 @@ describe.skipIf(!hasDb)("billing + admin", () => {
     const cfg = testConfig({}, (c) => { for (const k of Object.keys(c.rateLimits) as (keyof typeof c.rateLimits)[]) c.rateLimits[k] = { limit: 1e6, windowMs: 60_000 }; });
     const billing = new StripeBillingProvider({ secretKey: "sk_test", webhookSecret: WH, prices: { pro: "price_pro" }, fetch: fakeFetch });
     app = createApp({ cfg, db, limiter, log: createLogger({ level: "silent" }), providers: { ...createMockProviders(), billing } });
-    // platform admin (owner role: the app role cannot touch platform_admins)
-    const email = uniqueEmail("sa");
-    await owner`INSERT INTO platform_admins (email, name, password_hash) VALUES (${email}, 'SA', ${await hashPassword(PASSWORD)})`;
-    const res = await app.request("/api/v1/admin/auth/login", json({ email, password: PASSWORD }));
-    adminToken = ((await res.json()) as { accessToken: string }).accessToken;
   });
   afterAll(async () => { limiter.close(); await db.end({ timeout: 2 }); await owner.end({ timeout: 2 }); });
 
@@ -73,19 +66,11 @@ describe.skipIf(!hasDb)("billing + admin", () => {
     data: { object: { id: "sub_1", customer, status, cancel_at_period_end: false, current_period_end: 1900000000, metadata: { planKey: plan, ...(tenantId ? { tenantId } : {}) } } },
   });
 
-  test("auth required everywhere; role gates; admin realm separation", async () => {
+  test("auth required everywhere; role gates", async () => {
     for (const [m, p] of [["GET", "/billing"], ["POST", "/billing/checkout"], ["POST", "/billing/portal"], ["POST", "/billing/cancel"], ["GET", "/usage"], ["GET", "/audit-logs/export"]] as const) {
       expect([p, (await call(m, p, null, m === "POST" ? {} : undefined)).status]).toEqual([p, 401]);
     }
-    const id = crypto.randomUUID();
-    for (const [m, p] of [["GET", `/admin/tenants/${id}/detail`], ["GET", `/admin/tenants/${id}/usage`], ["GET", "/admin/analytics"], ["GET", "/admin/health"], ["POST", `/admin/tenants/${id}/impersonate`], ["POST", `/admin/impersonation/${id}/end`], ["GET", "/admin/audit-logs/export"]] as const) {
-      expect([p, (await call(m, p, null, m === "POST" ? {} : undefined)).status]).toEqual([p, 401]);
-    }
     const t = await newTenant();
-    // a tenant token is not an admin token
-    expect((await call("GET", "/admin/analytics", t.token)).status).toBe(401);
-    // an admin token is not a tenant token
-    expect((await call("GET", "/billing", adminToken)).status).toBe(401);
     const adm = await addAdmin(t);
     expect((await call("POST", "/billing/checkout", adm, { plan: "pro" })).status).toBe(403); // owner only
     expect((await call("GET", "/billing", adm)).status).toBe(200);
@@ -184,7 +169,7 @@ describe.skipIf(!hasDb)("billing + admin", () => {
     expect((await j(start)).error.details).toMatchObject({ metric: "monthly_conversations", limit: 2 });
   });
 
-  test("usage rollup feeds /usage and admin usage; tenants are isolated", async () => {
+  test("usage rollup feeds /usage; tenants are isolated", async () => {
     const a = await newTenant("enterprise");
     const b = await newTenant("enterprise");
     const [c] = await owner<{ id: string }[]>`INSERT INTO contacts (tenant_id) VALUES (${a.tenantId}) RETURNING id`;
@@ -196,84 +181,10 @@ describe.skipIf(!hasDb)("billing + admin", () => {
     const val = (m: string) => u.series.find((s) => s.metric === m && s.day === today)?.value;
     expect([val("conversations"), val("messages"), val("new_contacts")]).toEqual([1, 1, 1]); // notes excluded
     expect((await j<{ series: unknown[] }>(await call("GET", "/usage", b.token))).series).toHaveLength(0);
-    const au = await j<{ series: { metric: string }[] }>(await call("GET", `/admin/tenants/${a.tenantId}/usage?days=7`, adminToken));
-    expect(au.series.length).toBe(3);
     expect((await call("GET", "/usage?days=0", a.token)).status).toBe(400);
   });
 
-  test("admin: detail, analytics, health", async () => {
-    const t = await newTenant("pro");
-    const d = await j(await call("GET", `/admin/tenants/${t.tenantId}/detail`, adminToken));
-    expect(d.tenant).toMatchObject({ id: t.tenantId, plan: "pro", status: "active" });
-    expect(d.counts.users).toBe(1);
-    expect(d.limits.find((l: { metric: string }) => l.metric === "seats")).toMatchObject({ limit: 10, used: 1 });
-    expect((await call("GET", `/admin/tenants/${crypto.randomUUID()}/detail`, adminToken)).status).toBe(404);
-    expect((await call("GET", `/admin/tenants/not-a-uuid/detail`, adminToken)).status).toBe(404);
-
-    const an = await j(await call("GET", "/admin/analytics", adminToken));
-    expect(an.tenants.total).toBeGreaterThanOrEqual(1);
-    expect(an.mrrCents).toBeGreaterThanOrEqual(4900);
-    expect(an.funnel.map((f: { stage: string }) => f.stage)).toEqual(["visitor", "engaged", "qualified", "booking_offered", "booked", "handoff_requested"]);
-    expect(Array.isArray(an.byPlan)).toBe(true);
-
-    await owner`DELETE FROM worker_heartbeats`;
-    let h = await j(await call("GET", "/admin/health", adminToken));
-    expect(h).toMatchObject({ status: "degraded", db: { ok: true }, worker: { ok: false, lastHeartbeatAt: null } });
-    await owner`SELECT worker_heartbeat('worker')`;
-    await owner`DELETE FROM jobs WHERE status = 'dead'`;
-    h = await j(await call("GET", "/admin/health", adminToken));
-    expect(h.worker.ok).toBe(true);
-    expect(h.status).toBe("ok");
-    expect(h.queue).toMatchObject({ dead: 0 });
-    expect(typeof h.queue.queued).toBe("number");
-  });
-
-  test("impersonation: scoped token, banner flag, audited on both sides, ends, blocked for suspended", async () => {
-    const t = await newTenant("pro");
-    const other = await newTenant("pro");
-    expect((await call("POST", `/admin/tenants/${t.tenantId}/impersonate`, adminToken, { reason: "x" })).status).toBe(400); // reason too short
-    expect((await call("POST", `/admin/tenants/${t.tenantId}/impersonate`, adminToken, { reason: "support ticket 1234", userId: other.userId })).status).toBe(404); // user of another tenant
-    const res = await call("POST", `/admin/tenants/${t.tenantId}/impersonate`, adminToken, { reason: "support ticket 1234" });
-    expect(res.status).toBe(201);
-    const imp = await j<{ accessToken: string; sessionId: string; expiresIn: number; user: { role: string; id: string } }>(res);
-    expect(imp.expiresIn).toBe(900);
-    expect(imp.user).toMatchObject({ id: t.userId, role: "admin" }); // owner capped to admin
-
-    const me = await j(await call("GET", "/me", imp.accessToken));
-    expect(me.impersonation).toMatchObject({ active: true, sessionId: imp.sessionId });
-    expect(me.tenant.id).toBe(t.tenantId);
-    expect((await j(await call("GET", "/me", t.token))).impersonation).toBeNull();
-
-    // scope: admin-level actions work, owner-only billing does not, other tenants invisible
-    expect((await call("PATCH", "/tenant", imp.accessToken, { name: "Renamed by support" })).status).toBe(200);
-    expect((await call("POST", "/billing/checkout", imp.accessToken, { plan: "pro" })).status).toBe(403);
-    expect((await j(await call("GET", "/tenant", imp.accessToken))).id).toBe(t.tenantId);
-
-    // tenant-side audit: start + the write (with impersonatorId) ; platform-side audit
-    const tenantAudit = await owner<{ action: string; metadata: Record<string, unknown> }[]>`
-      SELECT action, metadata FROM audit_logs WHERE tenant_id = ${t.tenantId} AND (action LIKE 'impersonation.%' OR action = 'tenant.renamed') ORDER BY created_at`;
-    expect(tenantAudit.map((x) => x.action)).toEqual(expect.arrayContaining(["impersonation.started", "tenant.renamed", "impersonation.request"]));
-    expect(tenantAudit.find((x) => x.action === "tenant.renamed")!.metadata.impersonatorId).toBeTruthy();
-    const plat = await owner`SELECT action FROM platform_audit_logs WHERE tenant_id = ${t.tenantId} AND action LIKE 'impersonation.%'`;
-    expect(plat.map((x) => x.action)).toContain("impersonation.start");
-    // the tenant sees it in its own audit log API
-    const tenantView = await j<{ items: { action: string }[] }>(await call("GET", "/audit-logs?action=impersonation.started", t.token));
-    expect(tenantView.items.length).toBe(1);
-
-    // end session
-    expect((await call("POST", `/admin/impersonation/${imp.sessionId}/end`, adminToken, {})).status).toBe(200);
-    expect((await call("POST", `/admin/impersonation/${imp.sessionId}/end`, adminToken, {})).status).toBe(404);
-    expect((await owner`SELECT 1 FROM audit_logs WHERE tenant_id = ${t.tenantId} AND action = 'impersonation.ended'`).length).toBe(1);
-
-    // suspended tenants cannot be impersonated
-    await owner`UPDATE tenants SET status = 'suspended' WHERE id = ${other.tenantId}`;
-    expect((await call("POST", `/admin/tenants/${other.tenantId}/impersonate`, adminToken, { reason: "support ticket 9" })).status).toBe(409);
-    expect((await call("POST", `/admin/tenants/${crypto.randomUUID()}/impersonate`, adminToken, { reason: "support ticket 9" })).status).toBe(404);
-    // a forged impersonation claim with the wrong key is rejected
-    expect((await call("GET", "/me", imp.accessToken.slice(0, -3) + "abc")).status).toBe(401);
-  });
-
-  test("audit export: csv + json, tenant-scoped, injection-safe, audited; platform export", async () => {
+  test("audit export: csv + json, tenant-scoped, injection-safe, audited", async () => {
     const a = await newTenant("enterprise");
     const b = await newTenant();
     await owner`INSERT INTO audit_logs (tenant_id, action, resource_type, resource_id, metadata) VALUES (${a.tenantId}, 'test.evil', 'x', '=cmd|calc', ${owner.json({ note: 'a,"b"' })})`;
@@ -298,11 +209,6 @@ describe.skipIf(!hasDb)("billing + admin", () => {
     await app.request("/api/v1/invitations/accept", json({ token: vTok, name: "V", password: PASSWORD }));
     const viewer = (await j<{ accessToken: string }>(await app.request("/api/v1/auth/login", json({ email: vEmail, password: PASSWORD })))).accessToken;
     expect((await call("GET", "/audit-logs/export", viewer)).status).toBe(403);
-
-    const pj = await call("GET", "/admin/audit-logs/export?format=json", adminToken);
-    expect(pj.status).toBe(200);
-    expect((await j<{ items: unknown[] }>(pj)).items.length).toBeGreaterThan(0);
-    expect((await (await call("GET", "/admin/audit-logs/export", adminToken)).text()).startsWith("id,createdAt,adminId")).toBe(true);
   });
 
   test("stub provider webhook is rejected in production config", async () => {

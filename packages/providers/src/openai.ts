@@ -79,6 +79,7 @@ export class OpenAiLlmProvider implements LlmProvider {
       }),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
       ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+      ...(req.reasoningEffort ? { reasoning_effort: req.reasoningEffort } : {}),
       ...(req.json ? { response_format: { type: "json_object" } } : {}),
       ...(req.tools?.length
         ? { tools: req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) }

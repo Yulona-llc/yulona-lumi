@@ -12,7 +12,7 @@ The website widget is a chat bubble your visitors click to talk to your agent. I
 
 ## Before you start
 
-- A [published agent](/guides/agents/publish-and-versions) to answer. If you are not sure, the widget uses your oldest agent unless you choose another.
+- A [published agent](/guides/agents/publish-and-versions) to answer. Choose it under **Answering agent**; a widget with no agent, or whose agent is a draft or archived, shows an offline notice and a team member replies.
 - The address of your website, for example `www.mybusiness.com`.
 - Access to edit your website's HTML, or someone who has it.
 
@@ -23,16 +23,21 @@ The website widget is a chat bubble your visitors click to talk to your agent. I
     Go to **Settings**, then **Website widget**. If you have none, click **Create widget**. It is named "Website chat" for now.
   </Step>
   <Step title="Brand it">
-    Under **Branding**, set the **Title** and **Subtitle** visitors see, the **Primary color** (a six-digit hex colour such as `#f97316`), the **Launcher label**, **Theme** (**Match visitor**, **Light** or **Dark**), **Position** (**Bottom right** or **Bottom left**), an **Avatar image URL** (must start with https) and the **Input placeholder**. **Widget name (internal)** is only for your team. The **Draft preview** on the right updates as you type.
+    Under **Branding**, set the **Title** and **Subtitle** visitors see, the **Launcher label**, **Theme** (**Match visitor**, **Light** or **Dark**), **Position** (**Bottom right** or **Bottom left**) and the **Input placeholder**. **Widget name (internal)** is only for your team. The **Draft preview** on the right updates as you type.
+  </Step>
+  <Step title="Pick your colours and picture">
+    Under **Appearance**, click a colour swatch, or the rainbow circle to pick any other colour. There is nothing to type. Choose **One colour** or **Two colours**: with two colours you can pick a ready-made blend (**Sunset**, **Ocean**, **Berry** or **Forest**), choose a **Start colour** and an **End colour**, and set the **Direction**. The preview at the top of the card shows the chat header, a visitor's message and the chat button as you go. Text on top of your colour switches between dark and light by itself so it stays readable.
+
+    To add a **Chat picture**, click **Upload a picture**, choose a PNG, JPEG or WebP image, drag and zoom to crop it to a square and click **Use this picture**. The picture is saved straight away (you do not need to click **Save changes**) and shows in the chat header. **Remove** deletes it. Pictures are checked for viruses, must be PNG, JPEG or WebP (not SVG) and are shrunk to fit the 512 KB limit. If your picture already lives online, open **Advanced** and paste its **Picture web address** (it must start with https); an uploaded picture is used first.
   </Step>
   <Step title="Write the welcome message">
     **Welcome message** is the first line visitors see when they open the chat. This is the opening line of every new chat, so write it with care. If you leave it empty, the widget opens with the agent's **Greeting** (from the published version, else the saved draft) when the agent has one; otherwise the chat opens empty.
   </Step>
   <Step title="Choose the agent">
-    Under **Behaviour**, pick the **Answering agent**. Leave **Default agent** to use your oldest agent. Switch **Widget enabled** off at any time to hide the chat on every site.
+    Under **Behaviour**, pick the **Answering agent**. Only a published agent answers; **No agent (offline)** shows visitors an offline notice instead. Switch **Widget enabled** off at any time to hide the chat on every site.
   </Step>
   <Step title="Allow your website">
-    Under **Allowed domains**, enter one site per line, for example `example.com` or `*.example.com` (all subdomains). You can include `https://` and a port, as in `https://app.example.com:8443`.
+    Under **Allowed domains**, type your site into **Add your website**, for example `example.com`, and press Enter. Each site becomes a chip you can remove with its **x**. Use `*.example.com` for all subdomains. You can include `https://` and a port, as in `https://app.example.com:8443`. Pasting a full page address keeps only the site part, and an address that is not a valid site is refused with a message.
   </Step>
   <Step title="Save">
     Click **Save changes** in the bar at the bottom. You see "Widget saved".
@@ -63,6 +68,35 @@ Developers who want more control can read the [widget embed reference](/develope
 
 Under **Pre-chat form**, switch on **Ask visitors for details before chatting**. Add an **Intro text**, then tick **name**, **email** and/or **phone** and mark each **required** if you want. Visitors fill the form before the first message, and their details are saved on their contact. See [Contacts](/guides/workspace/contacts).
 
+## Keep bots and spam out
+
+Bots and spam are blocked by default. For more control, open **Advanced protection** under **Protection** on the widget settings page. It is collapsed unless Cloudflare Turnstile is on. It holds two checks that run before a chat starts. Only admins and owners can change them.
+
+- **Honeypot field** (on by default). The widget contains a hidden field that real visitors never see or fill. A bot that fills it gets a fake "success" and nothing is stored, so no conversation or contact is created. Switch it off only if a browser extension is filling the field for real visitors.
+- **Cloudflare Turnstile** (off by default). Visitors pass a Cloudflare challenge before the chat starts. You use your own Cloudflare keys, so you control the challenge in your Cloudflare dashboard.
+
+<Steps>
+  <Step title="Create a Turnstile widget in Cloudflare">
+    In your Cloudflare dashboard open **Turnstile** and add a widget for your website domain. Copy the **site key** and the **secret key**.
+  </Step>
+  <Step title="Turn it on">
+    In **Advanced protection**, switch on **Cloudflare Turnstile**. Paste the **Site key** and the **Secret key**. Optionally choose **Theme**, **Size**, **Appearance** (**Always visible** or **Only when needed**) and an **Action** name that appears in your Cloudflare analytics.
+  </Step>
+  <Step title="Save">
+    Click **Save changes**. **Save changes** stays disabled until both keys are present.
+  </Step>
+</Steps>
+
+The secret key is stored encrypted and is never shown again. After saving, the field is empty and says a secret key is stored; type a new value to replace it, or click **Remove stored secret** to remove it (this also switches Turnstile off).
+
+<Note>
+To test, use Cloudflare's dummy keys. Site key `1x00000000000000000000AA` with secret key `1x0000000000000000000000000000000AA` always passes. Site key `2x00000000000000000000AB` with secret key `2x0000000000000000000000000000000AA` always fails, which shows visitors the challenge again. Replace them with your real keys before you go live.
+</Note>
+
+If Cloudflare cannot be reached, or the secret key is wrong, visitors cannot start a chat: the check fails closed rather than letting everyone through. The same applies on self-hosted installs, where each widget uses its own Cloudflare keys.
+
+Visitors who abuse the chat are blocked automatically; see [Block abusive visitors](/guides/workspace/contacts#block-abusive-visitors).
+
 ## Rotate the key
 
 The snippet contains a key that identifies your widget. If it was copied somewhere you do not trust, click **Rotate key** in the Embed code section and confirm. The old key stops working immediately, so update the snippet on every site that uses the widget.
@@ -77,14 +111,23 @@ Visitors chat in the bubble. Messages arrive in your [Inbox](/guides/workspace/i
   <Accordion title="The bubble does not appear">
     Check, in order: **Widget enabled** is on; your site's address is in **Allowed domains** (the exact domain, with `www` if used); the snippet is on the page; and you saved. Browser extensions that block scripts can also hide it.
   </Accordion>
+  <Accordion title="My picture will not upload">
+    Use a PNG, JPEG or WebP image (not SVG or GIF). The crop step shrinks it for you; if the server still says it is too large, choose a smaller image. If the message says the scan is unavailable, try again in a minute. Only owners and admins can upload.
+  </Accordion>
   <Accordion title="The wrong agent answers">
-    Open the widget settings and choose the **Answering agent** instead of **Default agent**.
+    Open the widget settings and choose the **Answering agent** instead of **No agent (offline)**.
   </Accordion>
   <Accordion title="Save changes is disabled">
-    A field is invalid: a colour that is not six hex digits, an avatar URL without https, an invalid domain pattern, or more than 50 domains.
+    A field is invalid: a picture web address without https, a missing Turnstile key, or more than 50 allowed sites.
   </Accordion>
   <Accordion title="Visitors see an error starting a chat">
     Your plan's monthly conversation limit may be reached. See [Billing and plans](/guides/account/billing-and-plans).
+  </Accordion>
+  <Accordion title="Visitors are stuck on the human check">
+    Turnstile is on but the keys do not match: check that the site key and secret key come from the same Cloudflare Turnstile widget, that your website's domain is listed in that Cloudflare widget, and that the secret was saved (the field says a secret is stored). Switch Turnstile off to let visitors in while you fix it.
+  </Accordion>
+  <Accordion title="A visitor says the conversation has ended">
+    The visitor was blocked, either automatically after repeated abuse or by a teammate. See [Block abusive visitors](/guides/workspace/contacts#block-abusive-visitors).
   </Accordion>
 </AccordionGroup>
 
@@ -99,4 +142,4 @@ Visitors chat in the bubble. Messages arrive in your [Inbox](/guides/workspace/i
   </Card>
 </CardGroup>
 
-{/* source: apps/dashboard/src/features/widget-config/WidgetConfigPage.tsx, packages/shared/src/conversations.ts, apps/api/src/routes/public-widget.ts, docs/api/conversations.md, apps/dashboard/src/pages/Shell.tsx */}
+{/* source: apps/dashboard/src/features/widget-config/WidgetConfigPage.tsx, apps/api/src/conversations/turnstile.ts, packages/shared/src/conversations.ts, apps/api/src/routes/public-widget.ts, docs/api/conversations.md, apps/dashboard/src/pages/Shell.tsx */}

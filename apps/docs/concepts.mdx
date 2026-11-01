@@ -1,14 +1,14 @@
 ---
 title: Concepts
-description: Understand the words you meet in the Yulona dashboard, from workspaces and roles to stages, handoffs, credits and drafts.
+description: Understand the words you meet in the Lumi dashboard, from workspaces and roles to stages, handoffs, credits and drafts.
 icon: lightbulb
 ---
 
-This page is for everyone who uses the Yulona dashboard: owners, admins, support leads and agents. It explains each idea in plain words and tells you where to find it on screen. A short glossary closes the page.
+This page is for everyone who uses the Lumi dashboard: owners, admins, support leads and agents. It explains each idea in plain words and tells you where to find it on screen. A short glossary closes the page.
 
 ## Workspace
 
-A **workspace** is your company's private space in Yulona. Everything lives inside it: agents, knowledge, conversations, contacts, tickets and settings. Nobody outside your workspace can see any of it. You choose its name when you sign up and can rename it under **Settings**, **Account**.
+A **workspace** is your company's private space in Lumi. Everything lives inside it: agents, knowledge, conversations, contacts, tickets and settings. Nobody outside your workspace can see any of it. You choose its name when you sign up and can rename it under **Settings**, **Account**.
 
 ## Roles
 
@@ -29,7 +29,7 @@ An **agent** is an AI assistant with a persona (instructions, tone, greeting), t
 
 ## Skills and sections
 
-Knowledge is organized as **skills**. Every file, web page or block of text you add on the **Knowledge** page becomes one skill. Yulona reads it, splits it into **sections** with titles, and writes a one-line description telling the agent when to open it. At answer time the agent sees the list of skills, opens only the sections it needs, and answers from them. Clear titles and a good description help it choose well. You can edit a skill's name and description, and view its sections.
+Knowledge is organized as **skills**. Every file, web page or block of text you add on the **Knowledge** page becomes one skill. Lumi reads it, splits it into **sections** with titles, and writes a one-line description telling the agent when to open it. At answer time the agent sees the list of skills, opens only the sections it needs, and answers from them. Clear titles and a good description help it choose well. You can edit a skill's name and description, and view its sections.
 
 ## Conversations and stages
 
@@ -50,11 +50,12 @@ The moves between stages follow fixed rules, so a conversation cannot jump to ju
 
 ## Handoffs and Needs attention
 
-A **handoff** is the moment the AI passes a conversation to a person. The conversation status becomes **Needs attention** and an item appears in the **Needs attention** queue. There are three kinds:
+A **handoff** is the moment the AI passes a conversation to a person. The conversation status becomes **Needs attention** and an item appears in the **Needs attention** queue. There are four kinds:
 
 - **Uncertain**: the AI could not answer from your knowledge, the customer asked for a person, or an escalation keyword was used.
 - **Lead ready**: a qualified lead is ready for a person (when **Hand off qualified leads** is on).
 - **System failure**: something broke, such as a tool or calendar call, or your AI credits ran out.
+- **Blocked for abuse**: a visitor reached the agent's strike limit, so the AI said goodbye, closed the conversation and **blocked** the visitor. A blocked contact cannot start, reopen or resume a chat until an owner or admin unblocks them. See [Block abusive visitors](/guides/workspace/contacts#block-abusive-visitors).
 
 While waiting for a person, customers can reply with the agent's **resume keyword** (for example "AI") to go back to the AI. See [Needs attention](/guides/workspace/needs-attention).
 
@@ -105,6 +106,26 @@ Publish before you share your widget link or snippet. If an agent has never been
 | Credits | The unit of AI usage on the hosted service |
 | Sandbox | A safe place to test your draft agent |
 | Draft / published | The version you edit / the version customers see |
+
+## Name and compatibility
+
+The product was previously called Yulona and is now called Lumi. This is a change of name only: nothing about how it works changed, and nothing you deployed needs to be touched. To avoid breaking installs and integrations, these identifiers keep their original names:
+
+| Kept as `yulona` | Where |
+|---|---|
+| `YULONA_*` environment variables | [Configuration](/self-hosting/configuration) |
+| `@yulona/*` package scope and the `yulona-license` command | Source code, [Licensing](/self-hosting/licensing) |
+| Database, database roles and the `yulona/*` image and container names | [Requirements and install](/self-hosting/requirements-and-install) |
+| `yulona-*` and `yulona:<widgetKey>` browser storage keys and the `yulona:widget` session token audience | Dashboard and widget |
+| `X-Yulona-*` request headers | [Webhooks](/developers/webhooks), [Custom tools backend](/developers/custom-tools-backend) |
+| `window.YulonaConfig` and `window.Yulona` | [Widget embed](/developers/widget-embed) |
+| The `yulona.co` domain and any URL built on it | Links and sample hostnames |
+
+Aliases for the new name:
+
+- Webhook deliveries and signed tool requests accept and send `X-Lumi-Event`, `X-Lumi-Delivery`, `X-Lumi-Timestamp` and `X-Lumi-Signature` in addition to the `X-Yulona-*` headers. The values are identical. Receivers can read either set.
+- The widget reads `window.LumiConfig` (or `window.YulonaConfig`) and exposes `window.Lumi` as well as `window.Yulona`.
+- Tool manifests may not set the `x-lumi-signature` or `x-lumi-timestamp` headers, just like the `x-yulona-*` ones.
 
 ## Next steps
 

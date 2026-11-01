@@ -7,6 +7,7 @@ export interface AuthContext {
   /** Set only for impersonation tokens (platform admin id / session id). */
   impersonatorId?: string;
   impersonationSessionId?: string;
+  readOnly?: boolean;
 }
 export type AppEnv = {
   Variables: {

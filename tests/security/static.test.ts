@@ -45,7 +45,7 @@ describe("static security checks", () => {
     const allowed = [
       /billing\/routes\.ts$/,            // raw text for webhook signature verification
       /channels\/webhooks\.ts$/,         // raw body for provider signature
-      /ops\/transactions\.ts$/,          // raw body for HMAC verification of inbound transaction webhooks
+      /routes\/widgets\.ts$/,           // multipart avatar upload: one `file` field, size/magic-byte/antivirus checked (JSON routes there use parseBody)
       /\/http\.ts$/,                     // the helper itself
     ];
     const bad: string[] = [];

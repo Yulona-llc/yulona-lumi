@@ -7,7 +7,7 @@
   "types": "./src/index.ts",
   "exports": { ".": "./src/index.ts", "./testing": "./src/testing.ts" },
   "scripts": {
-    "migrate": "bun src/cli.ts",
+    "migrate": "bun --env-file=../../.env src/cli.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"

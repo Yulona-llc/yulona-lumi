@@ -9,9 +9,9 @@ const ok = (description: string, schema?: unknown) => ({ description, ...(schema
 const err = (description: string) => ({ description, content: { "application/json": { schema: j(errorEnvelopeSchema, "output") } } });
 const idParam = [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }];
 
-type Op = { summary: string; tag: string; auth?: "user" | "admin" | "apikey" | "none"; roles?: string; req?: unknown; params?: unknown[]; res?: number; extra?: number[] };
+type Op = { summary: string; tag: string; auth?: "user" | "apikey" | "none"; roles?: string; req?: unknown; params?: unknown[]; res?: number; extra?: number[] };
 function op(o: Op) {
-  const sec = o.auth === "none" ? [] : o.auth === "admin" ? [{ platformAdminAuth: [] }] : o.auth === "apikey" ? [{ apiKeyAuth: [] }] : [{ bearerAuth: [] }];
+  const sec = o.auth === "none" ? [] : o.auth === "apikey" ? [{ apiKeyAuth: [] }] : [{ bearerAuth: [] }];
   const responses: Record<number, unknown> = { [o.res ?? 200]: ok("Success") };
   if (o.req) responses[400] = err("Validation error");
   if (o.auth !== "none") responses[401] = err("Unauthorized");
@@ -58,34 +58,9 @@ export function platformPaths() {
     "/api/v1/key-info": { get: op({ summary: "Introspect the calling API key", tag: K, auth: "apikey", extra: [429] }) },
     "/api/v1/audit-logs": { get: op({ summary: "Audit log (filters: action, actorUserId, resourceType, resourceId, from, to; keyset cursor)", tag: "Audit", roles: "admin" }) },
     "/api/v1/feature-flags": { get: op({ summary: "Effective feature flags for the tenant", tag: "Flags" }) },
-    "/api/v1/admin/auth/login": { post: op({ summary: "Platform admin login", tag: "Admin", auth: "none", req: obj({ email: str, password: str }, ["email", "password"]), extra: [429] }) },
-    "/api/v1/admin/auth/me": { get: op({ summary: "Current platform admin", tag: "Admin", auth: "admin" }) },
-    "/api/v1/admin/tenants": {
-      get: op({ summary: "List tenants (q, limit, offset)", tag: "Admin", auth: "admin" }),
-      post: op({ summary: "Create tenant + owner", tag: "Admin", auth: "admin", res: 201, req: obj({ name: str, plan: str, ownerEmail: str, ownerName: str, ownerPassword: str }, ["name", "ownerEmail", "ownerName", "ownerPassword"]), extra: [409] }),
-    },
-    "/api/v1/admin/tenants/{id}": {
-      get: op({ summary: "Tenant detail", tag: "Admin", auth: "admin", params: idParam, extra: [404] }),
-      patch: op({ summary: "Rename / change plan", tag: "Admin", auth: "admin", params: idParam, req: obj({ name: str, plan: str }), extra: [404] }),
-      delete: op({ summary: "Soft-delete (hard-deleted after 30 days)", tag: "Admin", auth: "admin", params: idParam, extra: [404] }),
-    },
-    "/api/v1/admin/tenants/{id}/suspend": { post: op({ summary: "Suspend tenant", tag: "Admin", auth: "admin", params: idParam, extra: [404] }) },
-    "/api/v1/admin/tenants/{id}/unsuspend": { post: op({ summary: "Unsuspend tenant", tag: "Admin", auth: "admin", params: idParam, extra: [404] }) },
-    "/api/v1/admin/tenants/{id}/restore": { post: op({ summary: "Restore soft-deleted tenant (within 30 days)", tag: "Admin", auth: "admin", params: idParam, extra: [404, 409] }) },
-    "/api/v1/admin/tenants/{id}/flags": { get: op({ summary: "Flag overrides for a tenant", tag: "Admin", auth: "admin", params: idParam }) },
-    "/api/v1/admin/tenants/{id}/flags/{key}": { put: op({ summary: "Set/clear (null) a tenant flag override", tag: "Admin", auth: "admin", req: obj({ enabled: { type: "boolean", nullable: true } }, ["enabled"]), extra: [404] }) },
-    "/api/v1/admin/feature-flags": { get: op({ summary: "List global flags", tag: "Admin", auth: "admin" }) },
-    "/api/v1/admin/feature-flags/{key}": {
-      put: op({ summary: "Create/update global flag", tag: "Admin", auth: "admin", req: obj({ description: str, defaultEnabled: { type: "boolean" } }, ["defaultEnabled"]) }),
-      delete: op({ summary: "Delete global flag", tag: "Admin", auth: "admin", extra: [404] }),
-    },
-    "/api/v1/admin/plans": { get: op({ summary: "Plans and limits", tag: "Admin", auth: "admin" }) },
-    "/api/v1/admin/plans/{key}/limits/{metric}": { put: op({ summary: "Set plan limit (null = unlimited)", tag: "Admin", auth: "admin", req: obj({ limit: { type: "integer", nullable: true } }, ["limit"]), extra: [404] }) },
-    "/api/v1/admin/audit-logs": { get: op({ summary: "Platform audit log", tag: "Admin", auth: "admin" }) },
   };
 }
 
 export const platformSecuritySchemes = {
-  platformAdminAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT (platform admin realm)" },
   apiKeyAuth: { type: "http", scheme: "bearer", bearerFormat: "yl_<prefix>_<secret>" },
 };

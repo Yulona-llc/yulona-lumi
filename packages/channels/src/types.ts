@@ -32,7 +32,7 @@ export interface OutboundMessage {
 }
 
 export interface SendResult {
-  /** `realtime` = delivered through Yulona's own socket layer (widget). */
+  /** `realtime` = delivered through Lumi's own socket layer (widget). */
   delivered: "realtime" | "channel";
   externalMessageId?: string;
   /** True when a template message was used because the reply window was closed. */

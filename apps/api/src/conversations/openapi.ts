@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  contactSchema, conversationSummarySchema, createContactSchema, createWidgetSchema, errorEnvelopeSchema, mergeContactSchema,
+  blockContactSchema, contactSchema, conversationSummarySchema, createContactSchema, createWidgetSchema, errorEnvelopeSchema, mergeContactSchema,
   messageDtoSchema, pageSchema, patchConversationSchema, publicMessageSchema, publicSendMessageSchema, sendMessageSchema,
   startConversationSchema, typingSchema, uiEventSchema, updateContactSchema, updateWidgetSchema, widgetSchema, okSchema,
 } from "@yulona/shared";
@@ -45,7 +45,10 @@ export function conversationPaths(): Record<string, unknown> {
       delete: dash("Delete contact without conversations", { parameters: [idParam], responses: { 200: resp("OK", okSchema), 409: err("Has conversations"), ...e } }),
     },
     "/api/v1/contacts/{id}/timeline": { get: dash("Cross-channel timeline", { parameters: [idParam], responses: { 200: resp("Page"), ...e } }) },
+    "/api/v1/contacts/{id}/block": { post: dash("Block a contact for abuse (agent and above; revokes the contact's widget sessions)", { parameters: [idParam], requestBody: body(blockContactSchema), responses: { 200: resp("Contact", contactSchema), ...e } }) },
+    "/api/v1/contacts/{id}/unblock": { post: dash("Unblock a contact (owner/admin only; the AI can never unblock)", { parameters: [idParam], responses: { 200: resp("Contact", contactSchema), ...e } }) },
     "/api/v1/contacts/{id}/merge": { post: dash("Merge another contact into this one", { parameters: [idParam], requestBody: body(mergeContactSchema), responses: { 200: resp("Contact", contactSchema), 409: err("Already merged"), ...e } }) },
+    "/api/v1/models": { get: dash("Models an agent can use (SaaS: platform-enabled models; self-hosted: empty, enter any model name)", { responses: { 200: resp("Models"), ...e } }) },
     "/api/v1/widgets": {
       get: dash("List widgets", { responses: { 200: resp("Widgets", z.object({ items: z.array(widgetSchema) })), ...e } }),
       post: dash("Create widget (owner/admin)", { requestBody: body(createWidgetSchema), responses: { 201: resp("Widget", widgetSchema), 403: err("Forbidden"), ...e } }),
@@ -55,8 +58,22 @@ export function conversationPaths(): Record<string, unknown> {
       patch: dash("Update widget (owner/admin)", { parameters: [idParam], requestBody: body(updateWidgetSchema), responses: { 200: resp("Widget", widgetSchema), ...e } }),
       delete: dash("Delete widget (owner/admin)", { parameters: [idParam], responses: { 200: resp("OK", okSchema), ...e } }),
     },
+    "/api/v1/widgets/{id}/avatar": {
+      post: dash("Upload the widget avatar (owner/admin; multipart field `file`, PNG/JPEG/WebP, 512 KB max, magic-byte checked, antivirus scanned)", {
+        parameters: [idParam],
+        requestBody: { required: true, content: { "multipart/form-data": { schema: { type: "object", required: ["file"], properties: { file: { type: "string", format: "binary" } } } } } },
+        responses: { 200: resp("Widget", widgetSchema), 413: err("Larger than 512 KB"), 422: err("Not a PNG, JPEG or WebP image"), ...e },
+      }),
+      get: dash("Stored avatar image bytes (any signed-in role; for the dashboard preview)", { parameters: [idParam], responses: { 200: { description: "PNG, JPEG or WebP bytes" }, ...e } }),
+      delete: dash("Remove the uploaded avatar (owner/admin)", { parameters: [idParam], responses: { 200: resp("Widget", widgetSchema), ...e } }),
+    },
     "/api/v1/widgets/{id}/rotate-key": { post: dash("Rotate public widget key (owner/admin)", { parameters: [idParam], responses: { 200: resp("Widget", widgetSchema), ...e } }) },
     "/api/v1/widgets/{id}/embed": { get: dash("Embed snippet", { parameters: [idParam], responses: { 200: resp("Snippet"), ...e } }) },
+    "/api/v1/public/widgets/{key}/avatar": {
+      get: { summary: "Public widget avatar image (cacheable, ETag; enabled widgets only)", tags: ["Public widget"],
+        parameters: [{ name: "key", in: "path", required: true, schema: { type: "string" } }],
+        responses: { 200: { description: "PNG, JPEG or WebP bytes" }, 304: { description: "Not modified" }, 403: err("Origin not allowed"), 404: err("No avatar") } },
+    },
     [`${P}/config`]: { get: pubOp("Public widget config (Origin allowlist enforced)", { responses: { 200: resp("Config"), 403: err("Origin/key rejected") } }, false) },
     [`${P}/conversations`]: { post: pubOp("Start conversation; returns session token", { requestBody: body(startConversationSchema), responses: { 201: resp("Session"), 400: err("Validation"), 403: err("Origin/key rejected"), 429: err("Rate limited") } }, false) },
     [`${P}/session/refresh`]: { post: pubOp("Refresh session token", { responses: { 200: resp("Session"), 401: err("Unauthorized") } }) },

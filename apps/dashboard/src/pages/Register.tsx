@@ -42,7 +42,7 @@ export default function Register() {
     setBusy(true);
     try {
       await register(parsed.data);
-      nav("/overview", { replace: true });
+      nav("/onboarding", { replace: true }); // new workspaces start with the setup wizard (skippable)
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) setClosed(true);
       else setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");

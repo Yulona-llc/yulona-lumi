@@ -1,6 +1,6 @@
-import type { ChannelCapability, ConversionStage, ToolManifest, WidgetUISchema } from "@yulona/shared";
+import type { AbuseConfig, ChannelCapability, ConversionStage, ToolManifest, WidgetUISchema } from "@yulona/shared";
 
-export type HandoffType = "uncertainty" | "stage" | "system_failure";
+export type HandoffType = "uncertainty" | "stage" | "system_failure" | "abuse";
 
 export interface CustomToolConfig {
   manifest: ToolManifest;
@@ -35,6 +35,8 @@ export interface AgentConfig {
   customTools: (CustomToolConfig | ToolManifest)[];
   /** When the lead becomes `qualified`, hand off to a human with a lead card. */
   handoffAtQualified: boolean;
+  /** Abuse protection (strict defaults for every agent, including ones saved before the field existed). */
+  abuse: AbuseConfig;
 }
 
 export interface Lead {
@@ -104,6 +106,10 @@ export interface TurnResult {
   model?: string;
   profileId?: string | null;
   modelFallback?: { requested: string; used: string };
+  /** consecutive strikes after this turn (persisted in conversation_ai_state.abuse_strikes) */
+  abuseStrikesAfter?: number;
+  /** the visitor hit the strike limit: `text` is the farewell, the runtime closes + blocks in the same transaction as the reply */
+  abuse?: { reason: string; source: "rule" | "model"; kind: string };
   /** channel reply window already expired; adapter must use a template instead of free text */
   windowExpired?: boolean;
 }

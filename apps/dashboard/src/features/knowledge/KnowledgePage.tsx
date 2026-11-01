@@ -1,13 +1,14 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { AlertCircle, ChevronDown, FileText, FileUp, FolderOpen, Globe, ListTree, MoreHorizontal, Pencil, RefreshCw, Trash2, Type, UploadCloud } from "lucide-react";
+import { AlertCircle, ChevronDown, FileText, Minus, Plus, FileUp, FolderOpen, Globe, ListTree, MoreHorizontal, Pencil, RefreshCw, Trash2, Type, UploadCloud } from "lucide-react";
 import { ag, errMsg, uploadFile, type KnowledgeSource } from "../common/api";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 const color = { pending: "gray", processing: "blue", ready: "green", failed: "red" } as const;
 const ACCEPT = ".pdf,.docx,.txt,.md,.html,.htm";
 const MAX = 10 * 1024 * 1024;
+const DEFAULT_DEPTH = 3, MAX_DEPTH = 5, DEFAULT_PAGES = 25, MAX_PAGES = 50;
 const TYPE_ICON = { file: FileText, url: Globe, text: Type } as const;
 type Kind = "file" | "url" | "text";
 
@@ -80,6 +82,15 @@ export default function KnowledgePage() {
       {del && <ConfirmModal danger title="Delete this skill?" body={<>"{del.name}" and its {del.chunkCount} sections will be removed. Agents stop using it immediately.</>} confirm="Delete" busy={rm.isPending} onConfirm={() => rm.mutate(del)} onClose={() => setDel(null)} />}
     </section>
   );
+}
+
+/** "Read 4 of 12 pages found" while crawling, "Read 12 pages" afterwards. */
+function crawlText(s: KnowledgeSource): string | null {
+  const p = s.crawlProgress;
+  if (s.type !== "url" || !p) return null;
+  const noun = (n: number) => `${n} ${n === 1 ? "page" : "pages"}`;
+  if (!p.done) return `Reading pages: ${p.pagesCrawled} read, ${p.pagesFound} found so far (up to ${s.maxPages ?? p.pagesFound}).`;
+  return `Read ${noun(p.pagesCrawled)}${p.pagesSkipped ? `, skipped ${p.pagesSkipped}` : ""}${p.truncated ? " (stopped early to stay on time)" : ""}.`;
 }
 
 function SkillRow({ s, isAdmin, agent, onSections, onReingest, onDelete, busy }: { s: KnowledgeSource; isAdmin: boolean; agent: string; onSections: () => void; onReingest: () => void; onDelete: () => void; busy: boolean }) {
@@ -146,7 +157,7 @@ function SkillRow({ s, isAdmin, agent, onSections, onReingest, onDelete, busy }:
             <div className="mt-3" role="status" aria-live="polite">
               {s.status === "pending" ? <Progress value={8} aria-label="Queued" /> : (
                 <div className="relative h-2 overflow-hidden rounded-full bg-muted"><motion.div className="absolute inset-y-0 w-1/3 rounded-full bg-primary" animate={{ left: ["-35%", "105%"] }} transition={{ duration: 1.3, repeat: Infinity, ease: "easeInOut" }} /></div>)}
-              <p className="mt-1.5 text-xs text-muted-foreground">{s.status === "pending" ? "Queued. Reading starts shortly." : "Reading and splitting into sections…"}</p>
+              <p className="mt-1.5 text-xs text-muted-foreground">{s.status === "pending" ? "Queued. Reading starts shortly." : crawlText(s) ?? "Reading and splitting into sections…"}</p>
             </div>
           )}
           {s.status === "failed" && s.error && <p className="mt-2 text-sm text-destructive">{s.error}</p>}
@@ -155,6 +166,7 @@ function SkillRow({ s, isAdmin, agent, onSections, onReingest, onDelete, busy }:
             <span className="inline-flex items-center gap-1"><Icon className="size-3.5" />{s.type}</span>
             <span className="inline-flex items-center gap-1 tabular-nums"><ListTree className="size-3.5" />{s.chunkCount} sections</span>
             <span className="min-w-0 max-w-full truncate font-mono">{s.sourceUrl ?? s.fileName ?? "Pasted text"}</span>
+            {s.type === "url" && s.status === "ready" && s.crawlProgress && <span className="tabular-nums">{crawlText(s)}</span>}
             <span className="tabular-nums">{fmtBytes(s.sizeBytes)}</span>
             <span>{fmtDate(s.lastIngestedAt)}</span>
             <span>{agent}</span>
@@ -182,7 +194,10 @@ function AddSource({ kind, file: initial, agents, onClose, onDone }: { kind: Kin
   const [agentId, setAgentId] = useState("");
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
-  const [pages, setPages] = useState(1);
+  const [follow, setFollow] = useState(true);
+  const [depth, setDepth] = useState(DEFAULT_DEPTH);
+  const [pages, setPages] = useState(DEFAULT_PAGES);
+  const [subdomains, setSubdomains] = useState(false);
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [pct, setPct] = useState(0);
@@ -193,7 +208,7 @@ function AddSource({ kind, file: initial, agents, onClose, onDone }: { kind: Kin
     mutationFn: async () => {
       const base = { ...(agentId ? { agentId } : {}) };
       if (kind === "file") return uploadFile(file!, { ...base, name: name.trim() || undefined }, setPct);
-      if (kind === "url") return ag.addUrl({ url: url.trim(), ...(name.trim() ? { name: name.trim() } : {}), ...base, maxPages: pages });
+      if (kind === "url") return ag.addUrl({ url: url.trim(), ...(name.trim() ? { name: name.trim() } : {}), ...base, ...(follow ? { followLinks: true, maxDepth: depth, maxPages: pages, includeSubdomains: subdomains } : { followLinks: false, maxPages: 1 }) });
       return ag.addText({ name: name.trim(), text, ...base });
     },
     onSuccess: () => { toast.success(kind === "file" ? "Uploaded. Reading it now." : "Added. Reading it now."); onDone(); },
@@ -229,7 +244,31 @@ function AddSource({ kind, file: initial, agents, onClose, onDone }: { kind: Kin
           </div>)}
         {kind === "url" && <>
           <TextField label="URL" type="url" placeholder="https://example.com/help" value={url} onChange={(e) => setUrl(e.target.value)} required />
-          <TextField label="Pages to read (same site)" type="number" min={1} max={25} value={pages} onChange={(e) => setPages(Math.min(25, Math.max(1, Number(e.target.value) || 1)))} hint="1 reads only this page. Up to 25 follow its links. Private network addresses are blocked." /></>}
+          <div className="rounded-2xl border p-3.5">
+            <div className="flex items-start gap-3">
+              <Switch id="follow-links" checked={follow} onCheckedChange={setFollow} className="mt-0.5" />
+              <div className="min-w-0 flex-1"><Label htmlFor="follow-links" className="cursor-pointer">Follow links on this site</Label>
+                <p className="mt-0.5 text-xs text-muted-foreground">{follow ? "Lumi reads this page, then the pages it links to on the same site." : "Lumi reads only this one page."} Private network addresses are blocked, and the site&apos;s robots.txt is respected.</p></div>
+            </div>
+            {follow && (
+              <div className="mt-4 space-y-4 border-t pt-4">
+                <div className="grid gap-1.5">
+                  <Label id="depth-l">How deep</Label>
+                  <div className="flex items-center gap-2" role="group" aria-labelledby="depth-l">
+                    <Button type="button" variant="outline" size="icon" aria-label="Go less deep" disabled={depth <= 1} onClick={() => setDepth((d) => Math.max(1, d - 1))}><Minus /></Button>
+                    <output aria-live="polite" aria-label="Depth" className="min-w-10 text-center text-lg font-semibold tabular-nums">{depth}</output>
+                    <Button type="button" variant="outline" size="icon" aria-label="Go deeper" disabled={depth >= MAX_DEPTH} onClick={() => setDepth((d) => Math.min(MAX_DEPTH, d + 1))}><Plus /></Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">How many clicks away from this page Lumi will go. 1 is only the pages linked from here; {DEFAULT_DEPTH} suits most websites; 5 reaches deep into big sites.</p>
+                </div>
+                <TextField label="Max pages" type="number" min={1} max={MAX_PAGES} value={pages} onChange={(e) => setPages(Math.min(MAX_PAGES, Math.max(1, Number(e.target.value) || 1)))} hint={`Lumi stops after this many pages (up to ${MAX_PAGES}), even if it could go further.`} />
+                <div className="flex items-start gap-3">
+                  <Switch id="subdomains" checked={subdomains} onCheckedChange={setSubdomains} className="mt-0.5" />
+                  <div className="min-w-0 flex-1"><Label htmlFor="subdomains" className="cursor-pointer">Include subdomains</Label>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Also read pages such as blog.example.com when you start from example.com.</p></div>
+                </div>
+              </div>)}
+          </div></>}
         {kind === "text" && <TextArea label="Text" rows={8} value={text} onChange={(e) => setText(e.target.value)} maxLength={900000} required />}
         <TextField label={kind === "text" ? "Name" : "Name (optional)"} value={name} onChange={(e) => setName(e.target.value)} maxLength={200} required={kind === "text"} />
         <Select label="Available to" value={agentId} onChange={(e) => setAgentId(e.target.value)}><option value="">All agents</option>{agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Select>
@@ -245,6 +284,9 @@ function Sections({ source, onClose }: { source: KnowledgeSource; onClose: () =>
   const [open, setOpen] = useState<Set<string>>(new Set());
   const desktop = useMediaQuery("(min-width: 768px)");
   const q = useQuery({ queryKey: ["chunks", source.id, page], queryFn: () => ag.chunks(source.id, page * 20) });
+  const isUrl = source.type === "url";
+  const all = useQuery({ queryKey: ["chunks-all", source.id], queryFn: () => ag.chunks(source.id, 0, 100), enabled: isUrl });
+  const pageList = [...(all.data ?? []).reduce((m, c) => (c.url ? m.set(c.url, (m.get(c.url) ?? 0) + 1) : m), new Map<string, number>())];
   const toggle = (id: string) => setOpen((o) => { const n = new Set(o); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -254,6 +296,12 @@ function Sections({ source, onClose }: { source: KnowledgeSource; onClose: () =>
           <SheetDescription className="font-mono text-xs">{source.skill ? `skills/${source.skill}/` : `${source.chunkCount} sections`}</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {isUrl && pageList.length > 0 && (
+            <details className="mb-3 rounded-xl border bg-background" open={pageList.length <= 6}>
+              <summary className="min-h-11 cursor-pointer px-3 py-2.5 text-sm font-medium">Pages read ({pageList.length})</summary>
+              <ul className="space-y-1 border-t px-3 py-2.5">{pageList.map(([u, n]) => (
+                <li key={u} className="flex items-baseline justify-between gap-3 text-xs"><span className="min-w-0 truncate font-mono text-muted-foreground" title={u}>{u}</span><span className="shrink-0 tabular-nums text-muted-foreground">{n} {n === 1 ? "section" : "sections"}</span></li>))}</ul>
+            </details>)}
           {q.isPending ? <Loading /> : q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : q.data.length === 0 ? <p className="text-sm text-muted-foreground">No sections on this page.</p> : (
             <ol className="space-y-2.5">{q.data.map((c) => {
               const isOpen = open.has(c.id);
@@ -261,7 +309,7 @@ function Sections({ source, onClose }: { source: KnowledgeSource; onClose: () =>
                 <li key={c.id} className="rounded-xl border bg-background">
                   <button type="button" onClick={() => toggle(c.id)} aria-expanded={isOpen} className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40">
                     <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted text-xs font-semibold tabular-nums">{c.chunkIndex + 1}</span>
-                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{c.title || "Untitled section"}</span><span className="block text-xs tabular-nums text-muted-foreground">{c.tokenCount} tokens</span></span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{c.title || "Untitled section"}</span><span className="block truncate text-xs tabular-nums text-muted-foreground">{c.url ? <span className="font-mono">{c.url}</span> : null}{c.url ? " · " : ""}{c.tokenCount} tokens</span></span>
                     <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
                   </button>
                   <AnimatePresence initial={false}>

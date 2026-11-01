@@ -42,6 +42,7 @@ export default function ContactProfile() {
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-display text-2xl font-semibold tracking-tight">{contactLabel(c)}</h1>
           <p className="text-sm text-muted-foreground">First seen {fullTime(c.firstSeenAt)}, {c.identities.length} channel identit{c.identities.length === 1 ? "y" : "ies"}</p>
+          {c.blockedAt && <Badge variant="destructive" className="mt-2">Blocked for abuse</Badge>}
           {channels.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{channels.map((ch) => <Badge key={ch} variant="outline"><ChannelGlyph channel={ch} />{CHANNEL_LABEL[ch] ?? ch}</Badge>)}</div>}
         </div>
         <Button variant="outline" onClick={() => setMerging(true)}><GitMerge />Merge duplicate</Button>

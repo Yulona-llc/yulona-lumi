@@ -8,6 +8,8 @@ export interface CreditsInfo {
   allowanceMicro: number | null; usedMicro: number; topupMicro: number; topupUsedMicro: number;
   remainingMicro: number | null; percentUsed: number | null;
   status: "ok" | "warning" | "exhausted"; warnings: string[];
+  /** Rolling average (or typical) credits per answered message and the whole messages the remaining credits cover. */
+  creditsPerMessage?: number | null; estimatedMessages?: number | null; estimateBasis?: "usage" | "typical" | null;
 }
 export interface UsageRow { key: string; label: string; promptTokens: number; completionTokens: number; totalTokens: number; requests: number; creditsMicro: number }
 export interface UsageReport { from: string; to: string; groupBy: GroupBy; items: UsageRow[]; totals: Omit<UsageRow, "key" | "label"> }
@@ -39,6 +41,15 @@ export const creditsApi = {
 const nf = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
 export const toCredits = (micro: number) => micro / MICRO;
 export const fmtCredits = (micro: number | null | undefined) => (micro == null ? "0" : nf.format(toCredits(micro)));
+/** "about 2,371 messages left" (singular-safe); null when there is no estimate. */
+export function messagesLeftText(n: number | null | undefined): string | null {
+  if (n == null) return null;
+  return `about ${new Intl.NumberFormat().format(n)} ${n === 1 ? "message" : "messages"} left`;
+}
+/** Typical message used for estimates before a workspace has history: 6k tokens in, 0.6k out. */
+export function typicalMessageCredits(inputMicroPer1k: number, outputMicroPer1k: number): number {
+  return Math.ceil((6000 * inputMicroPer1k + 600 * outputMicroPer1k) / 1000) / MICRO;
+}
 export const fmtNum = (n: number) => new Intl.NumberFormat().format(n);
 export const fmtPrice = (cents: number, currency: string) => {
   try { return new Intl.NumberFormat(undefined, { style: "currency", currency: currency.toUpperCase(), minimumFractionDigits: cents % 100 ? 2 : 0 }).format(cents / 100); }

@@ -1,0 +1,41 @@
+---
+title: Overview by goal
+description: Read your Overview page, which shows support, leads and bookings numbers for the goals of your workspace.
+icon: gauge
+---
+
+The Overview is your home page. It shows the numbers that matter for the goals you chose, plus what needs a person right now. This page is for everyone in the workspace; owners and admins can also change the goals.
+
+## Choose your goals
+
+Goals are chosen in the [setup wizard](/guides/workspace/setup-wizard) or on the Overview itself. If no goal is set, the Overview shows **Tell Lumi your goal** with buttons for **Answer questions**, **Capture leads** and **Take bookings**. Viewers and agents see "Ask a workspace admin to choose the goal." You can also say it to [Ask Lumi](/guides/workspace/ask-lumi).
+
+If you pick several goals, all their blocks show, with your first goal on top. All numbers cover the last 30 days.
+
+## Customer questions (goal: answer questions)
+
+| Number | Meaning |
+|---|---|
+| Answered by Lumi | Share of chats where a customer wrote and Lumi never needed to hand over to a person. |
+| Handed to your team | How many handovers happened. |
+| First reply | The typical time (median) until the first answer, in seconds. |
+| Questions Lumi could not answer | Handovers because Lumi did not know. Click one to open the chat, and use **Add knowledge** to fill the gap. |
+
+Until there is data the cards say "No data yet" instead of zero.
+
+## Leads (goal: capture leads)
+
+- **Funnel**: Started, Engaged, Qualified, Booking offered and Booked, counted per conversation.
+- **Qualified leads**: conversations that reached Qualified.
+- **HubSpot**: whether it is connected, when it last synced and how many records failed. If it is not connected, a link takes you to **Connect HubSpot**. See [HubSpot](/guides/tools/hubspot).
+
+## Bookings (goal: take bookings)
+
+**Upcoming**, **Booked** and **Cancelled** (the last two cover the last 30 days), plus whether a calendar is connected. If none is, a link opens **Connect a calendar**. See [Calendar and booking](/guides/tools/calendar-booking).
+
+## On every Overview
+
+- **Set up your workspace** checklist (owners and admins) until the steps are done, with **Try it, then publish** after the setup wizard.
+- AI credits, **Right now** (how many chats the AI is handling and who is waiting), **Needs you** and the activity charts.
+
+{/* source: apps/dashboard/src/features/overview/*, apps/api/src/copilot/overview.ts, docs/api/copilot.md */}

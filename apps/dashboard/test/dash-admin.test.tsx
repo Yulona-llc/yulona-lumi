@@ -9,17 +9,16 @@ import ChannelsPage from "../src/features/channels/ChannelsPage";
 import BillingPage from "../src/features/billing/BillingPage";
 import { UpgradePrompt, planLimitFrom } from "../src/features/billing/UpgradePrompt";
 import WebhooksPage from "../src/features/integrations-ui/WebhooksPage";
-import AdminRoutes from "../src/features/admin/AdminRoutes";
-import { ImpersonationBanner } from "../src/features/admin/ImpersonationBanner";
-import { impersonation } from "../src/features/admin/impersonation";
-import { adminApi } from "../src/features/admin/api";
+import { ImpersonationBanner } from "../src/features/impersonation/ImpersonationBanner";
+import ImpersonatePage from "../src/features/impersonation/ImpersonatePage";
+import { useAuth } from "../src/auth/AuthProvider";
 import { API_KEY_SCOPES } from "../src/features/integrations-ui/scopes";
 
 const session = (role: string) => ({ accessToken: "t", expiresIn: 900, user: { id: "11111111-1111-4111-8111-111111111111", email: "a@b.co", name: "A", role }, tenant: { id: "22222222-2222-4222-8222-222222222222", name: "Acme" } });
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
 type H = (init?: RequestInit) => Response;
 
-function mount(ui: React.ReactNode, role: string, routes: Record<string, unknown | H>) {
+function mount(ui: React.ReactNode, role: string, routes: Record<string, unknown | H>, entries?: string[]) {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   setFetchImpl((async (u: string, init?: RequestInit) => {
     calls.push({ url: u, init });
@@ -30,12 +29,12 @@ function mount(ui: React.ReactNode, role: string, routes: Record<string, unknown
   }) as unknown as typeof fetch);
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <MemoryRouter><AuthProvider><Routes><Route path="/*" element={ui} /></Routes></AuthProvider></MemoryRouter>
+      <MemoryRouter initialEntries={entries}><AuthProvider><Routes><Route path="/*" element={ui} /></Routes></AuthProvider></MemoryRouter>
     </QueryClientProvider>);
   return calls;
 }
 afterEach(() => vi.unstubAllGlobals());
-beforeEach(() => { document.cookie = "yl_csrf=c; path=/"; impersonation.clear(); adminApi.logout(); });
+beforeEach(() => { document.cookie = "yl_csrf=c; path=/"; });
 
 const available = { items: [{ channel: "telegram", credentialFields: [{ name: "botToken", label: "Bot token", secret: true, required: true }, { name: "webhookSecret", label: "Webhook secret", secret: true, required: true }] }] };
 const conn = { id: "c1", channel: "telegram", name: "Support bot", externalId: null, agentId: null, status: "active", credentialsMasked: { botToken: "••••1234" }, webhookUrl: "https://api.x/api/v1/webhooks/channels/telegram/c1", health: null, createdAt: "x", updatedAt: "x" };
@@ -100,30 +99,48 @@ describe("integrations", () => {
   });
 });
 
-describe("admin console", () => {
-  it("requires platform-admin login and then renders analytics", async () => {
-    vi.stubGlobal("fetch", (async (u: string) => {
-      const p = u.replace(/^.*\/api\/v1/, "");
-      if (p === "/admin/auth/login") return json({ accessToken: "adm", admin: { id: "a", email: "root@y.co" } });
-      if (p === "/admin/analytics") return json({ tenants: { total: 7, active: 6, suspended: 1, deleted: 0, new30d: 2 }, byPlan: [{ plan: "free", count: 5 }], mrrCents: 9900, conversations: { last30d: 120, perDay: [{ day: "2026-01-01", count: 4 }] }, funnel: [{ stage: "new", conversations: 9 }] });
-      if (p === "/admin/health") return json({ status: "degraded", db: { ok: true, latencyMs: 3 }, queue: { queued: 1, running: 0, dead: 2, oldestQueuedAgeSec: 5 }, worker: { lastHeartbeatAt: null, ageSec: 300, ok: false } });
-      return json({}, 404);
-    }) as unknown as typeof fetch);
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter initialEntries={["/"]}><Routes><Route path="/*" element={<AdminRoutes />} /></Routes></MemoryRouter></QueryClientProvider>);
-    expect(screen.getByRole("heading", { name: "Platform admin" })).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText("Email"), "root@y.co");
-    await userEvent.type(screen.getByLabelText("Password"), "pw");
-    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(await screen.findByText("$99")).toBeInTheDocument();
-    expect(await screen.findByText("degraded")).toBeInTheDocument();
-  });
-  it("shows a clear impersonation banner and ends it", async () => {
-    const calls = mount(<ImpersonationBanner />, "admin", { "/me": { user: {}, tenant: {}, impersonation: null }, "/auth/logout": { ok: true } });
-    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/me"))).toBe(true));
-    expect(screen.queryByRole("alert")).toBeNull();
-    impersonation.start({ sessionId: "s1", tenantName: "Acme", reason: "support" });
+const exchanged = (readOnly: boolean) => ({ accessToken: "imp-token", expiresIn: 900, sessionId: "s1", readOnly, user: { id: "11111111-1111-4111-8111-111111111111", email: "boss@acme.test", name: "Boss", role: "admin" }, tenant: { id: "22222222-2222-4222-8222-222222222222", name: "Acme" } });
+
+describe("platform impersonation (customer side)", () => {
+  function WhoAmI() { const { session } = useAuth(); return <p>{session ? `signed in as ${session.user.email}` : "anonymous"}</p>; }
+  function mountImpersonate(hash: string, exchange: unknown | H) {
+    window.history.replaceState(null, "", `/impersonate${hash}`);
+    const calls = mount(<Routes><Route path="impersonate" element={<ImpersonatePage />} /><Route path="overview" element={<><ImpersonationBanner /><WhoAmI /></>} /><Route path="login" element={<p>login page</p>} /></Routes>, "admin", {
+      "/auth/impersonation/exchange": exchange, "/me": { user: {}, tenant: {}, impersonation: null }, "/auth/logout": { ok: true },
+    }, ["/impersonate"]);
+    return calls;
+  }
+
+  it("redeems the fragment code once, removes it from the address bar and starts a read-only session with a banner", async () => {
+    const calls = mountImpersonate("#code=abcdefghijklmnop1234", () => json(exchanged(true)));
+    expect(await screen.findByText("signed in as boss@acme.test")).toBeInTheDocument();
+    const post = calls.filter((c) => c.url.endsWith("/auth/impersonation/exchange"));
+    expect(post).toHaveLength(1);
+    expect(JSON.parse(post[0]!.init!.body as string)).toEqual({ code: "abcdefghijklmnop1234" });
+    expect(window.location.hash).toBe("");
     const banner = await screen.findByRole("alert");
-    expect(within(banner).getByText("Impersonating")).toBeInTheDocument();
+    expect(within(banner).getByText("Impersonating, read-only")).toBeInTheDocument();
+    expect(within(banner).getByText(/look but not change/i)).toBeInTheDocument();
     expect(within(banner).getByRole("button", { name: /stop impersonating/i })).toBeInTheDocument();
+  });
+
+  it("marks write-mode sessions as such and the stop button signs out", async () => {
+    const calls = mountImpersonate("#code=abcdefghijklmnop1234", () => json(exchanged(false)));
+    const banner = await screen.findByRole("alert");
+    expect(within(banner).getByText("Impersonating, write mode")).toBeInTheDocument();
+    await userEvent.click(within(banner).getByRole("button", { name: /stop impersonating/i }));
+    expect(await screen.findByText("login page")).toBeInTheDocument();
+    expect(calls.some((c) => c.url.endsWith("/auth/logout"))).toBe(true);
+  });
+
+  it("explains an invalid, used or expired code", async () => {
+    mountImpersonate("#code=abcdefghijklmnop1234", () => json({ error: { code: "validation_error", message: "Code is invalid, expired or already used" } }, 400));
+    expect(await screen.findByText(/invalid, expired or was already used/i)).toBeInTheDocument();
+  });
+
+  it("explains a link without a code and never calls the API", async () => {
+    const calls = mountImpersonate("", { ok: true });
+    expect(await screen.findByText(/no impersonation code/i)).toBeInTheDocument();
+    expect(calls.some((c) => c.url.endsWith("/auth/impersonation/exchange"))).toBe(false);
   });
 });

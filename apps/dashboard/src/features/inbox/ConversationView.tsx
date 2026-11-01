@@ -143,7 +143,7 @@ export default function ConversationView() {
             <ContactAvatar contact={c.contact} channel={c.channel} />
             <div className="min-w-0 flex-1">
               <h2 className="truncate font-display text-base font-semibold leading-tight sm:text-lg">{contactLabel(c.contact)}</h2>
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><ChannelGlyph channel={c.channel} className="size-3" />{CHANNEL_LABEL[c.channel] ?? c.channel}{ai.data?.stage && <Badge variant="outline" className="ml-1 px-2 py-0 font-medium">{stageLabel(ai.data.stage)}</Badge>}</p>
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><ChannelGlyph channel={c.channel} className="size-3" />{CHANNEL_LABEL[c.channel] ?? c.channel}{ai.data?.stage && <Badge variant="outline" className="ml-1 px-2 py-0 font-medium">{stageLabel(ai.data.stage)}</Badge>}{c.contact.blockedAt && <Badge variant="destructive" className="ml-1 px-2 py-0">Blocked for abuse</Badge>}</p>
             </div>
             <Button variant="ghost" size="icon" className="@6xl:hidden" aria-label="Contact details" aria-expanded={panel} onClick={() => setPanel(true)}><PanelRight /></Button>
           </div>
@@ -178,7 +178,7 @@ export default function ConversationView() {
               </Select>
               {c.handler === "ai"
                 ? <Button disabled={busy || resolved} onClick={() => act.mutate("takeover")}>Take over</Button>
-                : <Button variant="outline" disabled={busy} onClick={() => act.mutate("return")}>{mine ? "Return to AI" : "Hand back to AI"}</Button>}
+                : <Button variant="outline" disabled={busy || !!c.contact.blockedAt} title={c.contact.blockedAt ? "Unblock the contact first" : undefined} onClick={() => act.mutate("return")}>{mine ? "Return to AI" : "Hand back to AI"}</Button>}
               {resolved
                 ? <Button variant="ghost" disabled={busy} onClick={() => act.mutate("reopen")}><RotateCcw /><span className="max-sm:sr-only">Reopen</span></Button>
                 : <Button variant="ghost" disabled={busy} onClick={() => act.mutate("resolve")}><Check /><span className="max-sm:sr-only">Resolve</span></Button>}

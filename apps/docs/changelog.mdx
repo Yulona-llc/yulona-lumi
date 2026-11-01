@@ -1,10 +1,79 @@
 ---
 title: Changelog
-description: See what changed in Yulona, newest first, with links to the pages that explain each change.
+description: See what changed in Lumi, newest first, with links to the pages that explain each change.
 icon: clock-rotate-left
 ---
 
 Newest first. Each entry lists what customers, operators and platform admins can now do.
+
+## 2026-11-01
+
+Zero-downtime API deploys and static frontends on Vercel.
+
+- **Backend blue/green.** `deploy/rollout.sh` and `deploy/docker-compose.backend.yml` migrate, start a new API/worker slot, wait for `/readyz`, then stop the old containers. The `deploy-backend` workflow pushes images to GHCR and runs the rollout on a self-hosted runner labelled `yulona-vpc`. See [Upgrade, backup and restore](/self-hosting/upgrade-backup-restore#zero-downtime-backend-rollout).
+- **Deploy only what changed.** The workflow now runs on pushes to `main` that touch backend code, tests first, and builds and rolls out only the changed service: API and worker together, or the admin API on its own (`deploy/rollout-admin-api.sh`, which restarts only that container). It stays off until the `BACKEND_DEPLOY_ENABLED` repository variable is `true`. The two Vercel projects skip builds that do not touch their folders (`scripts/vercel-ignore.sh`). `deploy/.env.backend.example` lists every VM variable for a VM-plus-Vercel setup. See [Deploy only what changed](/self-hosting/upgrade-backup-restore#deploy-only-what-changed).
+- **Dashboard and admin on Vercel.** `apps/dashboard/vercel.json` and `apps/admin-web/vercel.json` build the static apps (dashboard includes `widget.js`). Chat still goes to the API host. See [Requirements and install](/self-hosting/requirements-and-install#dashboard-and-admin-web-on-vercel).
+
+Setup wizard, Ask Lumi and an Overview built around your goals.
+
+- **Set up with Lumi.** New workspaces start with a short, resumable wizard (business type and name, goals, channels, tone, languages, hours, website, brand colour, handover preference). It creates a draft agent, a chat window, your business hours and a website knowledge source (3 levels deep) from templates, plus one short AI call to polish the wording that is never charged to your credits. Nothing is published. See [Set up with Lumi](/guides/workspace/setup-wizard).
+- **Ask Lumi.** An assistant drawer for owners and admins on paid plans: change an agent draft, the chat window, business hours, goals or the website Lumi reads by describing it. Publishing needs your confirmation. It has its own monthly allowance (new plan limit `copilot_credits_monthly`, editable in the admin console) that never uses your chat credits. See [Ask Lumi](/guides/workspace/ask-lumi) and the [Copilot API](/developers/copilot-api).
+- **Overview by goal.** `GET /overview` powers an Overview with blocks for support, leads and bookings, replacing the old client-side funnel; with no goal set it asks you to pick one. See [Overview by goal](/guides/workspace/overview-by-goal).
+- **API and settings.** New `GET/PUT /workspace/profile`, `/onboarding*` and `/copilot*` routes, error codes `copilot_requires_plan` and `copilot_limit_reached`, usage sources `copilot` and `onboarding`, and the optional `COPILOT_MODEL` setting. See [Usage and credits](/guides/account/usage-and-credits#ask-lumi-allowance).
+
+Simpler widget and agent forms, gradients and picture upload.
+
+- **Widget colours without hex codes.** Pick a swatch or any colour, choose one colour or a two-colour gradient with a direction, and see the chat header, a message and the chat button update live. Text colour adapts for readability. See [Website widget](/guides/channels/website-widget#set-up-the-widget) and [widget embed](/developers/widget-embed#appearance-and-avatar).
+- **Upload a chat picture.** Choose a PNG, JPEG or WebP image, crop it to a square and it is stored and shown in the chat header; the picture web address moved under **Advanced**. New routes `POST/GET/DELETE /widgets/{id}/avatar` and the public `GET /public/widgets/{key}/avatar`.
+- **Simpler forms.** Allowed websites, escalation words and blocked phrases are chip inputs, Turnstile sits under **Advanced protection**, **Model** is a list of the models your plan offers (text field when self-hosted), temperature became a **Precise** to **Creative** slider and the business-hours time zone is a searchable list that starts from your computer's. See [Configure your agent](/guides/agents/configure-your-agent) and [Business hours](/guides/workspace/business-hours).
+
+Connectors page, Calendly redirect help and a calendar-aware Bookings page.
+
+- **Settings, Calendar is now Connectors.** Calendar (Google, Calendly) and CRM (HubSpot) sections on one page. See [Calendar and booking](/guides/tools/calendar-booking).
+- **Calendly redirect URL diagnostics.** The Calendly card shows the exact redirect URL with a **Copy** button and the steps to register it, says where it came from, refuses to connect with a URL Calendly would reject, and shows Calendly's own error message in plain language. See [Channels and integrations setup](/self-hosting/channels-and-integrations-setup#calendly).
+- **Bookings shows your calendars.** A status strip with **Connect Google** and **Connect Calendly**, **New booking** enabled whenever any calendar is connected, a provider choice when both are connected, open-time picking for Calendly and a copyable scheduling link when Calendly cannot book directly. See [Bookings](/guides/workspace/bookings).
+
+
+Smarter website reading, and Transactions is gone.
+
+- **Deeper website crawl.** Adding a URL in **Knowledge** now follows links on the same site by default, up to **How deep** (default 3, 1 to 5) and **Max pages** (default 25, up to 50), with optional **Include subdomains**. Lumi respects `robots.txt` and `Crawl-delay`, skips duplicate and non-text pages, pauses about half a second between pages, and shows how many pages it read. See [Knowledge and skills](/guides/agents/knowledge-skills#how-lumi-reads-a-website) and [Knowledge sources API](/developers/ai-runtime#knowledge-sources-api).
+- **Cleaner titles and text.** Extra spaces, tabs and blank lines are removed from section titles, descriptions and all extracted text (pages, PDF, DOCX, text files, pasted text). See [Knowledge and skills](/guides/agents/knowledge-skills).
+- **Transactions removed.** The Transactions page, its API (`/api/v1/transactions*`), the inbound transaction webhook and its endpoints are gone, and the stored transaction data is deleted by a migration. Contact exports, erasure reports and roles no longer mention transactions. Your tickets and bookings are unchanged. See [Privacy and data](/guides/account/privacy-and-data) and [Team and roles](/guides/workspace/team-and-roles).
+
+Platform admin is now a separate service.
+
+- **New admin web app.** The console moved out of the customer dashboard into its own app with an overview, a customer list with server-side filters, Customer 360, a needs-attention queue, operations, audit log and admin management, a command palette and role-aware actions. See [Admin console tour](/platform-admin/console-tour) and [Customers and the health score](/platform-admin/customers-and-health-score).
+- **Impersonation opens the customer dashboard through a one-time link**, with a banner that shows read-only or write mode. See [Support playbook](/platform-admin/support-playbook).
+
+- **Separate platform admin.** Operators of a hosted platform now use their own service, host, signing key and database role instead of routes inside the workspace API. The workspace API no longer serves `/api/v1/admin/*`, and `SUPER_ADMIN_ENABLED` is gone. See [Platform admin overview](/platform-admin/overview) and [Configuration](/self-hosting/configuration#platform-admin-separate-service-optional).
+- **Roles, sessions and 2FA.** Three admin roles (owner, support, billing), sessions that survive a reload, optional authenticator-app two-factor authentication with recovery codes, and an `ADMIN_REQUIRE_2FA` switch for later. See [Platform admin overview](/platform-admin/overview#roles).
+- **Customer 360 for support.** Health scores, server-side search and filters, failures per customer, notes, tags, dead-job retry and read-only impersonation by default. See [Tenants and impersonation](/platform-admin/tenants-and-impersonation).
+- **Impersonation by one-time code.** The admin service hands out a 60-second single-use code; the customer app redeems it at `POST /api/v1/auth/impersonation/exchange` for a 15-minute token. Read-only sessions can only read. See [Authentication](/developers/authentication).
+
+## 2026-10-21
+
+Yulona is now Lumi, plus the $49 Pro plan, message estimates and Stripe test mode.
+
+- **New name.** The product, dashboard, widget, emails and these docs now say Lumi. The logo is a placeholder until the final one is added. Nothing you run needs to change: environment variables, images, database names and the `yulona.co` domain keep their names. See [Name and compatibility](/concepts#name-and-compatibility).
+- **`X-Lumi-*` headers.** Webhook deliveries and signed tool requests now carry `X-Lumi-Event`, `X-Lumi-Delivery`, `X-Lumi-Timestamp` and `X-Lumi-Signature` next to the `X-Yulona-*` headers, and the transaction webhook accepts either set. See [Webhooks](/developers/webhooks).
+- **`window.Lumi`.** The widget also reads `window.LumiConfig` and exposes `window.Lumi`; `window.YulonaConfig` and `window.Yulona` still work. See [Widget embed](/developers/widget-embed).
+
+The $49 Pro plan, message estimates and Stripe test mode.
+
+- **Widget protection.** Under **Protection** in the widget settings, a hidden honeypot field is on by default and you can add your own Cloudflare Turnstile keys (site key, write-only secret, theme, size, appearance, action). The check fails closed. See [Website widget](/guides/channels/website-widget) and [Widget embed](/developers/widget-embed#bot-protection-and-blocked-visitors).
+- **Abuse blocking for every agent.** After the strike limit (default 3: blocked phrases, message floods, repeated or gibberish messages, or the AI's own judgment) the agent says goodbye, the conversation is closed, the visitor is blocked and owners and admins are notified once. A blocked visitor cannot start, reopen or resume a chat; only an owner or admin can unblock. New **Safety** card on the agent's Escalation tab, **Block contact** and **Unblock** in the inbox, a **Blocked for abuse** type in Needs attention. See [Configure your agent](/guides/agents/configure-your-agent#safety), [Contacts](/guides/workspace/contacts#block-abusive-visitors) and [AI runtime](/developers/ai-runtime#abuse-flagging).
+- **New API errors and routes.** `403 contact_blocked`, `403 turnstile_failed`, `POST /contacts/:id/block` and `POST /contacts/:id/unblock`. See [Errors](/developers/errors).
+
+- **Pro plan at $49 per month.** Pro includes 4,980 AI credits and 15,480,000 tokens a month, derived from the default model rate. See [Billing and plans](/guides/account/billing-and-plans) and [Plans, credits and rates](/platform-admin/plans-credits-and-rates).
+- **"About N messages left".** The Usage and Billing pages estimate how many customer messages your remaining credits cover, from your own 30-day average. The plan card shows credits, tokens and the estimate, and platform admins see the same estimate per plan. See [Usage and credits](/guides/account/usage-and-credits) and [Credits API](/developers/credits-api).
+- **Late payments restore the plan.** If a failed payment is paid after the grace period, the workspace returns to Pro without waiting for another subscription event. See [Billing and plans](/guides/account/billing-and-plans).
+- **HubSpot.** Connect a HubSpot private app under Settings, Connectors, CRM. Qualified leads and confirmed bookings create or update a HubSpot contact by email, with a property mapping, a test contact and a sync status. See [HubSpot](/guides/tools/hubspot).
+- **`lead.qualified` webhook event.** Fires once when a conversation reaches the qualified stage. See [Webhooks](/developers/webhooks).
+- **Stripe test mode.** `scripts/stripe-sandbox.sh` creates the test product and price, and `STRIPE_PRICE_PRO` is documented. See [Configuration](/self-hosting/configuration#stripe-test-mode-hosted-product).
+- **Only published agents answer customers.** A draft, archived, deleted or unassigned agent no longer answers, and there is no fallback to the oldest agent. Visitors get "This assistant is not available right now. A team member will reply." and one needs attention item per conversation. The website widget shows an offline notice. See [Publish and versions](/guides/agents/publish-and-versions) and [Website widget](/guides/channels/website-widget).
+- **Archive warning.** Archiving an agent that a widget or channel still uses lists them. See [Publish and versions](/guides/agents/publish-and-versions).
+- **Cheaper messages.** The AI opens skills for at most two rounds, then writes the answer; sends the last six messages only; and caps skill text per read. Operators can tune this with `AI_*` variables. See [Configuration](/self-hosting/configuration) and [AI runtime](/developers/ai-runtime).
+- **Usage by source.** `GET /usage/ai?groupBy=source` separates live chats from sandbox and builder spend. See [Credits API](/developers/credits-api).
 
 ## 2026-10-19
 
@@ -22,7 +91,7 @@ Credits and usage, provider settings, a chat-based agent builder, no-code tools 
 - **Credit rules on the hosted product.** Plans include a monthly credit allowance, with warnings at 80% and when credits run out, and credit packs customers can buy. Self-hosted installs record usage but are never charged. See [Plans, credits and rates](/platform-admin/plans-credits-and-rates).
 - **Provider settings.** Platform admins manage AI provider profiles (any OpenAI-compatible service, write-only keys, enabled models, Test connection). See [Providers](/platform-admin/providers).
 - **Your own AI provider when self-hosting.** New settings `AI_AUTH_HEADER`, `AI_AUTH_SCHEME`, `AI_EXTRA_HEADERS`, `AI_QUERY` and `AI_CHAT_PATH` support Azure OpenAI, OpenRouter and local servers. See [AI providers](/self-hosting/ai-providers).
-- **Agent builder chat.** Describe your business and Yulona drafts an agent for you to review in the sandbox. Drafts are never published automatically. See [Create with AI](/guides/agents/create-with-ai).
+- **Agent builder chat.** Describe your business and Lumi drafts an agent for you to review in the sandbox. Drafts are never published automatically. See [Create with AI](/guides/agents/create-with-ai).
 - **Tool connections and no-code tools.** Save an API once as a connection, then build tools that call it, with a test run and click-to-map responses. See [Build a tool](/guides/tools/build-a-tool) and [Connections](/guides/tools/connections).
 - **Calendly.** Connect Calendly with OAuth so agents can check availability and book. See [Calendar and booking](/guides/tools/calendar-booking) and [Channels and integrations setup](/self-hosting/channels-and-integrations-setup#calendly).
 - **Credit adjustments.** Platform admins can grant or deduct credits for a workspace with an audited reason. See [Tenants and impersonation](/platform-admin/tenants-and-impersonation).

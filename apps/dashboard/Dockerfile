@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Yulona dashboard (static SPA on unprivileged nginx). Build context MUST be the monorepo root:
+# Lumi dashboard (static SPA on unprivileged nginx). Build context MUST be the monorepo root:
 #   docker build -f apps/dashboard/Dockerfile -t yulona/dashboard .
 # Runtime config: set API_URL (empty = same-origin /api). One image serves every environment.
 ARG BUN_VERSION=1

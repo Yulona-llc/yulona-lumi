@@ -60,12 +60,28 @@ Good personas say who the agent is, who it talks to, what it should achieve, wha
 
 Escalation decides when the AI stops and a person takes over.
 
-- **Escalation keywords**: one per line. If a customer's message contains one of these words or phrases, the agent hands off immediately. Up to 50.
+- **Words that call a person** (escalation keywords): type a word or phrase and press Enter to add it as a chip; click the **x** on a chip to remove it. If a customer's message contains one of these, the agent hands off immediately. Up to 50.
 - **Hand off after unanswered questions**: a number from 1 to 20 (default 3). When the agent cannot answer a question from your knowledge it first sends the clarifying reply and asks the customer to rephrase. It hands off after this many questions in a row it cannot answer. Set it to 1 to hand off on the first miss. A question it does answer resets the count.
 - **Resume keyword**: while a customer waits for a person, replying with this word (default `AI`) sends them back to the AI. Leave it empty to turn this off. See [Handoffs and human takeover](/guides/agents/handoffs-and-human-takeover).
 - **Hand off qualified leads**: when a lead has shared what they need and a budget or timeline, the agent passes the conversation to a person with a lead card.
 
 Customers who plainly ask for a person ("I want to talk to a human", "real person please") are handed off straight away, without going through the clarifying steps. Greetings and thank-yous are answered normally and never count as unanswered.
+
+### Safety
+
+The **Safety** card on the same tab protects your agent from abusive visitors, spam and floods. It is **on by default for every agent**, including agents created before this setting existed and agents created with the AI builder.
+
+- **Block abusive visitors**: the master switch.
+- **Strikes before blocking** (1 to 10, default 3): abusive, spam or flooding messages in one conversation. The AI also counts a strike when it decides the customer keeps being abusive.
+- **Messages per minute** (2 to 60, default 12): more messages than this in a minute count as a strike.
+- **Blocked phrases**: type a word or phrase and press Enter to add it as a chip. Not case sensitive. A message containing one counts as a strike.
+- **Farewell message**: the last thing the visitor sees.
+
+A strike also comes from the same message sent three times in a row, or from text that is mostly symbols or one repeated character. After the strike limit the agent sends the farewell message, the conversation is closed, the visitor is blocked, a **Blocked for abuse** item appears in [Needs attention](/guides/workspace/needs-attention) and your owners and admins get one notification. A blocked visitor cannot start a new chat, reopen the old one or use the resume keyword. Only an owner or admin can unblock them; see [Block abusive visitors](/guides/workspace/contacts#block-abusive-visitors).
+
+<Note>
+Under the strike limit the agent keeps answering, more briefly, and may warn the customer that the chat will end. Set **Strikes before blocking** to 1 for zero tolerance, or switch the card off if you never want automatic blocks.
+</Note>
 
 ### Stage rules
 
@@ -73,7 +89,7 @@ The lower half of the tab shows the **Stage rules**. The funnel is fixed: **visi
 
 ## Model and temperature
 
-On the **Knowledge** tab you can optionally set a **Model** (leave empty for your workspace default) and a **Temperature** between 0 and 2. Lower values give steadier answers. The same tab lists the skills the agent can read; add and edit them in [Knowledge](/guides/agents/knowledge-skills).
+On the **Knowledge** tab you can optionally set the **Model** and the **Reply style**. On hosted Lumi, **Model** is a list of the models your plan offers, with **Workspace default** first. On a self-hosted install it is a text field: leave it empty for your provider's default, or type the model name exactly as your provider lists it. **Reply style** is a slider from **Precise** to **Creative** (Precise sticks to your knowledge and gives steady answers; it saves as a temperature between 0 and 2). **Use the workspace default** clears it. The same tab lists the skills the agent can read; add and edit them in [Knowledge](/guides/agents/knowledge-skills).
 
 ## Tools
 

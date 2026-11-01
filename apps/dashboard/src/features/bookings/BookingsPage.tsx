@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { errMsg } from "../common/api";
-import { Empty, ErrorState, fmtDate, Loading, Modal, PageHeader, Select, TextArea, TextField, useRole } from "../common/ui";
+import { Empty, ErrorState, fmtDate, Loading, Modal, PageHeader, TextField, useRole } from "../common/ui";
 import { useIsDesktop } from "../ops-settings/hooks";
 import { Segmented } from "../ops-settings/Segmented";
 import { label, ops, type Booking } from "../ops-settings/opsApi";
-import CalendarCard from "./CalendarCard";
+import CalendarStrip, { useCalendars } from "./CalendarStrip";
+import NewBooking from "./NewBooking";
 
 type View = "list" | "calendar";
 const TONE = { booked: "success", cancelled: "secondary", failed: "destructive", offered: "secondary" } as const;
@@ -49,13 +50,19 @@ export default function BookingsPage() {
   const refresh = () => void qc.invalidateQueries({ queryKey: ["bookings"] });
   const items = q.data?.items ?? [];
   const byDay = useMemo(() => { const m = new Map<string, Booking[]>(); for (const b of items) { const k = dayKey(new Date(b.startAt)); m.set(k, [...(m.get(k) ?? []), b]); } return m; }, [items]);
-  const newBtn = canWrite && <Button onClick={() => setCreating(true)}><Plus />New booking</Button>;
+  const cals = useCalendars();
+  // Admins know the connections: New booking needs at least one. Other roles cannot read them, so the server decides on submit.
+  const noCalendar = cals.isAdmin && cals.q.isSuccess && cals.connected.length === 0;
+  const waiting = cals.isAdmin && cals.q.isPending;
+  const newBtn = canWrite && (
+    <Button onClick={() => setCreating(true)} disabled={noCalendar || waiting} aria-describedby={noCalendar ? "new-booking-hint" : undefined}><Plus />New booking</Button>);
 
   return (
     <div className="space-y-5">
       <PageHeader title="Bookings" subtitle="Appointments booked by the AI or your team."
         actions={<><Segmented label="View" value={view} onChange={setView} options={[{ value: "list", label: "List", name: "List" }, { value: "calendar", label: "Calendar", name: "Calendar" }]} />{newBtn}</>} />
-      <CalendarCard />
+      <CalendarStrip calendars={cals} />
+      {noCalendar && canWrite && <p id="new-booking-hint" className="-mt-2 text-sm text-muted-foreground">Connect a calendar above to create bookings.</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Segmented scroll label="Status" value={status} onChange={setStatus} options={[{ value: "", label: "All" }, { value: "booked", label: "Booked" }, { value: "cancelled", label: "Cancelled" }, { value: "failed", label: "Failed" }]} />
         {view === "calendar" && (
@@ -70,7 +77,7 @@ export default function BookingsPage() {
       ) : desktop ? <MonthGrid month={month} byDay={byDay} onPick={setCancel} /> : (
         <WeekStrip week={week} picked={picked} setPicked={setPicked} byDay={byDay} canWrite={canWrite} onCancel={setCancel} />
       )}
-      {creating && <NewBooking onClose={() => setCreating(false)} onCreated={() => { setCreating(false); refresh(); }} />}
+      {creating && <NewBooking providers={cals.known ? cals.connected.map((c) => c.provider) : []} defaultProvider={cals.defaultProvider} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); refresh(); }} />}
       {cancel && <CancelBooking b={cancel} canWrite={canWrite} onClose={() => setCancel(null)} onDone={() => { setCancel(null); refresh(); }} />}
     </div>
   );
@@ -165,29 +172,6 @@ function MonthGrid({ month, byDay, onPick }: { month: Date; byDay: Map<string, B
           </div>);
       })}
     </div>
-  );
-}
-
-function NewBooking({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [f, setF] = useState({ title: "", start: "", duration: "30", email: "", notes: "" });
-  const m = useMutation({
-    mutationFn: () => ops.createBooking({ startAt: new Date(f.start).toISOString(), durationMinutes: Number(f.duration), ...(f.title ? { title: f.title } : {}), ...(f.email ? { attendeeEmail: f.email } : {}), ...(f.notes ? { notes: f.notes } : {}) }),
-    onSuccess: () => { toast.success("Booking created"); onCreated(); },
-    onError: (e) => toast.error("Could not create booking", { description: errMsg(e) }),
-  });
-  return (
-    <Modal title="New booking" onClose={onClose}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (f.start) m.mutate(); }}>
-        <TextField label="Title" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <TextField label="Start" type="datetime-local" required value={f.start} onChange={(e) => setF({ ...f, start: e.target.value })} />
-          <Select label="Duration" value={f.duration} onChange={(e) => setF({ ...f, duration: e.target.value })}>{[15, 30, 45, 60, 90].map((d) => <option key={d} value={d}>{d} minutes</option>)}</Select>
-        </div>
-        <TextField label="Attendee email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
-        <TextArea label="Notes" rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
-        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!f.start || m.isPending}>Create booking</Button></div>
-      </form>
-    </Modal>
   );
 }
 

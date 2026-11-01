@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Yulona API + worker image. Build context MUST be the monorepo root:
+# Lumi API + worker image. Build context MUST be the monorepo root:
 #   docker build -f apps/api/Dockerfile -t yulona/api .
 # The same image runs: api (default), worker (`bun dist/worker.js`), migrate (`bun run dist/migrate.js`),
 # create-tenant (`bun run dist/create-tenant.js`, first-tenant bootstrap).

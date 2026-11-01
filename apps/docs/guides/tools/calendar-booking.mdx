@@ -7,7 +7,7 @@ icon: calendar-days
 With a calendar connected, your agent can check when you are free, offer a few times and book the one the customer picks. This page is for admins and owners who set up the calendar and switch the booking tools on.
 
 <Note>
-Connect calendars under **Settings, then Calendar**. Only **admins and owners** can connect, change or disconnect a calendar. Everyone with access can see the resulting appointments under [Bookings](/guides/workspace/bookings).
+Connect calendars under **Settings, then Connectors**, in the **Calendar** section. You can also start a connection from the [Bookings](/guides/workspace/bookings) page. Only **admins and owners** can connect, change or disconnect a calendar. Everyone with access can see the resulting appointments under [Bookings](/guides/workspace/bookings).
 </Note>
 
 ## Before you start
@@ -18,11 +18,11 @@ Connect calendars under **Settings, then Calendar**. Only **admins and owners** 
 ## Connect Google Calendar
 
 <Steps>
-  <Step title="Open Calendar settings">
-    Go to **Settings**, then **Calendar**. You see a card for **Google Calendar** and one for **Calendly**.
+  <Step title="Open Connectors">
+    Go to **Settings**, then **Connectors**. Under **Calendar** you see a card for **Google Calendar** and one for **Calendly**.
   </Step>
   <Step title="Click Connect Google Calendar">
-    You are sent to Google to choose an account and allow Yulona to read free and busy times and create events.
+    You are sent to Google to choose an account and allow Lumi to read free and busy times and create events.
   </Step>
   <Step title="Come back to the dashboard">
     A green message says "Google Calendar connected" and the card shows **Connected**, the account and when it was connected.
@@ -37,15 +37,18 @@ With Google, the agent offers times that are free on the calendar and, if you ha
 ## Connect Calendly
 
 <Steps>
+  <Step title="Register the redirect URL in Calendly">
+    On the **Calendly** card, copy the **Redirect URL for your Calendly app** with **Copy**. In the Calendly developer portal open your OAuth app, register that exact URL as its Redirect URI and save. Calendly accepts only the URL registered there, so a different address, or `http` instead of `https`, ends in a "redirect url error". According to Calendly, a Production app accepts `https` only, and only a Sandbox app also accepts `http://localhost`.
+  </Step>
   <Step title="Click Connect Calendly">
-    On the **Calendly** card, click **Connect Calendly** and allow access.
+    Click **Connect Calendly** and allow access. If the redirect URL cannot work (for example `PUBLIC_API_URL` is not set on a production server), the card explains why and **Connect Calendly** stays disabled. A yellow note means it may work, but only with a Sandbox app.
   </Step>
   <Step title="Choose the event type">
     Under **Event type the AI books**, select the Calendly event type, for example "30 minute consultation". It shows the length in minutes. Meeting length and open times come from this event type, so the agent follows what you already set in Calendly. Until you choose one the hint says "Choose one so the AI can book."
   </Step>
 </Steps>
 
-With Calendly, Calendly's own availability is the source of truth. Your Yulona business hours are not applied on top of it.
+With Calendly, Calendly's own availability is the source of truth. Your Lumi business hours are not applied on top of it.
 
 ## Use both: choose the default
 
@@ -63,7 +66,7 @@ Connecting a calendar does nothing until your agent has the tools on. Open the a
 
 ## Booking or scheduling link?
 
-Calendly only lets Yulona book on someone's behalf on its paid plans (Standard and above). On the Free plan, or when Yulona does not have an email address for the customer, the agent cannot book directly. Instead it creates a **single-use scheduling link** and gives it to the customer to pick their time.
+Calendly only lets Lumi book on someone's behalf on its paid plans (Standard and above). On the Free plan, or when Lumi does not have an email address for the customer, the agent cannot book directly. Instead it creates a **single-use scheduling link** and gives it to the customer to pick their time.
 
 - The booking is recorded with the status **offered**, not **booked**.
 - An offered booking does not block the slot and does not move the conversation to booked. The customer completes the booking on Calendly.
@@ -75,7 +78,7 @@ Google Calendar has no such limit; it always books directly. If direct booking o
 
 ## If the calendar breaks
 
-If the connection stops working the card shows **Needs attention** with the reason in red, for example that the token could not be refreshed. Click **Reconnect** and sign in again. If the calendar fails while a customer is booking, Yulona retries a few times and then hands the conversation to a person (a **System failure** handoff), records the booking as **failed** and notifies your admins. See [Handoffs](/guides/agents/handoffs-and-human-takeover).
+If the connection stops working the card shows **Needs attention** with the reason in red, for example that the token could not be refreshed. Click **Reconnect** and sign in again. If the calendar fails while a customer is booking, Lumi retries a few times and then hands the conversation to a person (a **System failure** handoff), records the booking as **failed** and notifies your admins. See [Handoffs](/guides/agents/handoffs-and-human-takeover).
 
 **Disconnect** deletes the stored tokens, so the AI can no longer book; existing bookings are kept.
 
@@ -90,6 +93,9 @@ If the connection stops working the card shows **Needs attention** with the reas
 <AccordionGroup>
   <Accordion title="The agent never offers times">
     Check the tool is on and published, a calendar is connected and (Calendly) an event type is chosen.
+  </Accordion>
+  <Accordion title="Calendly shows a redirect URL error">
+    The URL registered in your Calendly app is not exactly the one on the Calendly card. Copy the card's **Redirect URL for your Calendly app**, register it as the app's Redirect URI, save, and connect again. The dashboard also shows Calendly's own message when it sends one. On a self-hosted server make sure `PUBLIC_API_URL` is set; see [Channels and integrations setup](/self-hosting/channels-and-integrations-setup#calendly).
   </Accordion>
   <Accordion title="I connected the wrong account">
     Click **Disconnect** on the card, then connect again with the right account.
@@ -110,4 +116,4 @@ If the connection stops working the card shows **Needs attention** with the reas
   </Card>
 </CardGroup>
 
-{/* source: apps/dashboard/src/features/bookings/{CalendarSettings.tsx,CalendarCard.tsx,BookingsPage.tsx}, packages/ops/src/{tools.ts,booking.ts,calendly.ts,calendar.ts}, docs/api/ops.md, apps/dashboard/src/pages/Shell.tsx */}
+{/* source: apps/dashboard/src/features/bookings/{CalendarSettings.tsx,CalendarStrip.tsx,NewBooking.tsx,BookingsPage.tsx}, apps/api/src/ops/calendly.ts (redirect pre-flight); Calendly developer docs "Creating an OAuth app" for the redirect URI rules, packages/ops/src/{tools.ts,booking.ts,calendly.ts,calendar.ts}, docs/api/ops.md, apps/dashboard/src/pages/Shell.tsx */}

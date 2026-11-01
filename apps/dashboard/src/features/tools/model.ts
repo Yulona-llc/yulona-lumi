@@ -35,7 +35,7 @@ export const AUTH_HELP: Record<AuthType, string> = {
   bearer: "Your system gives you a long token. We send it as \"Authorization: Bearer ...\" on every request.",
   api_key: "Your system gives you a key. We send it in a header you name (often X-API-Key).",
   basic: "A username and password, sent the standard way. Ask your developer for both.",
-  hmac: "We sign every request with a shared secret so your system can check it came from Yulona.",
+  hmac: "We sign every request with a shared secret so your system can check it came from Lumi.",
 };
 
 let uid = 0;
@@ -244,7 +244,7 @@ export function authHeaderPreview(c: Pick<Connection, "authType" | "authHeaderNa
     case "bearer": return [["Authorization", `Bearer ${MASK}`]];
     case "basic": return [["Authorization", `Basic ${MASK}`]];
     case "api_key": return [[c.authHeaderName || "X-API-Key", MASK]];
-    case "hmac": return [["X-Yulona-Timestamp", "1760000000"], ["X-Yulona-Signature", `v1=${MASK}`]];
+    case "hmac": return [["X-Lumi-Timestamp", "1760000000"], ["X-Lumi-Signature", `v1=${MASK}`]];
     default: return [];
   }
 }

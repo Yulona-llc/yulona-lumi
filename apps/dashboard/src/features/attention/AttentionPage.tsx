@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { Building2, CheckCircle2, Clock, HandHelping, Mail, MessageSquareQuote, Moon, Phone, Sparkles, TriangleAlert, UserPlus, Undo2, CircleHelp, ExternalLink, type LucideIcon } from "lucide-react";
+import { Building2, CheckCircle2, Clock, HandHelping, Mail, MessageSquareQuote, Moon, Phone, ShieldAlert, Sparkles, TriangleAlert, UserPlus, Undo2, CircleHelp, ExternalLink, type LucideIcon } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -27,8 +27,9 @@ const TYPES: Record<HandoffType, { name: string; hint: string; icon: LucideIcon;
   uncertainty: { name: "Uncertain", hint: "The AI could not answer from your knowledge base", icon: CircleHelp, tile: "bg-warning/14 text-warning", rail: "bg-warning", chip: "border-warning/40" },
   stage: { name: "Lead ready", hint: "A qualified lead is ready for a person", icon: Sparkles, tile: "bg-primary/18 text-accent-foreground", rail: "bg-primary", chip: "border-primary/50" },
   system_failure: { name: "System failure", hint: "A tool or calendar call failed", icon: TriangleAlert, tile: "bg-destructive/12 text-destructive", rail: "bg-destructive", chip: "border-destructive/40" },
+  abuse: { name: "Blocked for abuse", hint: "The visitor was blocked after repeated abuse or spam. Review it and unblock from the contact panel if it was a mistake", icon: ShieldAlert, tile: "bg-destructive/12 text-destructive", rail: "bg-destructive", chip: "border-destructive/40" },
 };
-const ORDER: HandoffType[] = ["stage", "uncertainty", "system_failure"];
+const ORDER: HandoffType[] = ["stage", "uncertainty", "system_failure", "abuse"];
 const STATES = [["active", "Active"], ["open", "Waiting"], ["claimed", "Claimed"], ["resolved", "Resolved"]] as const;
 
 /** Waiting time with urgency: calm under 10 min, amber to 30, red after. */
@@ -175,7 +176,7 @@ function Item({ h, now, isAdmin, onResolve, onLeave }: { h: HandoffItem; now: nu
           <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", t.tile)}><t.icon className="size-5" aria-hidden="true" /></span>
           <div className="min-w-0 flex-1 basis-40">
             <div className="flex flex-wrap items-center gap-1.5">
-              <Badge variant={h.type === "system_failure" ? "destructive" : h.type === "uncertainty" ? "warning" : "default"}>{t.name}</Badge>
+              <Badge variant={h.type === "system_failure" || h.type === "abuse" ? "destructive" : h.type === "uncertainty" ? "warning" : "default"}>{t.name}</Badge>
               {h.outOfHours && <Badge variant="secondary"><Moon aria-hidden="true" />Out of hours</Badge>}
               <Badge variant={h.state === "open" ? "outline" : h.state === "claimed" ? "info" : "success"}>{h.state === "open" ? "Waiting" : label(h.state)}</Badge>
             </div>

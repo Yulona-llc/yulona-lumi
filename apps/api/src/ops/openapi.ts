@@ -1,9 +1,10 @@
 import { z } from "zod";
 import {
   assignHandoffSchema, bulkTicketsSchema, cancelBookingSchema, claimHandoffSchema, createBookingSchema, createCannedSchema, createTagSchema, createTicketSchema,
-  createTransactionSchema, createWebhookEndpointSchema, errorEnvelopeSchema, notificationPrefsSchema, opsSettingsUpdateSchema, resolveHandoffSchema,
-  setAvailabilitySchema, setTagsSchema, ticketCommentSchema, updateCannedSchema, updateTagSchema, updateTicketSchema, updateTransactionSchema,
-  updateWebhookEndpointSchema, transactionWebhookBodySchema, updateCalendarConnectionSchema, setCalendlyEventTypeSchema, setDefaultCalendarSchema,
+  errorEnvelopeSchema, notificationPrefsSchema, opsSettingsUpdateSchema, resolveHandoffSchema,
+  setAvailabilitySchema, setTagsSchema, ticketCommentSchema, updateCannedSchema, updateTagSchema, updateTicketSchema,
+  updateCalendarConnectionSchema, setCalendlyEventTypeSchema, setDefaultCalendarSchema,
+  connectHubspotSchema, updateHubspotMappingSchema, hubspotTestContactSchema,
 } from "@yulona/shared";
 
 const j = (s: z.ZodType) => z.toJSONSchema(s, { target: "openapi-3.0", io: "input", unrepresentable: "any" });
@@ -32,42 +33,26 @@ export function opsPaths(): Record<string, unknown> {
     "/api/v1/tickets/bulk": { post: op("Bulk status/priority/assign/delete", { requestBody: body(bulkTicketsSchema) }) },
     "/api/v1/tickets/{id}/comments": { post: op("Add a comment", { parameters: [id], requestBody: body(ticketCommentSchema), responses: { 201: out("Created"), ...E } }) },
     "/api/v1/tickets/{id}/events": { get: op("Ticket audit trail", { parameters: [id, ...page] }) },
-    ...crud("transactions", "transactions", createTransactionSchema, updateTransactionSchema),
-    "/api/v1/transactions/export.csv": { get: op("Stream filtered transactions as CSV") },
-    "/api/v1/transactions/webhook-endpoints": {
-      get: op("List inbound webhook endpoints"),
-      post: op("Create endpoint (secret returned once)", { requestBody: body(createWebhookEndpointSchema), responses: { 201: out("Created"), ...E } }),
-    },
-    "/api/v1/transactions/webhook-endpoints/{id}": {
-      patch: op("Rename/enable/disable", { parameters: [id], requestBody: body(updateWebhookEndpointSchema) }),
-      delete: op("Delete endpoint", { parameters: [id] }),
-    },
-    "/api/v1/transactions/webhook-endpoints/{id}/rotate-secret": { post: op("Rotate secret (returned once)", { parameters: [id] }) },
-    "/api/v1/webhooks/transactions/{endpointId}": {
-      post: {
-        summary: "Inbound transaction webhook (HMAC-SHA256 over `<timestamp>.<body>`)", tags: ["ops"],
-        parameters: [
-          { name: "endpointId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
-          { name: "X-Yulona-Timestamp", in: "header", required: true, schema: { type: "string" } },
-          { name: "X-Yulona-Signature", in: "header", required: true, schema: { type: "string", example: "sha256=<hex>" } },
-        ],
-        requestBody: body(transactionWebhookBodySchema),
-        responses: { 200: out("Upserted"), 400: err("Validation error"), 401: err("Invalid signature"), 413: err("Too large"), 429: err("Rate limited") },
-      },
-    },
-    "/api/v1/bookings": { get: op("List bookings", { parameters: page }), post: op("Create booking (Google event when connected)", { requestBody: body(createBookingSchema), responses: { 201: out("Created"), 409: err("Overlap"), 503: err("Calendar unavailable"), ...E } }) },
-    "/api/v1/bookings/availability": { get: op("Free slots from the connected calendar within business hours") },
+    "/api/v1/bookings": { get: op("List bookings", { parameters: page }), post: op("Create booking on the default calendar, or on `provider` when both are connected (Google event, Calendly invitee, or a single-use Calendly link: status `offered`)", { requestBody: body(createBookingSchema), responses: { 201: out("Created"), 409: err("Overlap"), 503: err("Calendar unavailable"), ...E } }) },
+    "/api/v1/bookings/availability": { get: op("Free slots from the default calendar (or `provider`) within business hours") },
     "/api/v1/bookings/{id}": { get: op("Get booking", { parameters: [id] }) },
     "/api/v1/bookings/{id}/cancel": { post: op("Cancel booking", { parameters: [id], requestBody: body(cancelBookingSchema) }) },
     "/api/v1/calendar/connection": { get: op("Calendar connection status"), patch: op("Choose calendar", { requestBody: body(updateCalendarConnectionSchema) }), delete: op("Disconnect") },
     "/api/v1/calendar/google/connect": { post: op("Start Google OAuth; returns the consent URL") },
-    "/api/v1/calendar/connections": { get: op("All calendar providers with status, last error and which one the AI uses") },
+    "/api/v1/calendar/connections": { get: op("All calendar providers with status, last error and which one the AI uses; the Calendly item also carries redirectUri, redirectSource, redirectWarning, redirectError") },
     "/api/v1/calendar/default": { post: op("Choose the calendar provider the AI books on", { requestBody: body(setDefaultCalendarSchema) }) },
-    "/api/v1/calendar/calendly/connect": { post: op("Start Calendly OAuth (PKCE); returns the consent URL") },
+    "/api/v1/calendar/calendly/connect": { post: op("Start Calendly OAuth (PKCE); returns the consent URL, the redirectUri and an optional warning. 400 when the redirect URI would be rejected by Calendly (not https, or localhost in production)", { responses: { 200: out("Consent URL"), ...E, 400: err("Invalid redirect URI") } }) },
     "/api/v1/calendar/calendly/callback": { get: { summary: "Calendly OAuth redirect target (signed state)", tags: ["ops"], responses: { 302: out("Redirect to the dashboard") } } },
     "/api/v1/calendar/calendly/event-types": { get: op("Active Calendly event types of the connected account") },
     "/api/v1/calendar/calendly/event-type": { patch: op("Choose the Calendly event type used for availability and booking", { requestBody: body(setCalendlyEventTypeSchema) }) },
     "/api/v1/calendar/calendly/connection": { delete: op("Disconnect Calendly (revokes and deletes the tokens)") },
+    "/api/v1/crm/hubspot": { get: op("HubSpot connection status, mapping and the last 10 syncs (the token is never returned)") },
+    "/api/v1/crm/hubspot/connection": {
+      put: op("Connect HubSpot with a private-app access token (tested live, stored encrypted, write-only)", { requestBody: body(connectHubspotSchema) }),
+      delete: op("Disconnect HubSpot (deletes the stored token)"),
+    },
+    "/api/v1/crm/hubspot/mapping": { patch: op("Update the property mapping", { requestBody: body(updateHubspotMappingSchema) }) },
+    "/api/v1/crm/hubspot/test-contact": { post: op("Upsert one test contact in HubSpot with the saved mapping", { requestBody: body(hubspotTestContactSchema) }) },
     "/api/v1/calendar/google/callback": { get: { summary: "Google OAuth redirect target (signed state)", tags: ["ops"], responses: { 302: out("Redirect to the dashboard") } } },
     "/api/v1/needs-attention": { get: op("Needs Attention queue", { parameters: page }) },
     "/api/v1/needs-attention/counts": { get: op("Unresolved counts per handoff type") },

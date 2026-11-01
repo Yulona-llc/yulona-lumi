@@ -4,6 +4,7 @@
  */
 import type { Tx } from "@yulona/db";
 import type { WidgetUISchema } from "@yulona/shared";
+import { turnLimits } from "./limits";
 import type { Lead, TurnMessage } from "./types";
 
 export interface ConversationCtx {
@@ -38,7 +39,7 @@ export async function loadMessage(tx: Tx, tenantId: string, conversationId: stri
 }
 
 /** Last N customer/AI/human messages before `messageId` (oldest first); notes and system rows excluded. */
-export async function loadHistory(tx: Tx, tenantId: string, conversationId: string, beforeCreatedAt: Date, limit = 12): Promise<TurnMessage[]> {
+export async function loadHistory(tx: Tx, tenantId: string, conversationId: string, beforeCreatedAt: Date, limit = turnLimits().historyMessages): Promise<TurnMessage[]> {
   const rows = await tx<{ senderType: string; content: string }[]>`
     SELECT sender_type, content FROM messages
     WHERE tenant_id = ${tenantId} AND conversation_id = ${conversationId}

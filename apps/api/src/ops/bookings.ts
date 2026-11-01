@@ -62,7 +62,7 @@ export function bookingRoutes(deps: OpsDeps) {
     const from = new Date(q.from);
     const to = new Date(q.to);
     if (!(to > from) || to.getTime() - from.getTime() > 14 * 86_400_000) throw Errors.validation([{ path: "to", message: "Range must be positive and at most 14 days" }]);
-    const cal = await tenantCalendar(tenantId);
+    const cal = await tenantCalendar(tenantId, q.provider);
     if (!cal) throw new AppError(409, "conflict", "Calendar is not connected", { reason: "calendar_not_connected" });
     try {
       const slots = await withRetry((s) => cal.availability({ from: q.from, to: q.to, durationMinutes: q.durationMinutes, timezone: q.timezone }, s), { retryable, ...runtime.calendarRetry });
@@ -80,7 +80,8 @@ export function bookingRoutes(deps: OpsDeps) {
     const end = b.endAt ? new Date(b.endAt) : new Date(start.getTime() + (b.durationMinutes ?? 30) * 60_000);
     if (!(end > start)) throw Errors.validation([{ path: "endAt", message: "endAt must be after startAt" }]);
     if (end.getTime() - start.getTime() > 24 * 3_600_000) throw Errors.validation([{ path: "endAt", message: "Booking is too long" }]);
-    const cal = await tenantCalendar(tenantId);
+    const cal = await tenantCalendar(tenantId, b.provider);
+    if (b.provider && !cal) throw new AppError(409, "conflict", "That calendar is not connected", { reason: "calendar_not_connected" });
     try {
       const res = await bookSlot({ db, calendar: cal, retry: runtime.calendarRetry }, tenantId, {
         startAt: start.toISOString(), endAt: end.toISOString(), title: b.title ?? "Appointment", contactId: b.contactId, conversationId: b.conversationId,

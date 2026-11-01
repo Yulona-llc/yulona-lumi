@@ -111,6 +111,12 @@ export async function ingestInbound(tx: Tx, tenantId: string, conn: IngestConnec
     // Serialize first-contact races for the same customer so we never create two contacts.
     await tx`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}|${conn.channel}|${m.externalContactId}`}, 0))`;
     const { contactId } = await resolveContact(tx, tenantId, m);
+    // abuse: a blocked contact's messages are dropped (no conversation, no reply) until a person unblocks them
+    const [blk] = await tx<{ b: boolean }[]>`SELECT (blocked_at IS NOT NULL) AS b FROM contacts WHERE tenant_id = ${tenantId} AND id = ${contactId}`;
+    if (blk?.b) {
+      result.processed++;
+      continue;
+    }
     const conv = await openConversation(tx, tenantId, conn, contactId, m.externalContactId);
     const { id: messageId } = await messages.insert({
       conversationId: conv.id, senderType: "contact", content: m.text || "[empty message]",

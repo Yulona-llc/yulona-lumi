@@ -7,10 +7,8 @@ import { AuthProvider } from "../src/auth/AuthProvider";
 import { setFetchImpl } from "../src/api/client";
 import UsagePage from "../src/features/usage/UsagePage";
 import { CreditAlerts, CreditsBanner, CreditsCard } from "../src/features/usage/CreditAlerts";
-import { asCredits, fmtCredits, nextReset } from "../src/features/usage/api";
-import AdminRoutes from "../src/features/admin/AdminRoutes";
-import { adminApi } from "../src/features/admin/api";
-import { TenantCreditsCard } from "../src/features/admin/GrantCredits";
+import BillingPage from "../src/features/billing/BillingPage";
+import { asCredits, fmtCredits, messagesLeftText, nextReset, typicalMessageCredits } from "../src/features/usage/api";
 
 const session = (role: string) => ({ accessToken: "t", expiresIn: 900, user: { id: "11111111-1111-4111-8111-111111111111", email: "a@b.co", name: "A", role }, tenant: { id: "22222222-2222-4222-8222-222222222222", name: "Acme" } });
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
@@ -48,7 +46,7 @@ function mount(ui: React.ReactNode, role: string, routes: Record<string, unknown
   return calls;
 }
 afterEach(() => vi.unstubAllGlobals());
-beforeEach(() => { document.cookie = "yl_csrf=c; path=/"; adminApi.logout(); });
+beforeEach(() => { document.cookie = "yl_csrf=c; path=/"; });
 
 describe("credits helpers", () => {
   it("formats micro-credits and rejects foreign shapes", () => {
@@ -139,130 +137,24 @@ describe("credit surfaces", () => {
   });
 });
 
-/* ------------------------------ platform admin ------------------------------ */
-const profile = { id: "pr1", name: "OpenAI prod", baseUrl: "https://api.openai.com/v1", authHeader: "Authorization", authScheme: "bearer", extraHeaders: { "x-org": "abc" }, queryParams: {}, chatPath: "/chat/completions", defaultModel: "gpt-4o-mini", enabledModels: ["gpt-4o-mini", "gpt-4o"], isDefault: true, enabled: true, hasCredentials: true, createdAt: "x", updatedAt: "x" };
-
-function mountAdmin(routes: Record<string, unknown>, at: string) {
-  const calls: Array<{ url: string; init?: RequestInit }> = [];
-  vi.stubGlobal("fetch", (async (u: string, init?: RequestInit) => {
-    calls.push({ url: u, init });
-    const p = u.replace(/^.*\/api\/v1/, "");
-    if (p === "/admin/auth/login") return json({ accessToken: "adm", admin: { id: "a", email: "root@y.co" } });
-    for (const [k, v] of Object.entries(routes)) if (p.startsWith(k)) return typeof v === "function" ? (v as H)(init) : json(v);
-    return json({ error: { code: "not_found", message: "nope" } }, 404);
-  }) as unknown as typeof fetch);
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><MemoryRouter initialEntries={[at]}><Routes><Route path="/admin/*" element={<AdminRoutes />} /></Routes></MemoryRouter></QueryClientProvider>);
-  return calls;
-}
-async function signIn() {
-  await userEvent.type(screen.getByLabelText("Email"), "root@y.co");
-  await userEvent.type(screen.getByLabelText("Password"), "pw");
-  await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
-}
-const isWrite = (c: { url: string; init?: RequestInit }) => c.init?.method === "POST" && !c.url.includes("/auth/");
-const bodyOf = (c?: { init?: RequestInit }) => JSON.parse(c!.init!.body as string);
-
-describe("admin credits", () => {
-  it("lists providers, never shows the key, and reports a failing connection test", async () => {
-    const calls = mountAdmin({ "/admin/llm-profiles/pr1/test": () => json({ ok: false, latencyMs: 0, model: null, error: "401 invalid key" }), "/admin/llm-profiles": { items: [profile] } }, "/admin/credits");
-    await signIn();
-    expect((await screen.findAllByText("OpenAI prod")).length).toBeGreaterThan(0);
-    expect(screen.getByText("Key saved")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /test connection for OpenAI prod/i }));
-    expect(await screen.findByText("401 invalid key")).toBeInTheDocument();
-    expect(calls.some((c) => c.url.endsWith("/admin/llm-profiles/pr1/test") && isWrite(c))).toBe(true);
-    expect(document.body.textContent).not.toMatch(/sk-/);
+describe("message estimates and the paid plan card", () => {
+  const est = { creditsPerMessage: 2.1, estimatedMessages: 2371, estimateBasis: "typical" };
+  it("formats the estimate", () => {
+    expect(messagesLeftText(2371)).toBe("about 2,371 messages left");
+    expect(messagesLeftText(1)).toBe("about 1 message left");
+    expect(messagesLeftText(null)).toBeNull();
+    expect(typicalMessageCredits(250_000, 1_000_000)).toBe(2.1);
   });
-
-  it("switches between credits tabs without looping (absolute tab links)", async () => {
-    mountAdmin({ "/admin/llm-profiles": { items: [] }, "/admin/model-rates": { items: [{ model: "*", inputMicroPer1k: 250000, outputMicroPer1k: 1000000, enabled: true, updatedAt: "x" }] } }, "/admin/credits");
-    await signIn();
-    await userEvent.click(await screen.findByRole("link", { name: "Model rates" }));
-    expect(await screen.findByText("Default (*)")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("link", { name: "Providers" }));
-    expect(await screen.findByText("No providers yet")).toBeInTheDocument();
+  it("usage page shows 'about N messages left' with its basis", async () => {
+    mount(<UsagePage />, "admin", usageRoutes(credits({ ...est, remainingMicro: 4_980_000_000 })));
+    expect(await screen.findByTestId("messages-left")).toHaveTextContent("about 2,371 messages left");
+    expect(screen.getByTestId("messages-left")).toHaveTextContent(/typical message/i);
   });
-
-  it("creates a provider with a write-only key and header rows", async () => {
-    const calls = mountAdmin({ "/admin/llm-profiles": (i?: RequestInit) => (i?.method === "POST" ? json(profile, 201) : json({ items: [] })) }, "/admin/credits/providers");
-    await signIn();
-    await userEvent.click((await screen.findAllByRole("button", { name: /add provider/i }))[0]!);
-    const dlg = await screen.findByRole("dialog");
-    await userEvent.type(within(dlg).getByLabelText("Name"), "Azure");
-    await userEvent.type(within(dlg).getByLabelText("Default model"), "gpt-4o");
-    await userEvent.type(within(dlg).getByLabelText("API key"), "secret-key");
-    await userEvent.click(within(dlg).getByRole("button", { name: /add header/i }));
-    await userEvent.type(within(dlg).getByLabelText(/extra headers header 1/i), "x-org");
-    await userEvent.type(within(dlg).getByLabelText(/extra headers value 1/i), "abc");
-    await userEvent.click(within(dlg).getByRole("button", { name: "Create provider" }));
-    await waitFor(() => expect(calls.some((c) => isWrite(c))).toBe(true));
-    const b = bodyOf(calls.find((c) => isWrite(c)));
-    expect(b).toMatchObject({ name: "Azure", defaultModel: "gpt-4o", apiKey: "secret-key", authScheme: "bearer", extraHeaders: { "x-org": "abc" }, enabledModels: [] });
-  });
-
-  it("edits a model rate in credits and sends micro-credits", async () => {
-    const calls = mountAdmin({ "/admin/model-rates": (i?: RequestInit) => (i?.method === "PUT" ? json({}) : json({ items: [{ model: "*", inputMicroPer1k: 250000, outputMicroPer1k: 1000000, enabled: true, updatedAt: "x" }, { model: "gpt-4o", inputMicroPer1k: 2500000, outputMicroPer1k: 10000000, enabled: true, updatedAt: "x" }] })) }, "/admin/credits/rates");
-    await signIn();
-    expect(await screen.findByText("Default (*)")).toBeInTheDocument();
-    expect(screen.getByText("0.25")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /edit rate for gpt-4o/i }));
-    const input = screen.getByLabelText("Input credits per 1k for gpt-4o");
-    await userEvent.clear(input); await userEvent.type(input, "1.5");
-    await userEvent.click(screen.getByRole("button", { name: /save rate for gpt-4o/i }));
-    await waitFor(() => expect(calls.some((c) => c.init?.method === "PUT")).toBe(true));
-    expect(bodyOf(calls.find((c) => c.init?.method === "PUT"))).toEqual({ model: "gpt-4o", inputMicroPer1k: 1_500_000, outputMicroPer1k: 10_000_000, enabled: true });
-    expect(screen.queryByRole("button", { name: /delete rate for \*/i })).toBeNull();
-  });
-
-  it("saves a plan allowance as whole credits, and unlimited as null", async () => {
-    const calls = mountAdmin({ "/admin/plans/": () => json({}), "/admin/plans": { items: [{ key: "free", name: "Free", limits: { llm_credits_monthly: 50 } }, { key: "enterprise", name: "Enterprise", limits: { llm_credits_monthly: null } }] } }, "/admin/credits/plans");
-    await signIn();
-    const free = await screen.findByLabelText("Monthly credits for Free");
-    expect(free).toHaveValue("50");
-    await userEvent.clear(free); await userEvent.type(free, "75");
-    await userEvent.click(screen.getByRole("button", { name: /save allowance for free/i }));
-    await waitFor(() => expect(calls.some((c) => c.init?.method === "PUT")).toBe(true));
-    const put = calls.find((c) => c.init?.method === "PUT")!;
-    expect(put.url).toMatch(/\/admin\/plans\/free\/limits\/llm_credits_monthly$/);
-    expect(bodyOf(put)).toEqual({ limit: 75 });
-    expect(screen.getByLabelText("Monthly credits for Enterprise")).toBeDisabled();
-  });
-
-  it("creates a credit pack with the price in cents", async () => {
-    const calls = mountAdmin({ "/admin/credit-packs": (i?: RequestInit) => (i?.method === "POST" ? json({}, 201) : json({ items: [{ id: "k1", name: "Starter", credits: 500, priceCents: 900, active: true, sortOrder: 0, createdAt: "x" }] })) }, "/admin/credits/packs");
-    await signIn();
-    expect(await screen.findByText(/500 credits for \$9/)).toBeInTheDocument();
-    await userEvent.click(screen.getAllByRole("button", { name: /add pack/i })[0]!);
-    const dlg = await screen.findByRole("dialog");
-    await userEvent.type(within(dlg).getByLabelText("Name"), "Big");
-    await userEvent.type(within(dlg).getByLabelText("Credits"), "10000");
-    await userEvent.type(within(dlg).getByLabelText("Price (USD)"), "129.5");
-    await userEvent.click(within(dlg).getByRole("button", { name: "Create pack" }));
-    await waitFor(() => expect(calls.some((c) => isWrite(c))).toBe(true));
-    expect(bodyOf(calls.find((c) => isWrite(c)))).toEqual({ name: "Big", credits: 10000, priceCents: 12950, active: true, sortOrder: 0 });
-  });
-
-  it("grants credits to a tenant with a reason", async () => {
-    adminApi.logout();
-    const calls: Array<{ url: string; init?: RequestInit }> = [];
-    vi.stubGlobal("fetch", (async (u: string, init?: RequestInit) => {
-      calls.push({ url: u, init });
-      const p = u.replace(/^.*\/api\/v1/, "");
-      if (p === "/admin/auth/login") return json({ accessToken: "adm", admin: { id: "a", email: "r@y.co" } });
-      if (p.endsWith("/credits")) return json(init?.method === "POST" ? credits({ topupMicro: 100_000_000 }) : credits({ planKey: "free" }));
-      return json({}, 404);
-    }) as unknown as typeof fetch);
-    await adminApi.login("r@y.co", "pw");
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TenantCreditsCard id="t1" /></QueryClientProvider>);
-    expect(await screen.findByText("Top-up balance")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Adjust credits" }));
-    const dlg = await screen.findByRole("dialog");
-    const submit = within(dlg).getByRole("button", { name: "Adjust credits" });
-    expect(submit).toBeDisabled();
-    await userEvent.type(within(dlg).getByLabelText(/^Credits/), "100");
-    await userEvent.type(within(dlg).getByLabelText(/^Reason/), "Goodwill after outage");
-    await userEvent.click(submit);
-    await waitFor(() => expect(calls.some((c) => c.init?.method === "POST" && c.url.endsWith("/admin/tenants/t1/credits"))).toBe(true));
-    expect(bodyOf(calls.find((c) => c.init?.method === "POST" && c.url.includes("/credits")))).toEqual({ credits: 100, reason: "Goodwill after outage" });
+  it("billing plan card shows credits, tokens and estimated messages", async () => {
+    const info = { provider: "stripe", plan: { key: "pro", name: "Pro" }, state: "ok", subscription: { status: "active", currentPeriodEnd: null, graceUntil: null, cancelAtPeriodEnd: false },
+      limits: [{ metric: "llm_credits_monthly", limit: 4980, used: 0, warning: false }, { metric: "llm_tokens_monthly", limit: 15_480_000, used: 0, warning: false }], checkoutPlans: ["pro"] };
+    mount(<BillingPage />, "owner", { "/usage/credits": credits({ ...est, allowanceMicro: 4_980_000_000, remainingMicro: 4_980_000_000 }), "/billing": info, "/usage": { limits: [], series: [] } });
+    const line = await screen.findByTestId("plan-allowance");
+    await waitFor(() => expect(line).toHaveTextContent("4,980 credits a month and 15,480,000 tokens, about 2,371 messages left"));
   });
 });

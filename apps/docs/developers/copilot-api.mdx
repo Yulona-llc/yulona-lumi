@@ -1,0 +1,124 @@
+---
+title: Copilot, onboarding and overview API
+description: Call the workspace profile, onboarding wizard, Ask Lumi copilot and overview endpoints, including gating, allowances, confirmation tokens and error codes.
+icon: sparkles
+---
+
+This page is for developers who build their own front end for setup and the assistant, or who read the overview numbers. The dashboard experience is described in [Set up with Lumi](/guides/workspace/setup-wizard), [Ask Lumi](/guides/workspace/ask-lumi) and [Overview by goal](/guides/workspace/overview-by-goal).
+
+All routes are under `/api/v1` and use a dashboard access token. Bodies are strict: unknown fields return `400 validation_error`. Errors use the [standard envelope](/developers/errors).
+
+## Workspace profile
+
+```bash
+curl https://YOUR_HOST/api/v1/workspace/profile -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+curl -X PUT https://YOUR_HOST/api/v1/workspace/profile -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" -d '{"goals":["leads","support"]}'
+```
+
+```json
+{ "name": "Sunrise Dental", "goals": ["leads", "support"], "onboarding": { "status": "in_progress", "completedAt": null, "skippedAt": null } }
+```
+
+`goals` accepts `support`, `leads`, `bookings`, `other` (at most four, no duplicates; the order is the priority on the Overview). `GET` works for any role; `PUT` needs `admin` or `owner` and is audited as `workspace.profile.update`. `onboarding.status` is `not_started`, `in_progress`, `completed` or `skipped`.
+
+## Onboarding
+
+All onboarding routes need `admin` or `owner`.
+
+| Route | Description |
+|---|---|
+| `GET /onboarding` | State: the typed `steps`, saved `answers`, `currentStepId`, `progress` and the `result` once finished. |
+| `PUT /onboarding/answers` | `{ "stepId": "goals", "value": ["leads"] }`. Validated per step; `null` skips an optional step. Returns the new state. `409 conflict` once completed. |
+| `POST /onboarding/skip` | Marks the wizard skipped; answering again resumes it. |
+| `POST /onboarding/finish` | Builds the starter bundle. `201` the first time, `200` with the stored result afterwards (idempotent). `400` lists the missing required answers (`businessType`, `businessName`, `goals`). `402 plan_limit_exceeded` if the plan has no room for the agent or widget. |
+
+Each step is `{ id, title, help?, component, required, skippable, multi?, maxSelect?, maxLength?, placeholder?, options? }`. `component` is one of `choice_cards`, `multi_chips`, `text`, `url`, `brand`, `hours`, `preview`; clients render only these. Step ids in order: `businessType`, `businessName`, `goals`, `channels`, `tone`, `languages`, `hours`, `website`, `brand`, `handoff`, `preview`. Options carry `suggested: true` for the choice that fits the business type given earlier.
+
+Answer values: a string for `choice_cards`, `text` and `url` (https or http); a string array for `multi_chips`; `{ "color": "#2563EB", "logoUrl"?: "https://..." }` for `brand`; `{ "mode": "always" }` or `{ "mode": "custom", "timezone": "Africa/Addis_Ababa", "days": [{ "weekday": 1, "start": "09:00", "end": "17:00" }] }` for `hours`.
+
+The finish response is `{ agentId, widgetId, knowledgeSourceId, usedModel, goals, nextStep }`. The bundle is a **draft** agent, a widget attached to it, a URL knowledge source (`followLinks: true`, `maxDepth: 3`, `maxPages: 25`) when a safe website was given, business hours and goals. Nothing is published. After the bundle is saved, one model call (`maxTokens` 700, at most about 2,000 tokens) polishes the persona and greeting. It is made at most once per workspace, recorded in `ai_usage_events` with `source: "onboarding"` and never charged to credits. On any failure the template text stays and `usedModel` is `false`.
+
+## Ask Lumi (copilot)
+
+Routes need `admin` or `owner`.
+
+| Route | Description |
+|---|---|
+| `GET /copilot/status` | `{ access, reason, selfHosted, allowance, session }`. Always `200`, also when locked. |
+| `POST /copilot/sessions` | Starts a session (10 per minute per user) and closes your previous open one. |
+| `GET /copilot/sessions/:id` | Your own session and messages. Tool messages are not returned. |
+| `POST /copilot/sessions/:id/messages` | `{ "text": "..." }` or `{ "choice": "..." }` (exactly one). 20 per minute per user. |
+| `POST /copilot/sessions/:id/confirm` | `{ "token": "..." }` executes a pending action. |
+| `POST /copilot/sessions/:id/cancel` | `{ "token": "..." }` discards it. |
+
+```bash
+curl -X POST https://YOUR_HOST/api/v1/copilot/sessions/SESSION_ID/messages \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" -H "Content-Type: application/json" \
+  -d '{"text":"Make my greeting friendlier"}'
+```
+
+```json
+{
+  "messages": [ { "role": "user", "content": "Make my greeting friendlier" }, { "role": "assistant", "content": "Your greeting is updated (draft).", "payload": { "blocks": [ { "type": "diff", "title": "Updated Helper (draft)", "changes": [ { "field": "greeting", "before": "Hello", "after": "Hi there!" } ] } ] } } ],
+  "assistant": { "role": "assistant", "content": "Your greeting is updated (draft)." },
+  "allowance": { "limitCredits": 150, "usedMicro": 2000000, "remainingMicro": 148000000, "resetsAt": "2026-12-01T00:00:00.000Z" },
+  "limits": { "maxUserMessages": 40 }
+}
+```
+
+### Gating and allowance
+
+- **SaaS:** allowed only when `billing_customers.status` is `active` or `trialing` and its `plan_key` is not `free`. Otherwise `402 copilot_requires_plan` with `details.upgradePath`.
+- **Self-hosted:** always allowed, never limited by the allowance.
+- **Allowance:** the plan limit `copilot_credits_monthly` (whole credits per UTC month; `null` = unlimited; seeded 0 for `free`, 150 for `pro`, 600 for `enterprise`, unlimited for `self_hosted`). Usage is the sum of `ai_usage_events` with `source: "copilot"`; those events are never charged to chat credits. Over the limit: `402 copilot_limit_reached` with `details: { limitCredits, usedMicro, resetsAt }`. The limit also appears in `GET /tenant` limits and is editable by [platform admins](/platform-admin/plans-credits-and-rates).
+- **Caps:** 40 user messages and 60,000 tokens per session, 500 user messages per workspace per UTC month (`429 rate_limited`). A message while the previous one is still being answered returns `409 conflict` (the guard is stored in the database, so it holds across instances).
+
+### What the model can do
+
+A fixed tool set: `get_workspace_summary`, `update_agent_draft`, `publish_agent`, `update_widget_appearance`, `add_knowledge_url`, `set_business_hours`, `set_goals`, `list_channel_status`, `suggest_next_steps`. Tools run as the calling user with a minimum role check, use the same validation as the REST routes (agent config forbids `model`, `customTools`, `similarityThreshold`, `topK`; websites pass the SSRF check) and write audit entries with `metadata.via = "copilot"` and `metadata.sessionId`. A turn uses at most 3 model rounds with `maxTokens` 600 each; set `COPILOT_MODEL` to use a cheaper model (see [Configuration](/self-hosting/configuration)). The model receives a compact summary (counts, names, ids, statuses), never knowledge text, customer messages or credentials.
+
+### Two-step confirmation
+
+`publish_agent` only proposes. The reply carries a `confirm` block with a one-time `token` that exists only in the API response, never in the model's context. `POST /copilot/sessions/:id/confirm` with that token publishes as the calling user (audit `agent.published`, `via: "copilot"`). Tokens are bound to the session, user and workspace, expire after 15 minutes and work once; anything else returns `409 conflict`.
+
+### Message blocks
+
+`payload.blocks` is an array from a whitelist; render them as plain UI and ignore unknown types.
+
+| `type` | Fields |
+|---|---|
+| `chips` | `options: string[]`: send the chosen text as `choice` |
+| `checklist` | `items: { label, done, path? }[]` |
+| `diff` | `title`, `changes: { field, before, after }[]` |
+| `preview` | `title`, `lines: string[]` |
+| `confirm` | `token`, `title`, `summary`, `expiresAt` |
+| `link` | `label`, `path` (an internal path) |
+
+## Overview
+
+`GET /overview` (any role) returns the numbers for the last 30 days in one call.
+
+```json
+{
+  "goals": ["leads", "support"], "order": ["leads", "support"],
+  "common": { "conversations": { "last30d": 12, "open": 3, "today": 2 }, "credits": { "remainingMicro": null, "allowanceMicro": null }, "channels": { "total": 1, "connected": 1, "unhealthy": 0 }, "setup": { "items": [ { "key": "agent", "label": "Create your agent", "done": true, "path": "/agents" } ], "doneCount": 1, "total": 4 } },
+  "support": { "aiResolvedPct": 82.5, "handoffs": 4, "medianFirstResponseSeconds": 9, "unanswered": { "count": 2, "items": [ { "id": "h1...", "conversationId": "c1...", "createdAt": "..." } ] } },
+  "leads": { "funnel": [ { "stage": "visitor", "count": 10 }, { "stage": "engaged", "count": 6 } ], "qualified": 3, "hubspot": { "connected": true, "lastSyncAt": "...", "failed": 0 } }
+}
+```
+
+`support`, `leads` and `bookings` appear only when that goal is set. `aiResolvedPct` and `medianFirstResponseSeconds` are `null` until there is data. `unanswered` counts handoffs of type `uncertainty` and never includes message text. `bookings` is `{ upcoming, booked30d, cancelled30d, calendar: { connected, provider } }`.
+
+## Errors
+
+| Code | Status | When |
+|---|---|---|
+| `copilot_requires_plan` | 402 | The workspace is not on a paid plan. |
+| `copilot_limit_reached` | 402 | The monthly Ask Lumi allowance is used up. |
+| `plan_limit_exceeded` | 402 | Onboarding finish found no room for an agent or widget. |
+| `rate_limited` | 429 | Per-minute, per-session or per-month caps. |
+| `conflict` | 409 | Previous message still running, session closed, token expired or used, onboarding already completed. |
+| `service_unavailable` | 503 | The AI provider did not answer. |
+
+{/* source: docs/api/copilot.md, apps/api/src/copilot/*, packages/shared/src/copilot.ts */}

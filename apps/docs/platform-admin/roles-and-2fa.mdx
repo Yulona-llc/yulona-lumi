@@ -1,0 +1,48 @@
+---
+title: Roles and two-factor authentication
+description: See what owner, support and billing admins can do in the console, and set up authenticator-app two-factor sign-in with recovery codes.
+icon: key-round
+---
+
+This page is for platform admins and for the owners who manage them. The console reflects the role matrix of the admin API: actions you cannot take are disabled with a tooltip, and the API refuses them anyway.
+
+## Roles in the console
+
+| Area | Owner | Support | Billing |
+|---|---|---|---|
+| Read everything (customers, issues, operations, audit view) | Yes | Yes | Yes |
+| Notes, tags, bulk tag, resend invitations | Yes | Yes | No |
+| Retry or discard dead jobs | Yes | Yes | No |
+| Impersonate, read-only | Yes | Yes | No |
+| Impersonate, write mode | Yes | No | No |
+| Change plan, grant credits, rates, plan allowances, credit packs | Yes | No | Yes |
+| Suspend, restore, rename, delete customers, per-customer flags | Yes | No | No |
+| Provider profiles, feature flags | Yes | No | No |
+| Audit export, Admins page | Yes | No | No |
+
+## The Admins page (owners)
+
+**Invite admin** creates the account and shows a temporary password once. The person must choose their own password at first sign-in. The row menu edits the name or role, resets the password (shown once, signs them out everywhere), resets two-factor, and deactivates or reactivates. The last active owner cannot be demoted or deactivated, and you cannot deactivate yourself.
+
+## Set up two-factor sign-in
+
+<Steps>
+  <Step title="Open Password and two-factor">
+    Use the account menu in the header.
+  </Step>
+  <Step title="Confirm your password and scan">
+    Select **Set up two-factor**, enter your password, then scan the QR code with an authenticator app. If you cannot scan, type the key by hand.
+  </Step>
+  <Step title="Enter the code">
+    Type the 6-digit code to turn it on.
+  </Step>
+  <Step title="Save the recovery codes">
+    Ten single-use codes are shown once. Copy or download them and store them somewhere safe.
+  </Step>
+</Steps>
+
+From then on, sign-in asks for a code after the password; **Use a recovery code** accepts one of the saved codes, once. Two-factor is optional today. When `ADMIN_REQUIRE_2FA=true`, an admin without it gets a restricted session that can only complete this setup, and cannot turn it off. See [Configuration](/self-hosting/configuration).
+
+## Forced password change
+
+A new admin, or an admin whose password an owner reset, is asked for a new password before anything else in the console unlocks.

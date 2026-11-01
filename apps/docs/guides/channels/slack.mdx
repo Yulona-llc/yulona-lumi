@@ -7,7 +7,7 @@ icon: hash
 The Slack channel lets people in your Slack workspace chat with your agent in a direct message. It suits internal helpdesks (IT, HR, office questions) and communities that already live in Slack. This page is for admins and owners, and you need permission to create apps in your Slack workspace.
 
 <Note>
-Only **admins and owners** can connect channels. Yulona answers **direct messages** to your Slack app. Messages in public or private channels and group chats are ignored.
+Only **admins and owners** can connect channels. Lumi answers **direct messages** to your Slack app. Messages in public or private channels and group chats are ignored.
 </Note>
 
 ## Before you start
@@ -28,8 +28,8 @@ Only **admins and owners** can connect channels. Yulona answers **direct message
   <Step title="Install it and copy two values">
     Click **Install to Workspace**. Copy the **Bot User OAuth Token** (it starts with `xoxb-`). Then, under **Basic information**, copy the **Signing secret**.
   </Step>
-  <Step title="Connect in Yulona">
-    In the dashboard go to **Channels** and click **Slack**. Enter a **Connection name**, choose the **Answering agent** (or **Default agent**), and paste the **Bot token** and **Signing secret**. Click **Connect**.
+  <Step title="Connect in Lumi">
+    In the dashboard go to **Channels** and click **Slack**. Enter a **Connection name**, choose the **Answering agent** (or **No agent**, which means a team member replies), and paste the **Bot token** and **Signing secret**. Click **Connect**.
   </Step>
   <Step title="Copy the Webhook URL">
     The panel says "Shown only once" and shows the **Webhook URL**. Copy it.
@@ -38,12 +38,12 @@ Only **admins and owners** can connect channels. Yulona answers **direct message
     In your Slack app open **Event subscriptions**, switch them on and paste the Webhook URL as the **Request URL**. Slack checks it immediately and should show "Verified". Under **Subscribe to bot events**, add `message.im`, then save.
   </Step>
   <Step title="Test it">
-    In Yulona click **Test connection**; a healthy result reads "Connection OK. Workspace" followed by your workspace name. Click **I have saved these**. Then open a direct message with your Slack app and write to it. The conversation should appear in the [Inbox](/guides/workspace/inbox) and the agent should reply.
+    In Lumi click **Test connection**; a healthy result reads "Connection OK. Workspace" followed by your workspace name. Click **I have saved these**. Then open a direct message with your Slack app and write to it. The conversation should appear in the [Inbox](/guides/workspace/inbox) and the agent should reply.
   </Step>
 </Steps>
 
 <Warning>
-Subscribe to **message.im**. The Slack steps shown in the dashboard also mention `app_mention`, but Yulona currently answers only direct messages, so mentions in channels do not get a reply.
+Subscribe to **message.im**. The Slack steps shown in the dashboard also mention `app_mention`, but Lumi currently answers only direct messages, so mentions in channels do not get a reply.
 </Warning>
 
 ## What people experience
@@ -51,8 +51,8 @@ Subscribe to **message.im**. The Slack steps shown in the dashboard also mention
 - They find your Slack app under **Apps** and message it like a colleague.
 - There is **no reply window**, so you or the agent can answer at any time.
 - Messages are text. Files they upload are not read.
-- Each person has their own conversation. Yulona creates a contact for them, which you can see in [Contacts](/guides/workspace/contacts).
-- When the agent hands off, your team replies from the Yulona [Inbox](/guides/workspace/inbox) and the answer goes back to Slack in the same direct message.
+- Each person has their own conversation. Lumi creates a contact for them, which you can see in [Contacts](/guides/workspace/contacts).
+- When the agent hands off, your team replies from the Lumi [Inbox](/guides/workspace/inbox) and the answer goes back to Slack in the same direct message.
 
 ## Manage the connection
 
@@ -69,7 +69,7 @@ If you reinstall the Slack app, its bot token changes. Paste the new token under
 
 <AccordionGroup>
   <Accordion title="Slack will not verify the Request URL">
-    Check you pasted the full Webhook URL for this connection and that the signing secret in Yulona matches the one on your Slack app's Basic information page. Slack rejects requests that arrive more than five minutes out of date, so the server clock must be correct on self-hosted installs.
+    Check you pasted the full Webhook URL for this connection and that the signing secret in Lumi matches the one on your Slack app's Basic information page. Slack rejects requests that arrive more than five minutes out of date, so the server clock must be correct on self-hosted installs.
   </Accordion>
   <Accordion title="The app does not reply">
     Confirm you subscribed to `message.im`, the app is installed after adding scopes, the connection is not **Paused**, and the agent is published. Also check the conversation was not handed to a person; see [Handoffs](/guides/agents/handoffs-and-human-takeover).

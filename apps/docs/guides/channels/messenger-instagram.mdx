@@ -4,7 +4,7 @@ description: Connect your Facebook Page and Instagram professional account so yo
 icon: messages-square
 ---
 
-Messenger (Facebook Page messages) and Instagram direct messages both run through a Meta app, so the setup is almost the same. This page is for admins and owners. You work in Meta for Developers and in the Yulona dashboard. Meta changes its screens often, so use these steps as a guide and follow Meta's help where it differs.
+Messenger (Facebook Page messages) and Instagram direct messages both run through a Meta app, so the setup is almost the same. This page is for admins and owners. You work in Meta for Developers and in the Lumi dashboard. Meta changes its screens often, so use these steps as a guide and follow Meta's help where it differs.
 
 <Note>
 Only **admins and owners** can connect channels. You connect each channel separately, so you can use one, or both with different agents.
@@ -18,7 +18,7 @@ Only **admins and owners** can connect channels. You connect each channel separa
 - **Self-hosted:** the server's public https address and encryption key must be configured. See [Channels and integrations setup](/self-hosting/channels-and-integrations-setup).
 
 <Warning>
-While your Meta app is in development mode, only people who have a role on the app can message you. To serve the public, complete Meta's app review and switch the app to live. This is done in Meta, not in Yulona.
+While your Meta app is in development mode, only people who have a role on the app can message you. To serve the public, complete Meta's app review and switch the app to live. This is done in Meta, not in Lumi.
 </Warning>
 
 <Tabs>
@@ -30,8 +30,8 @@ While your Meta app is in development mode, only people who have a role on the a
       <Step title="Collect the values">
         Generate a **Page access token** for the Page, copy the **Page ID**, and copy the app's **App secret**.
       </Step>
-      <Step title="Connect in Yulona">
-        Go to **Channels** and click **Messenger**. Enter a **Connection name**, choose the **Answering agent**, and paste the **Page access token**, **Page ID** and **App secret**. Leave **Webhook verify token** empty and Yulona generates one. Click **Connect**.
+      <Step title="Connect in Lumi">
+        Go to **Channels** and click **Messenger**. Enter a **Connection name**, choose the **Answering agent**, and paste the **Page access token**, **Page ID** and **App secret**. Leave **Webhook verify token** empty and Lumi generates one. Click **Connect**.
       </Step>
       <Step title="Copy the webhook values">
         The panel says "Shown only once". Copy the **Webhook URL** and the **Webhook verify token**.
@@ -40,7 +40,7 @@ While your Meta app is in development mode, only people who have a role on the a
         In Meta, under **Messenger**, then **Webhooks**, paste the **Callback URL** and **Verify token**, then verify. Subscribe your Page to **messages** and **messaging_postbacks**.
       </Step>
       <Step title="Test">
-        In Yulona click **Test connection**; "Connection OK" shows your account. Click **I have saved these**, then message your Page from another Facebook account.
+        In Lumi click **Test connection**; "Connection OK" shows your account. Click **I have saved these**, then message your Page from another Facebook account.
       </Step>
     </Steps>
   </Tab>
@@ -52,7 +52,7 @@ While your Meta app is in development mode, only people who have a role on the a
       <Step title="Collect the values">
         Generate an **Instagram access token**, copy the **Instagram account ID**, and copy the app's **App secret**.
       </Step>
-      <Step title="Connect in Yulona">
+      <Step title="Connect in Lumi">
         Go to **Channels** and click **Instagram**. Enter a **Connection name**, choose the **Answering agent**, and paste the **Instagram access token**, **Instagram account ID** and **App secret**. Leave **Webhook verify token** empty. Click **Connect**.
       </Step>
       <Step title="Copy the webhook values">
@@ -62,7 +62,7 @@ While your Meta app is in development mode, only people who have a role on the a
         In Meta, under **Instagram**, then **Webhooks**, paste the **Callback URL** and **Verify token**, verify, and subscribe to **messages**.
       </Step>
       <Step title="Test">
-        Click **Test connection** in Yulona, then send a direct message to your Instagram account from another account.
+        Click **Test connection** in Lumi, then send a direct message to your Instagram account from another account.
       </Step>
     </Steps>
   </Tab>
@@ -72,7 +72,7 @@ While your Meta app is in development mode, only people who have a role on the a
 
 Both channels only allow a business to reply within **24 hours of the customer's last message**. The agent answers within seconds, so this normally causes no trouble. It matters when a teammate takes over and answers more than a day later. In that case:
 
-- The reply cannot be delivered. There are no template messages for these channels in Yulona.
+- The reply cannot be delivered. There are no template messages for these channels in Lumi.
 - A notice appears in the conversation that the message was not delivered ("delivery failed"), so you know to reach the customer another way.
 
 Reply promptly to handed-off conversations, or ask the customer to message again to reopen the window.
@@ -81,7 +81,7 @@ Reply promptly to handed-off conversations, or ask the customer to message again
 
 - Messages are text only. Forms and buttons the agent might use elsewhere turn into plain text lists, and very long answers are shortened to fit the channel.
 - Pictures and files from customers show up as a placeholder like `[image]`.
-- If the same person messages you on several channels with the same email, phone or name, Yulona suggests merging them. See **Possible duplicate contacts** at the bottom of the **Channels** page and [Contacts](/guides/workspace/contacts).
+- If the same person messages you on several channels with the same email, phone or name, Lumi suggests merging them. See **Possible duplicate contacts** at the bottom of the **Channels** page and [Contacts](/guides/workspace/contacts).
 
 ## Manage the connection
 

@@ -1,14 +1,14 @@
 ---
 title: AI providers
-description: Connect Yulona to OpenAI, DeepSeek, Azure OpenAI, OpenRouter or a local model server, and verify that agents can answer.
+description: Connect Lumi to OpenAI, DeepSeek, Azure OpenAI, OpenRouter or a local model server, and verify that agents can answer.
 icon: sparkles
 ---
 
-This page is for operators of a self-hosted install. Yulona calls one AI provider that you configure in `deploy/.env`. Any service that speaks the OpenAI chat completions API works. If you run the hosted product, provider profiles are managed in the console instead: see [Providers](/platform-admin/providers).
+This page is for operators of a self-hosted install. Lumi calls one AI provider that you configure in `deploy/.env`. Any service that speaks the OpenAI chat completions API works. If you run the hosted product, provider profiles are managed in the console instead: see [Providers](/platform-admin/providers).
 
 ## How it works
 
-The `api` and `worker` containers read the `AI_*` variables at start. When `AI_PROVIDER` is empty, Yulona uses `openai` if `AI_API_KEY` is set and the offline `mock` provider if it is not. The mock provider returns canned answers so the product can be explored without a key. Do not use it for customers.
+The `api` and `worker` containers read the `AI_*` variables at start. When `AI_PROVIDER` is empty, Lumi uses `openai` if `AI_API_KEY` is set and the offline `mock` provider if it is not. The mock provider returns canned answers so the product can be explored without a key. Do not use it for customers.
 
 Each request is a `POST` to `AI_BASE_URL` plus `AI_CHAT_PATH` (default `/chat/completions`) with a JSON body in the OpenAI format. Failed calls to a provider are retried up to two times for timeouts, `429` and `5xx` responses, and each attempt times out after 30 seconds.
 
@@ -91,7 +91,7 @@ Add the lines to `deploy/.env`, then run `docker compose --env-file deploy/.env 
 </Tabs>
 
 <Warning>
-Models must support tool (function) calling. Yulona sends tool definitions with every agent turn for lead capture, handoff, calendar and your custom tools. A model that ignores or mishandles tool calls will answer but will not escalate, book or look anything up.
+Models must support tool (function) calling. Lumi sends tool definitions with every agent turn for lead capture, handoff, calendar and your custom tools. A model that ignores or mishandles tool calls will answer but will not escalate, book or look anything up.
 </Warning>
 
 ## Choose a model
@@ -99,7 +99,7 @@ Models must support tool (function) calling. Yulona sends tool definitions with 
 - **Tool calling is mandatory.** Check your provider's documentation for the model you pick.
 - **Start small.** `gpt-4o-mini` or a comparable model answers support questions well at low cost. Move up only if answers are weak.
 - **Keep latency low.** Customers wait in a live chat. A slow reasoning model makes the widget feel stuck.
-- **Context size matters for knowledge.** Small knowledge bases (under about 9,000 characters) are placed in the prompt whole; larger ones are searched by section. Models with short context windows work but see less at once.
+- **Context size matters for knowledge.** Small knowledge bases (under about 4,000 characters, see `AI_INLINE_ALL_CHARS`) are placed in the prompt whole; larger ones are searched by section, with a few sections pre-loaded. Per-message cost settings (`AI_MAX_TOOL_ROUNDS`, `AI_TURN_TOKEN_BUDGET`, `AI_HISTORY_MESSAGES` and others) are in [Configuration](/self-hosting/configuration). Models with short context windows work but see less at once.
 - **Local models** need enough GPU memory and a build that supports tools. Test with real conversations before going live.
 
 An agent can set its own `model` in its configuration. On a self-hosted install that name is sent to your provider exactly as written, with no fallback, so it must exist there. Leave the agent model empty to use `AI_MODEL`.

@@ -17,7 +17,9 @@
     "build": "bun run --filter '*' build",
     "docs:sync": "bun scripts/docs-sync.ts",
     "docs:dev": "bun run --filter @yulona/docs dev",
-    "docs:check": "bun run --filter @yulona/docs check"
+    "docs:check": "bun run --filter @yulona/docs check",
+    "dev:admin-api": "bun run --filter @yulona/admin-api dev",
+    "dev:admin-web": "bun run --filter @yulona/admin-web dev"
   },
   "engines": {
     "bun": ">=1.2.0"

@@ -37,20 +37,20 @@ Changing a default affects every tenant that has no override for that flag, imme
 
 ## Override a flag for one tenant
 
-Per-tenant overrides are managed through the admin API. The console's Feature flags page notes that overrides "live on each tenant", but the tenant detail page does not show them today, so use the API.
+Per-tenant overrides are managed through the admin API (owner role).
 
 <Steps>
   <Step title="Sign in and get a token">
     ```bash
-    curl -X POST https://api.example.com/api/v1/admin/auth/login \
+    curl -X POST https://admin-api.example.com/api/v1/auth/login \
       -H "Content-Type: application/json" \
       -d '{"email":"ops@example.com","password":"YOUR_PASSWORD"}'
     ```
-    The response contains `accessToken`, valid for 900 seconds.
+    The response contains `accessToken`, valid for 900 seconds. If the admin enrolled two-factor authentication, it contains `twoFactorRequired` and a `challengeToken` instead; finish with `POST /api/v1/auth/login/2fa`.
   </Step>
   <Step title="Set the override">
     ```bash
-    curl -X PUT https://api.example.com/api/v1/admin/tenants/TENANT_ID/flags/new_inbox \
+    curl -X PUT https://admin-api.example.com/api/v1/tenants/TENANT_ID/flags/new_inbox \
       -H "Authorization: Bearer ADMIN_TOKEN" \
       -H "Content-Type: application/json" \
       -d '{"enabled": true}'
@@ -61,11 +61,11 @@ Per-tenant overrides are managed through the admin API. The console's Feature fl
   </Step>
 </Steps>
 
-To list a tenant's flags use `GET /api/v1/admin/tenants/TENANT_ID/flags`. Defaults can also be managed with `GET /api/v1/admin/feature-flags` and `PUT` or `DELETE /api/v1/admin/feature-flags/:key` with a body such as `{"description":"New inbox layout","defaultEnabled":false}`.
+To list a tenant's flags use `GET /api/v1/tenants/TENANT_ID/flags`. Defaults can also be managed with `GET /api/v1/feature-flags` and `PUT` or `DELETE /api/v1/feature-flags/:key` (owner) with a body such as `{"description":"New inbox layout","defaultEnabled":false}`.
 
 ## Audit
 
-Flag changes made by platform admins are written to the platform audit log. Export it from the console header with Export audit CSV.
+Flag changes made by platform admins are written to the platform audit log. Filter it with `GET /api/v1/audit-logs` and export it (owner) with `GET /api/v1/audit-logs/export`.
 
 ## Common problems
 

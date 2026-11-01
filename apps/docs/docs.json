@@ -1,15 +1,15 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Yulona",
-  "description": "Documentation for Yulona: AI agents that answer customers, qualify leads and book appointments on your website and messaging channels.",
+  "name": "Lumi",
+  "description": "Documentation for Lumi: AI agents that answer customers, qualify leads and book appointments on your website and messaging channels.",
   "colors": { "primary": "#F97316", "light": "#FB923C", "dark": "#C2410C" },
-  "logo": { "light": "/logo/light.png", "dark": "/logo/dark.png", "href": "https://yulona.co" },
+  "logo": { "light": "/logo/light.svg", "dark": "/logo/dark.svg", "href": "https://yulona.co" },
   "favicon": "/favicon.svg",
   "appearance": { "default": "system" },
   "fonts": { "family": "Inter" },
   "navbar": {
-    "links": [{ "label": "Yulona.co", "href": "https://yulona.co" }],
+    "links": [{ "label": "Website", "href": "https://yulona.co" }],
     "primary": { "type": "button", "label": "Open dashboard", "href": "https://app.yulona.co" }
   },
   "navigation": {
@@ -17,7 +17,7 @@
       {
         "tab": "Guides",
         "groups": [
-          { "group": "Get started", "pages": ["index", "quickstart", "concepts"] },
+          { "group": "Get started", "pages": ["index", "quickstart", "guides/workspace/setup-wizard", "concepts"] },
           {
             "group": "Build your agent",
             "pages": [
@@ -31,7 +31,7 @@
           },
           {
             "group": "Tools and integrations",
-            "pages": ["guides/tools/overview", "guides/tools/build-a-tool", "guides/tools/connections", "guides/tools/calendar-booking"]
+            "pages": ["guides/tools/overview", "guides/tools/build-a-tool", "guides/tools/connections", "guides/tools/calendar-booking", "guides/tools/hubspot"]
           },
           {
             "group": "Channels",
@@ -46,12 +46,13 @@
           {
             "group": "Run your workspace",
             "pages": [
+              "guides/workspace/overview-by-goal",
+              "guides/workspace/ask-lumi",
               "guides/workspace/inbox",
               "guides/workspace/needs-attention",
               "guides/workspace/contacts",
               "guides/workspace/tickets",
               "guides/workspace/bookings",
-              "guides/workspace/transactions",
               "guides/workspace/canned-responses-and-tags",
               "guides/workspace/business-hours",
               "guides/workspace/team-and-roles",
@@ -68,7 +69,7 @@
           { "group": "Foundations", "pages": ["developers/overview", "developers/authentication", "developers/multi-tenancy-and-security", "developers/api-conventions", "developers/errors"] },
           { "group": "Integrate", "pages": ["developers/public-api", "developers/webhooks", "developers/widget-embed", "developers/realtime"] },
           { "group": "Connect your backend", "pages": ["developers/custom-tools-backend", "developers/tool-manifest"] },
-          { "group": "AI runtime", "pages": ["developers/ai-runtime", "developers/credits-api", "developers/agent-builder-api"] }
+          { "group": "AI runtime", "pages": ["developers/ai-runtime", "developers/credits-api", "developers/agent-builder-api", "developers/copilot-api"] }
         ]
       },
       {
@@ -104,6 +105,11 @@
             "group": "Operate the platform",
             "pages": [
               "platform-admin/overview",
+              "platform-admin/console-tour",
+              "platform-admin/customers-and-health-score",
+              "platform-admin/support-playbook",
+              "platform-admin/roles-and-2fa",
+              "platform-admin/operations",
               "platform-admin/plans-credits-and-rates",
               "platform-admin/providers",
               "platform-admin/tenants-and-impersonation",

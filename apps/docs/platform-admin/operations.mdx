@@ -1,0 +1,28 @@
+---
+title: Operations
+description: Watch queue and worker health, retry or discard dead jobs, review failed webhooks, and read the audit log.
+icon: activity
+---
+
+This page is for platform admins who keep the hosted product running. Operations lists problems across every customer; Customer 360 shows the same failures for one customer.
+
+## Queue and worker health
+
+The cards at the top show the worker heartbeat, queued and running jobs, the age of the oldest queued job and the number of dead jobs. A silent worker or a growing oldest-queued age means jobs are not being processed. The Overview page shows the same data in the platform health card.
+
+## Dead jobs
+
+A job is dead when it used all its retries. Each row shows the job name, attempts, the customer, when it failed and the stored error (the job payload is never shown). Owner and support can:
+
+- **Retry** to put it back in the queue with its attempts reset. Fix the cause first, or it fails again.
+- **Discard** to delete it. This asks for confirmation.
+
+Both actions are recorded in the audit log as `job.retry` and `job.discard`. Billing can read but not act.
+
+## Failed webhooks
+
+The Failed webhooks tab lists outgoing webhook deliveries that failed after retries: the webhook, event type, HTTP status (or "No response"), attempts, error and customer. Webhook problems are the customer's endpoint to fix; ask them to check the URL, certificate and response time.
+
+## Audit log
+
+The Audit log page lists every admin sign-in, customer view, export and change, newest first, with filters for action group or exact action, admin (owners), customer and dates. Filters live in the URL. Expand a row to see its details. Owners can export the filtered log as CSV or JSON (itself audited). Entries cannot be edited or removed.

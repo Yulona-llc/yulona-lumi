@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
-import { AlertTriangle, ArrowLeftRight, Bot, Hand, Lock, RotateCcw, Sparkles, UserRound, type LucideIcon } from "lucide-react";
+import { ShieldAlert, AlertTriangle, ArrowLeftRight, Bot, Hand, Lock, RotateCcw, Sparkles, UserRound, type LucideIcon } from "lucide-react";
 import { motion } from "@/components/motion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -37,11 +37,12 @@ function systemEvent(m: MessageView, fresh: boolean) {
   const ev = (m.metadata as { event?: string } | undefined)?.event;
   if (ev === "takeover") return <EventRow key={m.id} icon={Hand} tone="primary" at={m.createdAt} fresh={fresh}>{m.senderName ? `${m.senderName} took over` : "A teammate took over"}</EventRow>;
   if (ev === "returned_to_ai") return <EventRow key={m.id} icon={Bot} tone="success" at={m.createdAt} fresh={fresh}>Conversation returned to the AI</EventRow>;
+  if (ev === "abuse_blocked") return <EventRow key={m.id} icon={ShieldAlert} tone="danger" at={m.createdAt} fresh={fresh}>Conversation closed and visitor blocked for abuse</EventRow>;
   if (ev === "delivery_failed") return <EventRow key={m.id} icon={AlertTriangle} tone="danger" at={m.createdAt} fresh={fresh}>{m.content}</EventRow>;
   return <EventRow key={m.id} icon={Sparkles} at={m.createdAt} fresh={fresh}>{m.content}</EventRow>;
 }
 
-const HANDOFF_REASON: Record<string, string> = { uncertainty: "the AI was not confident in an answer" };
+const HANDOFF_REASON: Record<string, string> = { uncertainty: "the AI was not confident in an answer", abuse: "the visitor was blocked for abuse" };
 function handoffOf(m: MessageView): { type: string; reason?: string } | null {
   const h = (m.metadata as { handoff?: { type?: string; reason?: string } } | undefined)?.handoff;
   return h && typeof h === "object" ? { type: h.type ?? "handoff", reason: h.reason } : null;

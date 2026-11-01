@@ -1,3 +1,5 @@
+> Wave 6: the platform-admin endpoints in this document (`/api/v1/admin/...`) now live in `apps/admin-api` without the `/admin` prefix (`/api/v1/llm-profiles`, `/model-rates`, `/credit-packs`, `/tenants/:id/credits`); see `docs/api/platform-admin.md`.
+
 # Credits, AI usage metering and LLM provider config (Wave 4 / B1)
 
 Contract for the dashboard Usage page and the platform-admin Credits UI. Migration `0910`. Errors use the standard envelope `{ error: { code, message, requestId, details? } }`.
@@ -7,7 +9,7 @@ Contract for the dashboard Usage page and the platform-admin Credits UI. Migrati
 - **Micro-credits.** All credit amounts on the wire are integers in micro-credits (`1 credit = 1_000_000 micro`). Divide by `1e6` for display. Fields end in `Micro`. Plan limits (`plan_limits.llm_credits_monthly`) and admin grants/pack sizes are in whole credits (admin grant accepts decimals).
 - **Cost of a call** = `ceil((promptTokens * inputMicroPer1k + completionTokens * outputMicroPer1k) / 1000)` micro, using the rate row for the model, else the `*` default row.
 - **Deployment mode.** `saas`: platform-managed LLM, credits are charged, gated, top-ups sold. `selfhosted`: usage is still recorded (events carry the computed cost for information) but credits are never charged, never gated, no billing. `GET /usage/credits` returns `enabled: false` there; the UI should hide credit meters and show tokens only.
-- **Monthly period** (UTC calendar month, `period` = first day, `YYYY-MM-01`). Monthly allowance = `plan_limits.llm_credits_monthly` (credits; `null` = unlimited) of the tenant's current plan (re-read on every call, so an upgrade takes effect immediately). Placeholder values: free 50, pro 1500, enterprise/self_hosted unlimited. Consumption draws the **monthly allowance first, then the top-up balance**. The top-up balance carries over to the next month; the allowance resets. An in-flight call can overshoot, so `topupMicro` may be slightly negative (a later top-up pays that off).
+- **Monthly period** (UTC calendar month, `period` = first day, `YYYY-MM-01`). Monthly allowance = `plan_limits.llm_credits_monthly` (credits; `null` = unlimited) of the tenant's current plan (re-read on every call, so an upgrade takes effect immediately). Seeded values: free 50, pro 4980 (the $49 plan, migration `0960`: 14,000k x 0.25 + 1,480k x 1.0 at the default rate, with `llm_tokens_monthly` 15,480,000 for display), enterprise/self_hosted unlimited. Consumption draws the **monthly allowance first, then the top-up balance**. The top-up balance carries over to the next month; the allowance resets. An in-flight call can overshoot, so `topupMicro` may be slightly negative (a later top-up pays that off).
 - **Warnings** (once per period each, admin/owner notifications of type `credits.warning_80` and `credits.exhausted` through the existing notifications API): `warning_80` at >= 80% of the available pool, `exhausted` when `remaining <= 0`.
 - **Gate (SaaS only).** When `remaining <= 0` the AI does not call the model: the inbound message raises a `system_failure` handoff with reason `ai_credits_exhausted` (appears in Needs Attention), the customer gets a safe notice (text from env `CREDITS_EXHAUSTED_MESSAGE`, default "Our assistant is temporarily unavailable. A member of our team will get back to you shortly."), and the sandbox returns `402 credits_exhausted`. Buying a credit pack lifts the gate immediately.
 
@@ -27,11 +29,14 @@ Contract for the dashboard Usage page and the platform-admin Credits UI. Migrati
   "remainingMicro": 38000000,  // allowance left + topup balance; null when unlimited / selfhosted
   "percentUsed": 24,           // 0-100 (can exceed 100 on overshoot), null when unlimited / selfhosted
   "status": "ok",              // "ok" | "warning" (>=80%) | "exhausted" (remaining <= 0)
-  "warnings": []               // subset of ["warning_80", "exhausted"]
+  "warnings": [],              // subset of ["warning_80", "exhausted"]
+  "creditsPerMessage": 2.1,    // avg credits per answered message; null when unlimited / selfhosted
+  "estimatedMessages": 18,     // floor(remaining / creditsPerMessage); null when unlimited / selfhosted
+  "estimateBasis": "typical"   // "usage" = 30-day average of ai_usage_events source=turn (>= 10 events) | "typical" = 6k in / 0.6k out at the `*` rate (2.1 credits)
 }
 ```
 
-### `GET /api/v1/usage/ai?from=&to=&groupBy=day|agent|model|conversation` (min role admin)
+### `GET /api/v1/usage/ai?from=&to=&groupBy=day|agent|model|conversation|source` (min role admin)
 `from`/`to`: ISO dates `YYYY-MM-DD` (UTC, inclusive), default last 30 days, max span 366 days. `groupBy` default `day`.
 ```json
 {
@@ -89,7 +94,7 @@ Profile object (the API key is **never** returned):
 - Defaults: `*` = 250_000 in / 1_000_000 out micro-credits per 1k tokens (0.25 / 1 credit).
 
 ### Plan credit limits
-`PUT /admin/plans/:key/limits/llm_credits_monthly` body `{ "limit": 1500 }` (credits; `null` = unlimited): the existing plans endpoint (`GET /admin/plans` lists it with the other limits).
+`PUT /admin/plans/:key/limits/llm_credits_monthly` body `{ "limit": 4980 }` (credits; `null` = unlimited): the existing plans endpoint (`GET /admin/plans` lists it with the other limits).
 
 ### Credit packs
 - `GET /admin/credit-packs` -> `{ items: [ { id, name, credits, priceCents, active, sortOrder, createdAt } ] }` (includes inactive).

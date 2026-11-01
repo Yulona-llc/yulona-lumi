@@ -46,7 +46,7 @@ Lets agents check availability and book on a workspace's Google Calendar.
     Then run `docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d`.
   </Step>
   <Step title="Connect from the dashboard">
-    A workspace admin connects Google Calendar from Settings, Integrations. Yulona asks for the `calendar.events` and `calendar.freebusy` scopes with offline access.
+    A workspace admin connects Google Calendar from Settings, Integrations. Lumi asks for the `calendar.events` and `calendar.freebusy` scopes with offline access.
   </Step>
 </Steps>
 
@@ -59,37 +59,43 @@ If the variables are missing the connect action answers `503`. See [Calendar and
     At developer.calendly.com create a web OAuth app with PKCE. Request the scopes `users:read`, `event_types:read`, `availability:read`, `scheduled_events:write` and `scheduling_links:write`.
   </Step>
   <Step title="Register the redirect">
-    Use `https://app.example.com/api/v1/calendar/calendly/callback` (HTTPS is required). The default when `CALENDLY_REDIRECT_URI` is empty is `<PUBLIC_API_URL>/api/v1/calendar/calendly/callback`.
+    Register exactly one redirect URI and let Lumi send the same one. Use `https://api.example.com/api/v1/calendar/calendly/callback`, the public address of the API service. The default when `CALENDLY_REDIRECT_URI` is empty is `<PUBLIC_API_URL>/api/v1/calendar/calendly/callback`, so set `PUBLIC_API_URL` first. Lumi sends the same value when it starts the sign-in and when it exchanges the code, as Calendly requires. According to Calendly's developer documentation a Production app accepts `https` only and a Sandbox app also accepts `http://localhost`. In production mode Lumi refuses to start a Calendly connection with a non-https or localhost URL and says why.
+
+    Admins can read the exact URL under **Settings, then Connectors, then Calendly** (**Redirect URL for your Calendly app**, with a **Copy** button). It also says whether the URL came from `CALENDLY_REDIRECT_URI`, from `PUBLIC_API_URL`, or fell back to localhost because `PUBLIC_API_URL` is empty.
   </Step>
   <Step title="Set the variables">
     ```bash
     CALENDLY_CLIENT_ID=...
     CALENDLY_CLIENT_SECRET=...
-    CALENDLY_REDIRECT_URI=https://app.example.com/api/v1/calendar/calendly/callback
+    CALENDLY_REDIRECT_URI=https://api.example.com/api/v1/calendar/calendly/callback
     ```
     The `api` and `worker` services both read them, and the compose file passes them to both.
   </Step>
 </Steps>
 
 <Warning>
-Calendly's scheduling API, which lets Yulona create bookings, is available only on paid Calendly plans (Standard and above). On a free plan Calendly answers `403`. The integration was built against Calendly's published documentation and tested with a mock server; it has not been run against a live Calendly account.
+Calendly's scheduling API, which lets Lumi create bookings, is available only on paid Calendly plans (Standard and above). On a free plan Calendly answers `403`. The integration was built against Calendly's published documentation and tested with a mock server; it has not been run against a live Calendly account. Calendly's exact-match rules for the redirect URI (trailing slash, letter case) are not documented, so copy the URL from the dashboard instead of typing it.
 </Warning>
 
 A workspace can connect Google and Calendly together; the last one connected becomes the default.
+
+## HubSpot
+
+HubSpot needs no app registration or environment variable on the server: each workspace pastes its own private-app token. The server only needs `ENCRYPTION_KEY` to store that token encrypted, and outbound HTTPS to `api.hubapi.com`. The worker must be running, because leads are synced by the `crm.hubspot.sync` job. Admins connect it under **Settings, then Connectors**. See [HubSpot](/guides/tools/hubspot).
 
 ## WhatsApp, Messenger and Instagram (Meta)
 
 You need a Meta app with the product enabled, plus a public HTTPS URL.
 
 <Steps>
-  <Step title="Create the connection in Yulona">
-    In the dashboard open Channels and add the channel. Yulona generates a verify token and shows it once. Copy it, along with the webhook URL.
+  <Step title="Create the connection in Lumi">
+    In the dashboard open Channels and add the channel. Lumi generates a verify token and shows it once. Copy it, along with the webhook URL.
   </Step>
   <Step title="Configure the webhook in Meta">
-    In the Meta app, set the callback URL to the webhook URL and the verify token to the one Yulona showed. Meta sends a `GET` request with `hub.challenge`, and Yulona answers it when the token matches.
+    In the Meta app, set the callback URL to the webhook URL and the verify token to the one Lumi showed. Meta sends a `GET` request with `hub.challenge`, and Lumi answers it when the token matches.
   </Step>
   <Step title="Provide the app secret">
-    Yulona needs the app secret (`appSecret`) to verify the `X-Hub-Signature-256` signature on every message. Enter it in the connection's credentials.
+    Lumi needs the app secret (`appSecret`) to verify the `X-Hub-Signature-256` signature on every message. Enter it in the connection's credentials.
   </Step>
   <Step title="Subscribe to message events and test">
     Subscribe the app to message events, then use Test connection on the channel in the dashboard.
@@ -100,7 +106,7 @@ Messenger, Instagram and WhatsApp allow free-form replies only within 24 hours o
 
 ## Telegram
 
-Create a bot with BotFather and add its token in the dashboard. Yulona generates a webhook secret. Register the webhook with Telegram once, replacing the placeholders:
+Create a bot with BotFather and add its token in the dashboard. Lumi generates a webhook secret. Register the webhook with Telegram once, replacing the placeholders:
 
 ```bash
 curl "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<WEBHOOK_URL>&secret_token=<WEBHOOK_SECRET>"
@@ -110,11 +116,11 @@ Telegram then sends the secret in `X-Telegram-Bot-Api-Secret-Token` on every req
 
 ## Slack
 
-Create a Slack app, install it to the workspace, and copy the bot token (`xoxb-...`) and the signing secret into the connection. Enable Event Subscriptions with the webhook URL as the request URL; Yulona answers Slack's `url_verification` challenge. Requests older or newer than five minutes are rejected. See [Slack](/guides/channels/slack).
+Create a Slack app, install it to the workspace, and copy the bot token (`xoxb-...`) and the signing secret into the connection. Enable Event Subscriptions with the webhook URL as the request URL; Lumi answers Slack's `url_verification` challenge. Requests older or newer than five minutes are rejected. See [Slack](/guides/channels/slack).
 
 ## Stripe (hosted product only)
 
-Billing routes are not mounted in self-hosted mode, so Stripe settings have no effect there. For the hosted product, set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, one `STRIPE_PRICE_<PLAN>` per paid plan (for example `STRIPE_PRICE_PRO`), and point a Stripe webhook at `https://<host>/api/v1/webhooks/billing`. Handled events: `checkout.session.completed`, `customer.subscription.created|updated|deleted`, and `invoice.payment_failed|payment_succeeded`. Without `STRIPE_SECRET_KEY` a stub provider is used, and in production the unsigned webhook answers `404`.
+Billing routes are not mounted in self-hosted mode, so Stripe settings have no effect there. For the hosted product, set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, one `STRIPE_PRICE_<PLAN>` per paid plan (for example `STRIPE_PRICE_PRO`), and point a Stripe webhook at `https://<host>/api/v1/webhooks/billing`. Handled events: `checkout.session.completed` and `checkout.session.async_payment_succeeded` (subscriptions and credit packs), `customer.subscription.created|updated|deleted`, and `invoice.paid`, `invoice.payment_succeeded` and `invoice.payment_failed`. To try it with test money, follow [Stripe test mode](/self-hosting/configuration#stripe-test-mode-hosted-product). Without `STRIPE_SECRET_KEY` a stub provider is used, and in production the unsigned webhook answers `404`.
 
 ## SMTP
 

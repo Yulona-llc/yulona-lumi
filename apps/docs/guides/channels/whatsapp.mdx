@@ -4,7 +4,7 @@ description: Connect a WhatsApp Business number so your agent answers customers 
 icon: phone
 ---
 
-Connect WhatsApp and customers who message your business number are answered by your agent in the same inbox as every other channel. This page is for admins and owners. You will work in two places: your Meta (Facebook) developer account and the Yulona dashboard. Meta changes its screens from time to time, so treat the Meta steps as a guide and follow Meta's own help where they differ.
+Connect WhatsApp and customers who message your business number are answered by your agent in the same inbox as every other channel. This page is for admins and owners. You will work in two places: your Meta (Facebook) developer account and the Lumi dashboard. Meta changes its screens from time to time, so treat the Meta steps as a guide and follow Meta's own help where they differ.
 
 <Note>
 Only **admins and owners** can connect or change channels. Everyone else sees the page read-only.
@@ -27,7 +27,7 @@ Only **admins and owners** can connect or change channels. Everyone else sees th
     In the dashboard go to **Channels** and click the **WhatsApp** tile. A panel opens with the steps.
   </Step>
   <Step title="Fill in the form">
-    Enter a **Connection name**, choose the **Answering agent** (or leave **Default agent**), then paste the **Access token**, **Phone number ID** and **App secret**. Leave **Webhook verify token** empty and Yulona generates one for you. The two fallback template fields are optional; see "Templates" below. Click **Connect**.
+    Enter a **Connection name**, choose the **Answering agent** (or leave **No agent**, which means a team member replies), then paste the **Access token**, **Phone number ID** and **App secret**. Leave **Webhook verify token** empty and Lumi generates one for you. The two fallback template fields are optional; see "Templates" below. Click **Connect**.
   </Step>
   <Step title="Copy the webhook values">
     The panel now says "Shown only once" and displays the **Webhook URL** and the **Webhook verify token**. Copy both now and keep them until the next step. After you close the panel the secrets stay masked.
@@ -36,7 +36,7 @@ Only **admins and owners** can connect or change channels. Everyone else sees th
     In Meta, under **WhatsApp**, then **Configuration**, paste the **Callback URL** (the Webhook URL) and the **Verify token**, and verify. Then subscribe to the **messages** field.
   </Step>
   <Step title="Test the connection">
-    Back in Yulona click **Test connection**. "Connection OK" with your number means the credentials are accepted. Then click **I have saved these**.
+    Back in Lumi click **Test connection**. "Connection OK" with your number means the credentials are accepted. Then click **I have saved these**.
   </Step>
   <Step title="Send a message to your number">
     The message should arrive in the [Inbox](/guides/workspace/inbox) and your agent should reply.
@@ -55,7 +55,7 @@ To serve real customers you need, in Meta:
 
 1. A **verified business**. Meta asks you to verify your business before your own number can message the public.
 2. Your **own phone number** added to WhatsApp Business, with a display name approved.
-3. A **permanent token**. Create a system user in Meta Business settings, give it access to the app and the WhatsApp account, and generate a token that does not expire. Paste it into your Yulona connection.
+3. A **permanent token**. Create a system user in Meta Business settings, give it access to the app and the WhatsApp account, and generate a token that does not expire. Paste it into your Lumi connection.
 
 Then create a new connection (or edit the existing one) with the production Phone number ID and token, and update the webhook in Meta to the new connection's address.
 
@@ -65,11 +65,11 @@ WhatsApp only lets a business send free-form messages within **24 hours of the c
 
 - Your agent normally replies within seconds, well inside the window.
 - The window matters when a teammate replies after a long wait, or an automated message is sent later.
-- If you enter a **Fallback template name** (and optionally a **Fallback template language**, default `en_US`), Yulona sends that template when the window has closed. The template must be approved in Meta and contain one text variable, which Yulona fills with the message.
+- If you enter a **Fallback template name** (and optionally a **Fallback template language**, default `en_US`), Lumi sends that template when the window has closed. The template must be approved in Meta and contain one text variable, which Lumi fills with the message.
 - With no template set, a message after the window fails, and your team sees a notice in the conversation that it was not delivered ("delivery failed").
 
 <Tip>
-Create a simple template in Meta whose body is something like `Hello, we have an update for you: {{1}}`, and give its name to Yulona, so late replies still reach customers.
+Create a simple template in Meta whose body is something like `Hello, we have an update for you: {{1}}`, and give its name to Lumi, so late replies still reach customers.
 </Tip>
 
 ## Manage the connection

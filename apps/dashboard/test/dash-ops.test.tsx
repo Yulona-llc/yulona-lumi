@@ -7,7 +7,6 @@ import { AuthProvider } from "../src/auth/AuthProvider";
 import { setFetchImpl } from "../src/api/client";
 import TicketsPage from "../src/features/tickets/TicketsPage";
 import { slaState } from "../src/features/tickets/parts";
-import TransactionsPage from "../src/features/transactions/TransactionsPage";
 import BookingsPage from "../src/features/bookings/BookingsPage";
 import AttentionPage from "../src/features/attention/AttentionPage";
 import CannedPage from "../src/features/ops-settings/CannedPage";
@@ -84,26 +83,12 @@ describe("tickets", () => {
   });
 });
 
-describe("transactions", () => {
-  const txn = { id: "x1", externalId: "ext_1", source: "webhook", amountCents: -2500, currency: "USD", status: "refunded", description: "Plan refund", contactId: null, contactName: "Lee", conversationId: null, metadata: {}, occurredAt: "2026-02-01T10:00:00Z", createdAt: "x", updatedAt: "x" };
-  it("lists with summary and is blocked for viewers", async () => {
-    mount(<TransactionsPage />, "agent", { "/transactions": { items: [txn], nextCursor: null, summary: { count: 1, totalCents: 0 } } });
-    expect(await screen.findByText("Plan refund")).toBeInTheDocument();
-    expect(screen.getByText("-$25.00")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /webhook endpoints/i })).toBeNull();
-  });
-  it("viewer sees read-only notice", async () => {
-    mount(<TransactionsPage />, "viewer", {});
-    expect(await screen.findByRole("note")).toHaveTextContent(/agent role/);
-  });
-});
-
 describe("bookings", () => {
   it("lists bookings, allows cancel with reason, and shows connect for admins", async () => {
     const b = { id: "b1", status: "booked", title: "Demo call", startAt: "2030-03-01T10:00:00Z", endAt: "2030-03-01T10:30:00Z", timezone: null, contactId: null, contactName: "Lee", conversationId: null, attendeeEmail: null, notes: null, provider: null, externalEventId: null, eventUrl: null, failureReason: null, cancelledAt: null, createdAt: "x" };
-    const calls = mount(<BookingsPage />, "admin", { "/bookings/b1/cancel": { ...b, status: "cancelled" }, "/bookings": { items: [b], nextCursor: null }, "/calendar/connection": { connected: false } });
+    const calls = mount(<BookingsPage />, "admin", { "/bookings/b1/cancel": { ...b, status: "cancelled" }, "/bookings": { items: [b], nextCursor: null }, "/calendar/connections": { items: [{ provider: "google", configured: true, connected: false }, { provider: "calendly", configured: true, connected: false }], default: null } });
     expect((await screen.findAllByText("Demo call")).length).toBeGreaterThan(0);
-    expect(await screen.findByRole("button", { name: /connect google calendar/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Connect Google" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /cancel demo call/i }));
     await userEvent.type(screen.getByLabelText(/cancellation reason/i), "customer asked");
     await userEvent.click(screen.getByRole("button", { name: "Cancel booking" }));

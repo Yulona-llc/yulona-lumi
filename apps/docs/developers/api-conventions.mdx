@@ -1,6 +1,6 @@
 ---
 title: API conventions
-description: Learn the rules every Yulona endpoint follows, including base URL, request bodies, pagination, idempotency, rate limits, request ids and versioning.
+description: Learn the rules every Lumi endpoint follows, including base URL, request bodies, pagination, idempotency, rate limits, request ids and versioning.
 icon: book
 ---
 
@@ -18,7 +18,7 @@ These conventions apply to the dashboard API, the public API and the public widg
 
 Health checks live outside the versioned prefix: `GET /healthz` and `GET /readyz`.
 
-The `YOUR_HOST` value is your Yulona API origin. On a self-hosted install behind the bundled Caddy proxy, the API is reachable under `/api/*` on your site address.
+The `YOUR_HOST` value is your Lumi API origin. On a self-hosted install behind the bundled Caddy proxy, the API is reachable under `/api/*` on your site address.
 
 ## Request bodies are strict
 
@@ -100,11 +100,11 @@ Exceptions:
 |---|---|
 | `GET .../conversations/:id/messages` | `before` is a message id; `nextCursor` is the id to pass as `before` for older messages. Items come back oldest to newest within a page. |
 | `GET /public/widget/messages` | `after` or `before` (a message id, not both) and `hasMore`; there is no `nextCursor`. |
-| `GET /knowledge/sources`, `GET /admin/tenants` | Offset style: `limit` and `offset`. Knowledge returns `{ items, limit, offset }`; admin tenants adds `total`. |
+| `GET /knowledge/sources`, `GET /tenants` on the admin API | Offset style: `limit` and `offset`. Knowledge returns `{ items, limit, offset }`; admin tenants adds `total`. |
 
 ## Idempotency
 
-Yulona has no generic `Idempotency-Key` header. Idempotency is explicit where retries are expected:
+Lumi has no generic `Idempotency-Key` header. Idempotency is explicit where retries are expected:
 
 | Where | Key | Replay behavior |
 |---|---|---|
@@ -112,7 +112,6 @@ Yulona has no generic `Idempotency-Key` header. Idempotency is explicit where re
 | Widget `POST /public/widget/messages` and `/ui-events` | `clientMessageId` (8 to 64 characters from `A-Za-z0-9_-`, required) | `201` first, `200` with the original on replay |
 | Outbound webhooks | Envelope `id`, constant across retries and redeliveries | Your receiver should ignore ids it has already processed |
 | Provider webhooks (channels) | Provider event id | Duplicates answer `200` and are skipped |
-| Inbound transaction webhooks | `externalId` | A replay updates the existing record |
 
 Create endpoints without a key (for example `POST /public-api/contacts`) are not idempotent. If a request times out, read before you retry.
 

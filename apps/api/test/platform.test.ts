@@ -5,7 +5,6 @@ import { MockEmailProvider, createMockProviders } from "@yulona/providers";
 import { createApp } from "../src/app";
 import { checkLimit, incrementUsage } from "../src/platform/limits";
 import { MemoryRateLimiter } from "../src/ratelimit";
-import { hashPassword } from "../src/security";
 import { PASSWORD, hasDb, json, testConfig, uniqueEmail } from "./helpers";
 
 if (!hasDb) console.warn(SKIP_MESSAGE);
@@ -231,90 +230,22 @@ describe.skipIf(!hasDb)("platform", () => {
     expect((await checkLimit(db, ent.tenantId, "seats")).limit).toBeNull();
   });
 
-  describe("super admin", () => {
-    let sa: string;
-    const adminEmail = uniqueEmail("sa");
-    beforeAll(async () => {
-      await owner`INSERT INTO platform_admins (email, name, password_hash) VALUES (${adminEmail}, 'Root', ${await hashPassword(PASSWORD)})`;
-      const r = await app.request("/api/v1/admin/auth/login", json({ email: adminEmail, password: PASSWORD }));
-      expect(r.status).toBe(200);
-      sa = ((await r.json()) as { accessToken: string }).accessToken;
-    });
-
-    test("separate token realm; bad credentials generic", async () => {
-      expect((await app.request("/api/v1/admin/auth/login", json({ email: adminEmail, password: "wrong-password-xx" }))).status).toBe(401);
-      expect((await call("/admin/tenants", null)).status).toBe(401);
-      const t = await newTenant();
-      expect((await call("/admin/tenants", t.token)).status).toBe(401); // tenant token is not an admin token
-      expect((await call("/me", sa)).status).toBe(401); // admin token does not open tenant APIs
-      expect((await call("/agents", sa)).status).toBe(401);
-      expect((await call("/admin/auth/me", sa)).status).toBe(200);
-      // a tenant user (even owner) is not a platform admin
-      expect((await app.request("/api/v1/admin/auth/login", json({ email: t.email, password: PASSWORD }))).status).toBe(401);
-      // app role cannot read platform_admins directly
-      expect(await fails(db`SELECT * FROM platform_admins`)).toBe(true);
-    });
-
-    test("tenant lifecycle: create, list, suspend, unsuspend, delete, restore, purge", async () => {
-      const oe = uniqueEmail("created");
-      const cr = await send("POST", "/admin/tenants", sa, { name: "Created Co", plan: "pro", ownerEmail: oe, ownerName: "O", ownerPassword: PASSWORD });
-      expect(cr.status).toBe(201);
-      const { id } = (await cr.json()) as { id: string };
-      expect((await send("POST", "/admin/tenants", sa, { name: "x", plan: "nope", ownerEmail: uniqueEmail(), ownerName: "O", ownerPassword: PASSWORD })).status).toBe(400);
-      expect((await send("POST", "/admin/tenants", sa, { name: "x", ownerEmail: oe, ownerName: "O", ownerPassword: PASSWORD })).status).toBe(409);
-      const list = (await (await call("/admin/tenants?q=Created%20Co", sa)).json()) as { items: { id: string; plan: string; userCount: number }[]; total: number };
-      expect(list.items.find((t) => t.id === id)).toMatchObject({ plan: "pro", userCount: 1 });
-
-      const tok = (await login(oe))!;
-      expect(tok).toBeTruthy();
-      expect((await send("POST", `/admin/tenants/${id}/suspend`, sa)).status).toBe(200);
-      expect(await login(oe)).toBeNull();
-      expect((await send("POST", `/admin/tenants/${id}/unsuspend`, sa)).status).toBe(200);
-      expect(await login(oe)).toBeTruthy();
-      expect((await send("PATCH", `/admin/tenants/${id}`, sa, { name: "Renamed Co", plan: "free" })).status).toBe(200);
-      expect((await send("DELETE", `/admin/tenants/${id}`, sa)).status).toBe(200);
-      expect(await login(oe)).toBeNull();
-      expect((await send("POST", `/admin/tenants/${id}/restore`, sa)).status).toBe(200);
-      expect(await login(oe)).toBeTruthy();
-      // audit rows on both sides
-      expect((await owner`SELECT 1 FROM audit_logs WHERE tenant_id = ${id} AND action = 'tenant.status.suspended'`).length).toBe(1);
-      const pa = (await (await call("/admin/audit-logs", sa)).json()) as { items: { action: string }[] };
-      expect(pa.items.some((x) => x.action === "tenant.status.deleted")).toBe(true);
-
-      // soft delete + 30 days => hard delete (including dependent rows)
-      await send("DELETE", `/admin/tenants/${id}`, sa);
-      const { purgeDeletedTenants } = await import("../../worker/src/maintenance");
-      expect(await purgeDeletedTenants(db)).toBeGreaterThanOrEqual(0);
-      expect((await owner`SELECT 1 FROM tenants WHERE id = ${id}`).length).toBe(1); // not old enough
-      await owner`UPDATE tenants SET deleted_at = now() - interval '31 days' WHERE id = ${id}`;
-      expect((await send("POST", `/admin/tenants/${id}/restore`, sa)).status).toBe(409); // grace passed
-      expect(await purgeDeletedTenants(db)).toBeGreaterThanOrEqual(1);
-      expect((await owner`SELECT 1 FROM tenants WHERE id = ${id}`).length).toBe(0);
-      expect((await owner`SELECT 1 FROM users WHERE tenant_id = ${id}`).length).toBe(0);
-      expect((await owner`SELECT 1 FROM audit_logs WHERE tenant_id = ${id}`).length).toBe(0);
-    });
-
-    test("feature flags + plan limits", async () => {
-      const key = `flag.${crypto.randomUUID().slice(0, 8)}`;
-      const t = await newTenant();
-      expect((await send("PUT", `/admin/feature-flags/${key}`, t.token, { defaultEnabled: true })).status).toBe(401);
-      expect((await send("PUT", `/admin/feature-flags/${key}`, sa, { description: "d", defaultEnabled: false })).status).toBe(200);
-      const eff = async () => ((await (await call("/feature-flags", t.token)).json()) as { flags: Record<string, boolean> }).flags[key];
-      expect(await eff()).toBe(false);
-      expect((await send("PUT", `/admin/tenants/${t.tenantId}/flags/${key}`, sa, { enabled: true })).status).toBe(200);
-      expect(await eff()).toBe(true);
-      const other = await newTenant();
-      expect(((await (await call("/feature-flags", other.token)).json()) as { flags: Record<string, boolean> }).flags[key]).toBe(false);
-      expect((await send("PUT", `/admin/tenants/${t.tenantId}/flags/${key}`, sa, { enabled: null })).status).toBe(200);
-      expect(await eff()).toBe(false);
-      expect((await send("PUT", `/admin/tenants/${t.tenantId}/flags/nonexistent.flag`, sa, { enabled: true })).status).toBe(404);
-      expect(await fails(db`INSERT INTO feature_flags (key) VALUES ('hack.flag')`)).toBe(true); // tenants can't write flags
-      expect((await send("DELETE", `/admin/feature-flags/${key}`, sa)).status).toBe(200);
-
-      expect((await send("PUT", "/admin/plans/free/limits/seats", sa, { limit: 3 })).status).toBe(200);
-      const plans = (await (await call("/admin/plans", sa)).json()) as { items: { key: string; limits: Record<string, number | null> }[] };
-      expect(plans.items.find((p) => p.key === "free")!.limits.seats).toBe(3);
-      await send("PUT", "/admin/plans/free/limits/seats", sa, { limit: 2 });
-    });
+  test("the customer API has no platform-admin surface (it moved to apps/admin-api)", async () => {
+    const t = await newTenant();
+    for (const [m, p] of [["POST", "/admin/auth/login"], ["GET", "/admin/tenants"], ["GET", "/admin/feature-flags"], ["GET", "/admin/plans"], ["GET", "/admin/audit-logs"], ["GET", "/admin/analytics"], ["GET", "/admin/llm-profiles"]] as const) {
+      for (const tok of [null, t.token]) expect([m, p, (await call(p, tok, { method: m })).status]).toEqual([m, p, 404]);
+    }
+    // tenants cannot write platform tables or call cross-tenant functions
+    expect(await fails(db`INSERT INTO feature_flags (key) VALUES ('hack.flag')`)).toBe(true);
+    expect(await fails(db`SELECT * FROM platform_admins`)).toBe(true);
+    expect(await fails(db`SELECT sa_list_flags()`)).toBe(true);
+    // platform flags still reach tenants through the read-only /feature-flags endpoint
+    const key = `flag.${crypto.randomUUID().slice(0, 8)}`;
+    await owner`INSERT INTO feature_flags (key, description, default_enabled) VALUES (${key}, 'd', false)`;
+    const eff = async () => ((await (await call("/feature-flags", t.token)).json()) as { flags: Record<string, boolean> }).flags[key];
+    expect(await eff()).toBe(false);
+    await owner`INSERT INTO tenant_flag_overrides (tenant_id, flag_key, enabled) VALUES (${t.tenantId}, ${key}, true)`;
+    expect(await eff()).toBe(true);
+    await owner`DELETE FROM feature_flags WHERE key = ${key}`;
   });
 });

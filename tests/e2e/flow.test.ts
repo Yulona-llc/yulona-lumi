@@ -37,6 +37,7 @@ describe.skipIf(!hasDb)("e2e: widget conversation lifecycle", () => {
     // 2. agent + knowledge (text) -> ingestion by the worker -> ready
     const agent = await jsonOf<{ id: string }>(await call("POST", "/agents", token, { name: "Support" }));
     expect(agent.id).toBeTruthy();
+    expect((await call("POST", `/agents/${agent.id}/publish`, token, {})).status).toBe(200); // only a published agent answers customers
     const ids: string[] = [];
     for (const [name, text] of [["Opening", "The shop opens at nine in the morning."], ["Closing", "The shop closes at six in the evening."]] as const) {
       const src = await call("POST", "/knowledge/sources/text", token, { name, text, agentId: agent.id });
@@ -46,7 +47,7 @@ describe.skipIf(!hasDb)("e2e: widget conversation lifecycle", () => {
     for (const id of ids) await until(async () => (await jsonOf<{ status: string }>(await call("GET", `/knowledge/sources/${id}`, token))).status === "ready");
 
     // 3. widget config
-    const w = await jsonOf<{ id: string; widgetKey: string }>(await call("POST", "/widgets", token, { name: "Site", allowedDomains: [ORIGIN], config: { welcomeMessage: "Hello!" } }));
+    const w = await jsonOf<{ id: string; widgetKey: string }>(await call("POST", "/widgets", token, { name: "Site", agentId: agent.id, allowedDomains: [ORIGIN], config: { welcomeMessage: "Hello!" } }));
     expect(w.widgetKey).toMatch(/^wk_/);
     const pubH = { "x-widget-key": w.widgetKey, origin: ORIGIN, "content-type": "application/json" };
     const cfg = await fetch(`${base()}/public/widget/config`, { headers: pubH });

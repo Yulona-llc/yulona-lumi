@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { request as rawRequest, getAccessToken, ApiError, type Opts } from "../../api/client";
+import { request as rawRequest, rawFetch, getAccessToken, ApiError, type Opts } from "../../api/client";
 import { apiBase } from "../../config";
 import type { AgentConfig, ConversionStage, WidgetDto } from "@yulona/shared";
 
@@ -13,9 +13,11 @@ export interface KnowledgeSource {
   id: string; agentId: string | null; type: "file" | "url" | "text"; name: string; skill?: string; description?: string | null;
   status: "pending" | "processing" | "ready" | "failed"; error: string | null; sourceUrl: string | null;
   fileName: string | null; sizeBytes: number; chunkCount: number; attempts: number; maxPages?: number;
+  maxDepth?: number; followLinks?: boolean; includeSubdomains?: boolean;
+  crawlProgress?: { pagesCrawled: number; pagesFound: number; pagesSkipped: number; truncated?: boolean; done: boolean } | null;
   lastIngestedAt: string | null; createdAt: string; updatedAt: string;
 }
-export interface Chunk { id: string; chunkIndex: number; title?: string; content: string; tokenCount: number }
+export interface Chunk { id: string; chunkIndex: number; title?: string; content: string; tokenCount: number; url?: string | null }
 export interface SandboxResult {
   answer: string; stageBefore: ConversionStage; stageAfter: ConversionStage; guardTriggered: boolean;
   handoff: null | { type: string; reason: string; summary?: string; customerMessage?: string; leadCard?: Record<string, unknown> };
@@ -53,13 +55,13 @@ export const ag = {
   publish: (id: string, note?: string) => request<Agent>(`/agents/${id}/publish`, j("POST", note ? { note } : {})),
   rollback: (id: string, version: number, note?: string) => request<Agent>(`/agents/${id}/rollback`, j("POST", { version, ...(note ? { note } : {}) })),
   versions: (id: string) => request<{ items: AgentVersion[] }>(`/agents/${id}/versions`, A).then((r) => r.items),
-  archive: (id: string) => request<unknown>(`/agents/${id}`, j("DELETE")),
+  archive: (id: string) => request<{ warning?: { code: string; message: string; widgets: { id: string; name: string }[]; channels: { id: string; name: string; channel: string }[] } }>(`/agents/${id}`, j("DELETE")),
   unarchive: (id: string) => request<unknown>(`/agents/${id}/unarchive`, j("POST", {})),
 
   sources: (agentId?: string) => request<{ items: KnowledgeSource[] }>(`/knowledge/sources${qs({ agentId, limit: 100 })}`, A).then((r) => r.items),
-  chunks: (id: string, offset = 0) => request<{ items: Chunk[] }>(`/knowledge/sources/${id}/chunks${qs({ limit: 20, offset })}`, A).then((r) => r.items),
+  chunks: (id: string, offset = 0, limit = 20) => request<{ items: Chunk[] }>(`/knowledge/sources/${id}/chunks${qs({ limit, offset })}`, A).then((r) => r.items),
   addText: (b: { name: string; text: string; agentId?: string }) => request<KnowledgeSource>("/knowledge/sources/text", j("POST", b)),
-  addUrl: (b: { url: string; name?: string; agentId?: string; maxPages?: number }) => request<KnowledgeSource>("/knowledge/sources/url", j("POST", b)),
+  addUrl: (b: { url: string; name?: string; agentId?: string; maxPages?: number; maxDepth?: number; followLinks?: boolean; includeSubdomains?: boolean }) => request<KnowledgeSource>("/knowledge/sources/url", j("POST", b)),
   updateSource: (id: string, b: { name?: string; description?: string | null }) => request<KnowledgeSource>(`/knowledge/sources/${id}`, j("PATCH", b)),
   reingest: (id: string) => request<unknown>(`/knowledge/sources/${id}/reingest`, j("POST", {})),
   deleteSource: (id: string) => request<unknown>(`/knowledge/sources/${id}`, j("DELETE")),
@@ -70,6 +72,25 @@ export const ag = {
   createWidget: (b: Record<string, unknown>) => request<WidgetDto>("/widgets", j("POST", b)),
   updateWidget: (id: string, b: Record<string, unknown>) => request<WidgetDto>(`/widgets/${id}`, j("PATCH", b)),
   rotateKey: (id: string) => request<WidgetDto>(`/widgets/${id}/rotate-key`, j("POST", {})),
+  uploadAvatar: async (id: string, blob: Blob): Promise<WidgetDto> => {
+    const fd = new FormData();
+    fd.append("file", new File([blob], "avatar.png", { type: blob.type || "image/png" }));
+    const t = getAccessToken();
+    let res: Response;
+    try { res = await rawFetch(`${apiBase()}/widgets/${id}/avatar`, { method: "POST", body: fd, credentials: "include", headers: t ? { Authorization: `Bearer ${t}` } : {} }); }
+    catch { throw new ApiError(0, "network_error", "Cannot reach the server. Check your connection."); }
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError(res.status, body?.error?.code ?? "http_error", body?.error?.message ?? `Upload failed (${res.status})`, body?.error?.requestId);
+    return body as WidgetDto;
+  },
+  removeAvatar: (id: string) => request<WidgetDto>(`/widgets/${id}/avatar`, j("DELETE")),
+  avatarUrl: async (id: string): Promise<string> => {
+    const t = getAccessToken();
+    const res = await rawFetch(`${apiBase()}/widgets/${id}/avatar`, { credentials: "include", headers: t ? { Authorization: `Bearer ${t}` } : {} });
+    if (!res.ok) throw new ApiError(res.status, "http_error", "No avatar");
+    return URL.createObjectURL(await res.blob());
+  },
+  models: () => request<{ mode: "saas" | "selfhosted"; models: string[] }>("/models", A),
   embed: (id: string) => request<Embed>(`/widgets/${id}/embed`, A),
 
   users: () => request<{ items: UserRow[] }>("/users", A).then((r) => r.items),

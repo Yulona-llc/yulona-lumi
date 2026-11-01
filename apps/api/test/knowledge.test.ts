@@ -116,6 +116,29 @@ d("knowledge API", () => {
     }
   });
 
+  test("url source crawl settings: defaults, explicit values, limits and the stored config", async () => {
+    const url = "http://93.184.216.34/";
+    const dflt = await call(A, "POST", "/knowledge/sources/url", { url });
+    expect(dflt.status).toBe(201);
+    expect(await dflt.json()).toMatchObject({ type: "url", maxPages: 25, maxDepth: 3, followLinks: true, includeSubdomains: false, crawlProgress: null });
+    const one = await call(A, "POST", "/knowledge/sources/url", { url, maxPages: 1 });
+    expect(await one.json()).toMatchObject({ maxPages: 1, followLinks: false, maxDepth: 3 });
+    const custom = await call(A, "POST", "/knowledge/sources/url", { url, maxPages: 50, maxDepth: 5, followLinks: true, includeSubdomains: true });
+    const c = (await custom.json()) as { id: string; maxPages: number };
+    expect(c).toMatchObject({ maxPages: 50, maxDepth: 5, followLinks: true, includeSubdomains: true });
+    const [row] = await env.owner<{ crawlConfig: Record<string, unknown> }[]>`SELECT crawl_config FROM knowledge_sources WHERE id = ${c.id}`;
+    expect(row!.crawlConfig).toEqual({ maxPages: 50, maxDepth: 5, followLinks: true, includeSubdomains: true });
+    const off = await call(A, "POST", "/knowledge/sources/url", { url, maxPages: 10, followLinks: false });
+    expect(await off.json()).toMatchObject({ maxPages: 10, followLinks: false });
+    for (const bad of [{ maxPages: 51 }, { maxPages: 0 }, { maxDepth: 6 }, { maxDepth: 0 }, { followLinks: "yes" }, { includeSubdomains: 1 }, { depth: 3 }])
+      expect((await call(A, "POST", "/knowledge/sources/url", { url, ...bad })).status).toBe(400);
+  });
+
+  test("names and descriptions are stored as one clean line", async () => {
+    const r = await call(A, "POST", "/knowledge/sources/text", { name: "  Opening \n  hours ", text: "We open at nine.", description: "Hours\n\n  of   business" });
+    expect(await r.json()).toMatchObject({ name: "Opening hours", description: "Hours of business" });
+  });
+
   test("cross-tenant: tenant B cannot see, read, re-ingest, delete or use tenant A's data", async () => {
     expect(((await (await call(B, "GET", "/knowledge/sources")).json()) as { items: unknown[] }).items).toHaveLength(0);
     expect((await call(B, "GET", `/knowledge/sources/${textId}`)).status).toBe(404);

@@ -32,7 +32,7 @@ export default function ApiKeysPage() {
   return (
     <div>
       <PageHeader title="API keys" subtitle="Keys authenticate server-to-server calls to the public API. A key is shown once, at creation." actions={<Button onClick={() => setCreate(true)}><Plus />Create key</Button>} />
-      {q.isPending ? <Loading /> : q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : q.data.length === 0 ? <Empty title="No API keys" body="Create a key to integrate Yulona with your own systems." action={<Button onClick={() => setCreate(true)}>Create your first key</Button>} /> : (
+      {q.isPending ? <Loading /> : q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : q.data.length === 0 ? <Empty title="No API keys" body="Create a key to integrate Lumi with your own systems." action={<Button onClick={() => setCreate(true)}>Create your first key</Button>} /> : (
         <div className="overflow-hidden rounded-2xl border bg-card">
           <div className={`hidden gap-4 border-b bg-muted/50 px-4 py-2.5 text-xs font-medium text-muted-foreground lg:grid ${COLS}`} aria-hidden>
             <span>Name</span><span>Prefix</span><span>Scopes</span><span>Limit</span><span>Expires</span><span />

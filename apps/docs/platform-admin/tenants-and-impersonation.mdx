@@ -1,103 +1,91 @@
 ---
 title: Tenants and impersonation
-description: Find workspaces, read their usage, suspend or delete them, and support customers by impersonating a workspace owner with a full audit trail.
+description: Find workspaces, read their health and usage, suspend or delete them, and support customers with audited, read-only-by-default impersonation.
 icon: users
 ---
 
-This page is for platform admins of the hosted product. A tenant is one customer workspace. The Tenants section is where you look one up, check its plan and usage, change its status, adjust its AI credits, and, when a customer needs hands-on help, act as its owner for a short, audited session.
+This page is for platform admins of the hosted product. A tenant is one customer workspace. The platform admin service is where you look one up, check its health, plan and usage, change its status, adjust its AI credits and, when a customer needs hands-on help, view the product as one of its users for a short, audited session. Calls below go to the admin API (default `http://localhost:4100`, your admin host in production) with the access token from `POST /api/v1/auth/login`; see [Platform admin overview](/platform-admin/overview).
 
 ## Find a tenant
 
-Open Tenants. Search by name (the box labelled Search by name) and filter by status. The table shows Name, Status, Plan, Users and Created, and pages with Previous and Next. Click a row to open the tenant.
-
-## Read a tenant
-
-The detail page shows:
-
-- **Header.** Name, plan, last activity, a status badge, and the Suspend and Impersonate buttons.
-- **Counts.** Users, agents, widgets, contacts, conversations and knowledge sources.
-- **Plan and limits.** One meter per metric with current use against the limit. A meter warns at 80%.
-- **AI credits.** Remaining, Used this month, Top-up balance and Status, plus Adjust credits. See [Plans, credits and rates](/platform-admin/plans-credits-and-rates#grant-or-deduct-credits).
-- **Usage, 30 days.** A daily chart. When several metrics exist, pick one with the Metric selector (conversations, messages, tokens, new contacts and credits among them).
-
-## Suspend and unsuspend
-
-<Steps>
-  <Step title="Open the tenant and click Suspend">
-    A dialog titled Suspend tenant? warns that all users lose access until unsuspended.
-  </Step>
-  <Step title="Confirm">
-    All sessions are revoked and sign-in is blocked. The tenant stays in the list with a Suspended badge.
-  </Step>
-  <Step title="Reverse it">
-    Click Unsuspend. Users regain access immediately.
-  </Step>
-</Steps>
-
-Both actions write to the platform audit log and to the tenant's own audit log. A suspended tenant cannot be impersonated.
-
-## Delete and restore
-
-Deleting is a soft delete: the tenant's `deleted_at` is set, users cannot sign in, and the tenant shows as Deleted. **Restore** works for 30 days. After that the worker's hourly maintenance job hard-deletes the tenant and all its rows, and restore answers `409`.
-
-The console does not have delete or restore buttons today; they are API actions, authorised with a platform admin token from `POST /api/v1/admin/auth/login`:
+`GET /api/v1/tenants` searches and filters on the server: `q` matches the name, the id and the email of any member; filters are `status`, `plan`, `health` (`healthy`, `watch`, `at_risk`), `createdFrom`, `createdTo`, `inactiveDays`, `hasErrors`, `credits` (`ok`, `low`, `exhausted`, `unlimited`) and `tag`; `sort` is one of `createdAt`, `name`, `health`, `lastActive`, `credits`, `errors`. The response has `items`, `total` (honouring the filters), `limit` and `offset`.
 
 ```bash
-curl -X DELETE https://api.example.com/api/v1/admin/tenants/TENANT_ID \
-  -H "Authorization: Bearer ADMIN_TOKEN"
-
-curl -X POST https://api.example.com/api/v1/admin/tenants/TENANT_ID/restore \
+curl "https://admin-api.example.com/api/v1/tenants?q=acme&health=at_risk&sort=health&order=asc" \
   -H "Authorization: Bearer ADMIN_TOKEN"
 ```
 
+`GET /api/v1/tenants/export` returns the same list as CSV. `GET /api/v1/search?q=` powers a command palette: tenants by name, id or member email, and users by email.
+
+## Read a customer
+
+`GET /api/v1/tenants/:id` returns the overview: status, plan, owner, health score with reasons, counts (users, agents, widgets, channels, contacts, conversations, knowledge sources), plan limits with live use, billing state, credits, tags and the notes count. Opening it is written to the audit log (once per admin and customer every 10 minutes). Related reads:
+
+| Endpoint | Returns |
+|---|---|
+| `/tenants/:id/users` | Team members (role, last sign-in, locked) and invitations |
+| `/tenants/:id/assets` | Agents, widgets, channels, knowledge, connections, webhooks, calendar and CRM with status and last error; no keys or URLs with credentials |
+| `/tenants/:id/errors` | Failures: dead jobs, webhook deliveries, channel errors, failed ingests, notification emails, CRM syncs, system-failure and abuse handoffs, tool failures; filter by `kind` and `days`; each item has a "what to check" hint |
+| `/tenants/:id/timeline` | Merged tenant audit, platform audit, billing, handoffs and impersonation |
+| `/tenants/:id/billing`, `/ai-usage`, `/usage`, `/credits`, `/flags` | Subscription and events, AI usage by day and model, daily rollup, credits, flag overrides |
+| `/tenants/:id/notes`, `/tags` | Internal notes and tags (support and owner write) |
+
+None of these return message text, contact names, emails or phone numbers, secrets or ciphertext.
+
+## Suspend and unsuspend
+
+`POST /tenants/:id/suspend` revokes every session of the tenant and blocks sign-in at once, including live access tokens. `POST /tenants/:id/unsuspend` reverses it. Both write to the platform audit log and to the tenant's own audit log. A suspended tenant cannot be impersonated. Owner role only.
+
+## Delete and restore
+
+`DELETE /tenants/:id` is a soft delete: users cannot sign in and the tenant shows as `deleted`. `POST /tenants/:id/restore` works for 30 days. After that the worker's hourly maintenance job hard-deletes the tenant and all its rows, and restore answers `409`. Owner role only.
+
+```bash
+curl -X DELETE https://admin-api.example.com/api/v1/tenants/TENANT_ID -H "Authorization: Bearer ADMIN_TOKEN"
+curl -X POST https://admin-api.example.com/api/v1/tenants/TENANT_ID/restore -H "Authorization: Bearer ADMIN_TOKEN"
+```
+
 <Warning>
-After 30 days the purge is permanent and cannot be undone, including from the console. Export anything a customer needs before that point.
+After 30 days the purge is permanent. Export anything a customer needs before that point.
 </Warning>
+
+## Plan, tags, notes and invitations
+
+- `PUT /tenants/:id/plan` with `{ "plan": "pro" }` (owner or billing).
+- `PUT /tenants/:id/tags` replaces tags; `POST /tenants/tags/bulk` adds and removes tags on up to 200 customers (owner or support).
+- `POST /tenants/:id/notes` adds an internal note (owner or support). Support can delete only its own notes.
+- `POST /tenants/:id/invitations/:invitationId/resend` re-issues a pending invitation and emails a fresh 7-day link to the invitee. The link is never returned to you.
 
 ## Impersonation
 
-Impersonation lets you see the product exactly as the tenant's owner does, for support and debugging.
-
-### Start a session
+Impersonation lets you see the product as a customer user, for support and debugging. It never hands the admin service a customer token: the admin API returns a **one-time code**, and the customer app exchanges it.
 
 <Steps>
-  <Step title="Click Impersonate">
-    On the tenant detail page. The button is disabled for suspended tenants.
+  <Step title="Start a session">
+    `POST /tenants/:id/impersonate` with `{ "reason": "support ticket 1234" }` (5 to 500 characters; optional `userId`, default the tenant's oldest active owner). It is **read-only by default**. Owners can ask for write mode with `"readOnly": false`; support and billing cannot, and billing cannot impersonate at all. The response contains `code` (valid 60 seconds, single use) and `customerUrl`, which looks like `https://app.example.com/impersonate#code=...`.
   </Step>
-  <Step title="Give a reason">
-    The Reason field takes 5 to 500 characters. It is stored with the session.
+  <Step title="Open the customer app">
+    The admin web app opens `customerUrl` in a new tab. The code travels in the URL fragment, so it never reaches a server log. The customer app calls `POST /api/v1/auth/impersonation/exchange` with the code and receives a normal 15-minute token for the user, capped at the `admin` role.
   </Step>
-  <Step title="Click Start impersonation">
-    You land in the workspace inbox, signed in as the tenant's oldest active owner.
+  <Step title="End it">
+    `POST /impersonation/:sessionId/end` revokes the token at once. Otherwise it expires after 15 minutes counted from the exchange.
   </Step>
 </Steps>
 
-### What the session can and cannot do
-
 | Rule | Detail |
 |---|---|
-| Duration | 15 minutes. The token cannot be refreshed or exchanged for a refresh token |
-| Role | Capped at admin. You cannot change roles or ownership, and you cannot manage billing, which is owner only |
-| Who you act as | The tenant's oldest active owner (the API also accepts a specific user id) |
+| Read-only sessions | The token carries a `ro` claim and the customer API rejects every request except `GET` and `HEAD` with `403` |
+| Codes | Stored hashed, single use, 60 seconds; a wrong, used or expired code answers `400` |
+| Role | Capped at admin: no role or ownership changes and no billing management |
 | Blocked for | Suspended and deleted tenants (`409`) |
 
-### The banner
-
-A bar stays at the top of every screen for the whole session. It reads "Impersonating WORKSPACE as EMAIL. Every action is audited and the session ends after 15 minutes." Click Stop impersonating to end the session early and return to the console sign-in.
-
-### Audit and revocation
-
-- Start and end are written to both the platform audit log (`impersonation.start`) and the tenant's audit log (`impersonation.started`).
-- Every tenant audit entry created during the session carries `metadata.impersonatorId`, so workspace admins can see what was done on their behalf.
-- Stopping calls the end endpoint, which revokes the session. If you do not stop it, the token expires on its own after 15 minutes.
-
-Use impersonation only with a reason a customer would accept. The audit log can be exported from the console header with Export audit CSV.
+The banner in the customer app shows the session and, for read-only sessions, says so. Start and end are written to the platform audit log (`impersonation.start`, `impersonation.end`) and to the tenant's audit log (`impersonation.started`, `impersonation.exchanged`, `impersonation.ended`, with `readOnly`). Every write made in write mode carries `metadata.impersonatorId`. `GET /tenants/:id/impersonations` and `GET /impersonations` list the history.
 
 ## Common problems
 
-- Impersonate is disabled: the tenant is suspended. Unsuspend first.
 - Impersonation answers `409`: the tenant is suspended or deleted.
-- The banner is missing after a refresh: it is shown while the session token is valid. Start a new session if it expired.
+- Impersonation answers `403`: only owners can use write mode, and billing admins cannot impersonate.
+- The customer app says the code is invalid: codes last 60 seconds and work once. Start a new session.
 
 ## Next steps
 
@@ -110,4 +98,4 @@ Use impersonation only with a reason a customer would accept. The audit log can 
   </Card>
 </CardGroup>
 
-{/* source: docs/api/billing-admin.md, docs/api/platform.md, docs/adr/0002-defaults.md, apps/dashboard/src/features/admin/{TenantsPage,TenantDetailPage,ImpersonationBanner}.tsx, apps/worker/src/maintenance.ts */}
+{/* source: docs/api/platform-admin.md, apps/admin-api/src/routes/{tenants,support}.ts, apps/api/src/routes/auth.ts, apps/api/src/impersonation-guard.ts, apps/worker/src/maintenance.ts */}

@@ -29,18 +29,29 @@ Open **Bookings** in the left menu, under **Operations**. Use the **List** and *
 The **Offered** status does not have its own filter button. Choose **All** to see these bookings. A customer who books through the link is not marked **Booked** automatically, so check your Calendly account.
 </Note>
 
+## Calendar status
+
+Admins see a **Calendars** strip under the page title with Google Calendar and Calendly. Each shows **Connected**, **Needs attention** or a **Connect Google** / **Connect Calendly** button, so you can connect from here. **Manage in Connectors** opens **Settings, then Connectors**. Agents do not see the strip.
+
 ## Add a booking by hand
+
+**New booking** is available as soon as one calendar is connected. When none is, the button is disabled and the page says "Connect a calendar to create bookings." Agents cannot see which calendars are connected, so their button stays enabled and Lumi shows an error if none is.
 
 <Steps>
   <Step title="Click New booking">
-    On the Bookings page click **New booking**.
+    On the Bookings page click **New booking**. If both calendars are connected, choose **Google Calendar** or **Calendly** at the top of the form (the one the AI uses is selected first).
   </Step>
   <Step title="Fill in the form">
-    Enter a **Title** (optional), the **Start** date and time, a **Duration** (15, 30, 45, 60 or 90 minutes), an **Attendee email** (optional) and **Notes** (optional). Click **Create booking**.
+    **Google Calendar:** enter a **Title** (optional), the **Start** date and time, a **Duration** (15, 30, 45, 60 or 90 minutes), an **Attendee email** (optional) and **Notes** (optional).
+
+    **Calendly:** choose **Show times from**, pick one of the open times, and enter the **Attendee email** (required). The meeting length comes from your Calendly event type.
+  </Step>
+  <Step title="Click Create booking">
+    The event is created on the chosen calendar.
   </Step>
 </Steps>
 
-If a calendar is connected, Yulona also creates the event there. Without one, the booking is recorded in Yulona only. If the time overlaps an existing **Booked** appointment you see an error and nothing is created.
+On the Calendly Free plan Calendly cannot create the meeting for you. Lumi then shows **Send this scheduling link** with a single-use link and a **Copy** button. Send it to the attendee: nothing is booked until they open it and confirm, and the booking appears with the status **Offered**. If the time overlaps an existing **Booked** appointment you see an error and nothing is created.
 
 ## Cancel a booking
 
@@ -50,7 +61,7 @@ Click **Cancel** on a booked appointment (or open it from the calendar), optiona
 
 The AI can only check availability and book appointments when a calendar is connected and the agent has the **Check calendar availability** and **Book appointments** tools switched on (on the agent's **Tools** tab).
 
-An admin connects a calendar under **Settings**, **Calendar**: click **Connect Google Calendar** (or connect Calendly) and approve access. If both are connected, choose which one the AI uses under **Calendar used by the AI**. For step-by-step instructions see [Calendar and booking](/guides/tools/calendar-booking).
+An admin connects a calendar under **Settings**, **Connectors** (or with the buttons in the **Calendars** strip on this page): click **Connect Google Calendar** (or connect Calendly) and approve access. If both are connected, choose which one the AI uses under **Calendar used by the AI**. For step-by-step instructions see [Calendar and booking](/guides/tools/calendar-booking).
 
 <Note>
 On a self-hosted installation, Google Calendar and Calendly must first be configured by your administrator. If the dashboard says "Google Calendar is not configured on this server", see [Channels and integrations setup](/self-hosting/channels-and-integrations-setup).
@@ -66,7 +77,7 @@ After the AI books a time, the booking appears with the status **Booked**, the c
 
 | Symptom | Fix |
 |---|---|
-| A booking shows **Failed** | The calendar was unreachable. Check **Settings**, **Calendar**; reconnect if it says **Needs attention**. |
+| A booking shows **Failed** | The calendar was unreachable. Check **Settings**, **Connectors**; reconnect if it says **Needs attention**. |
 | The AI never offers times | No calendar connected, or the calendar tools are off for the agent. |
 | The time overlaps error | Another booking already holds that time. Pick another slot. |
 
@@ -83,4 +94,4 @@ See [Troubleshooting](/guides/troubleshooting) for more.
   </Card>
 </CardGroup>
 
-{/* source: apps/dashboard/src/features/bookings/{BookingsPage,CalendarSettings,CalendarCard}.tsx; features/agents/AgentEditor.tsx (tools); docs/api/ops.md (Bookings, Calendly section, retry and failed semantics); apps/api/src/ops/bookings.ts (roles) */}
+{/* source: apps/dashboard/src/features/bookings/{BookingsPage,CalendarSettings,CalendarStrip,NewBooking}.tsx; features/agents/AgentEditor.tsx (tools); docs/api/ops.md (Bookings, Calendly section, retry and failed semantics); apps/api/src/ops/bookings.ts (roles) */}

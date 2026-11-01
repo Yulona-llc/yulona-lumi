@@ -48,6 +48,8 @@ export function applyPatch(draft: Draft, rawPatch: unknown): { ok: true; draft: 
   const merged: Record<string, unknown> = { ...draft.config, ...(patch.config ?? {}) };
   const curEsc = draft.config.escalationRules, newEsc = patch.config?.escalationRules;
   if (curEsc && newEsc && typeof curEsc === "object" && typeof newEsc === "object") merged.escalationRules = { ...(curEsc as object), ...(newEsc as object) };
+  const curAbuse = draft.config.abuse, newAbuse = patch.config?.abuse;
+  if (curAbuse && newAbuse && typeof curAbuse === "object" && typeof newAbuse === "object") merged.abuse = { ...(curAbuse as object), ...(newAbuse as object) };
   const parsed = agentConfigSchema.safeParse(merged);
   if (!parsed.success) return { ok: false, errors: issues(parsed.error) };
   return {

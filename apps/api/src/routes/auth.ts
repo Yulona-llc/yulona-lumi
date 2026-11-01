@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { z } from "zod";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import {
   CSRF_COOKIE, CSRF_HEADER, REFRESH_COOKIE, loginSchema, registerSchema,
@@ -13,6 +14,7 @@ import type { AppEnv } from "../context";
 import { Errors } from "../errors";
 import { parseBody } from "../http";
 import { enforceLimit } from "../middleware";
+import { IMPERSONATION_TTL_S } from "../impersonation-guard";
 import type { RateLimiter } from "../ratelimit";
 import { hashPassword, newOpaqueToken, safeEqual, sha256, signAccessToken, verifyPassword } from "../security";
 
@@ -91,6 +93,25 @@ export function authRoutes({ cfg, db, preauth, limiter }: Deps) {
     setAuthCookies(c, token, expires);
     return session;
   }
+
+  // The only coupling with the platform-admin service: redeem its one-time code (60 s, single use, stored hashed)
+  // for a 15-minute impersonation token. The admin service never holds a tenant signing key.
+  r.post("/impersonation/exchange", async (c) => {
+    await enforceLimit(limiter, `imp-exchange:${c.get("ip")}`, { limit: 20, windowMs: 60_000 });
+    const body = await parseBody(c, z.strictObject({ code: z.string().min(16).max(200) }));
+    const [x] = await db<{ rStatus: string; rSession: string; rAdmin: string; rTenant: string; rUser: string; rRole: "admin" | "agent" | "viewer"; rReadOnly: boolean; rEmail: string; rName: string; rTenantName: string; rExpires: Date }[]>`
+      SELECT * FROM impersonation_exchange(${sha256(body.code)})`;
+    if (!x || x.rStatus !== "ok") throw Errors.validation([{ path: "code", message: "Code is invalid, expired or already used" }]);
+    const ttl = Math.max(1, Math.min(IMPERSONATION_TTL_S, Math.round((x.rExpires.getTime() - Date.now()) / 1000)));
+    const accessToken = await signAccessToken(cfg.jwtSecret, {
+      userId: x.rUser, tenantId: x.rTenant, role: x.rRole, ttlSeconds: ttl, impersonation: { adminId: x.rAdmin, sessionId: x.rSession, readOnly: x.rReadOnly },
+    });
+    c.header("Cache-Control", "no-store");
+    return c.json({
+      accessToken, expiresIn: ttl, sessionId: x.rSession, readOnly: x.rReadOnly,
+      user: { id: x.rUser, email: x.rEmail, name: x.rName, role: x.rRole }, tenant: { id: x.rTenant, name: x.rTenantName },
+    });
+  });
 
   r.post("/register", async (c) => {
     if (!cfg.allowPublicSignup) throw Errors.signupDisabled();
