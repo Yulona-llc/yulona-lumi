@@ -570,6 +570,9 @@ describe.skipIf(!hasDb)("ops domain", () => {
   });
 
   test("notifications: own-only, read/read-all, preferences gate email, email dispatch with retry", async () => {
+    // The dispatcher drains the whole queue in batches; emails left pending by earlier tests or runs must not push
+    // this test's notification out of the first batch.
+    await owner`UPDATE notifications SET email_status = 'sent' WHERE email_status = 'pending'`;
     const t = await mkTenant("notif");
     const u = await mkTenant("notifU", "agent", t.tenantId);
     const tk = await ok("POST", "/tickets", t.h, { title: "for u", assigneeUserId: u.userId }, 201);

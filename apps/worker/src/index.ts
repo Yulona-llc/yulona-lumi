@@ -22,9 +22,6 @@ const worker = db
 const stopMaintenance = db ? startMaintenance(db, log) : undefined;
 const stopBilling = db ? startBillingJobs(db, log) : undefined; // heartbeat, usage rollup, billing grace expiry
 const stopOps = db ? startOpsJobs(db, log) : undefined; // ticket SLA scan, notification emails
-log.info("worker started", { jobs: Object.keys(jobHandlers), processing: !!db });
-if (!db) log.warn("DATABASE_URL not set: worker is idle (no job processing)");
-
 // Keep the event loop alive even when idle.
 const heartbeat = setInterval(() => log.debug("worker heartbeat"), 60_000);
 
@@ -46,3 +43,7 @@ async function shutdown(signal: string) {
 }
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
+
+// Announce readiness only after the signal handlers exist, so a SIGTERM sent the moment the line appears still shuts down cleanly.
+log.info("worker started", { jobs: Object.keys(jobHandlers), processing: !!db });
+if (!db) log.warn("DATABASE_URL not set: worker is idle (no job processing)");
