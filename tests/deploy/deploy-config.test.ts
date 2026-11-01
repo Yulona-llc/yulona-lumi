@@ -206,6 +206,18 @@ describe("scripts/vercel-ignore.sh", () => {
     }
   });
 
+  test("on Vercel, the first deployment of a branch always builds, even if the latest commit touches nothing relevant", () => {
+    const s = sandbox();
+    try {
+      s.commit("apps/api/b.ts", "2\n"); // backend-only commit: would be skipped by a parent comparison
+      expect(s.run({}, ...paths)).toBe(0);
+      expect(s.run({ VERCEL: "1" }, ...paths)).toBe(1); // no VERCEL_GIT_PREVIOUS_SHA: nothing deployed yet
+      expect(s.run({ VERCEL: "1", VERCEL_GIT_PREVIOUS_SHA: s.git("rev-parse", "HEAD^") }, ...paths)).toBe(0); // deployed before: normal rule
+    } finally {
+      rmSync(s.dir, { recursive: true, force: true });
+    }
+  });
+
   test("builds when there is nothing to compare with, or no paths are given", () => {
     const s = sandbox();
     try {

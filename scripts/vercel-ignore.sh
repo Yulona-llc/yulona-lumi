@@ -22,6 +22,14 @@ if ! git rev-parse --verify --quiet HEAD^ >/dev/null; then
   exit 1
 fi
 
+# On Vercel, an empty VERCEL_GIT_PREVIOUS_SHA means this branch has no successful deployment yet (a new project or a
+# new branch). There is nothing deployed to compare with, so always build; skipping would leave the project without
+# any deployment until a change happens to touch its folders.
+if [ -n "${VERCEL:-}" ] && [ -z "${VERCEL_GIT_PREVIOUS_SHA:-}" ]; then
+  echo "vercel-ignore: no previous successful deployment for this branch; building"
+  exit 1
+fi
+
 # Compare with the last commit Vercel deployed for this branch when it is available (covers pushes with
 # several commits and earlier skipped builds); otherwise with the parent commit.
 base="${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}"
