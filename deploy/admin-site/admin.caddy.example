@@ -1,0 +1,38 @@
+# Platform-admin site (opt-in). To enable: cp deploy/admin-site/admin.caddy.example deploy/admin-site/admin.caddy,
+# set ADMIN_SITE_ADDRESS (e.g. admin.example.com) in deploy/.env, enable COMPOSE_PROFILES=admin and restart caddy.
+# The main Caddyfile imports /etc/caddy/admin/*.caddy, so without this file no admin host is served at all.
+{$ADMIN_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		Cross-Origin-Opener-Policy same-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# Optional network allow-list at the proxy (the admin API also enforces ADMIN_ALLOWED_CIDRS itself).
+	# Uncomment and list space-separated CIDRs:
+	# @denied not remote_ip 203.0.113.0/24 2001:db8::/32
+	# respond @denied "Forbidden" 403
+
+	request_body {
+		max_size 1MB
+	}
+
+	@api path /api/* /healthz /readyz
+	handle @api {
+		reverse_proxy admin-api:4100 {
+			health_uri /readyz
+			health_interval 2s
+			health_timeout 2s
+			health_fails 2
+		}
+	}
+	handle {
+		reverse_proxy admin-web:8080
+	}
+}

@@ -1,14 +1,46 @@
+# Dependencies and build output
 node_modules/
 dist/
+build/
+.vite/
+.turbo/
+.vercel/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Environment files: never commit real values. Only *.example templates are tracked.
 .env
 .env.*
 !.env.example
+!.env.*.example
+*.local
+
+# Secrets and keys
+deploy/secrets/
+*.pem
+*.key
+*.p12
+*.crt
+
+# Server-only runtime state written by the deploy scripts on the VM
+deploy/.deploy-slot
+deploy/.deploy-previous
+deploy/.deploy-current
+deploy/backups/
+*.sql.gz
+# Real Caddy site files (host names); keep only the example
+deploy/admin-site/*.caddy
+
+# Logs and OS/editor noise
 *.log
 .DS_Store
-coverage/
-.turbo/
-deploy/secrets/
+.idea/
+.eslintcache
 
-# Local agent skills
+# Local agent state and skills (rules in .claude/rules are tracked on purpose)
 .claude/skills/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
 .agents/skills/

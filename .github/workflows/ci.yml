@@ -1,7 +1,10 @@
 name: ci
+# Runs on pull requests and is reused (workflow_call) by deploy-backend.yml before any backend deploy.
+# It does not run on pushes to main by itself: protect main so changes arrive through a PR with this check.
 on:
-  push: { branches: [main] }
   pull_request:
+  workflow_call:
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -60,6 +63,7 @@ jobs:
         include:
           - { name: api, file: apps/api/Dockerfile }
           - { name: dashboard, file: apps/dashboard/Dockerfile }
+          - { name: admin-api, file: apps/admin-api/Dockerfile }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -76,6 +80,8 @@ jobs:
         run: |
           if [ "${{ matrix.name }}" = dashboard ]; then
             docker run --rm --entrypoint sh yulona/dashboard:ci -c 'test -s /usr/share/nginx/html/widget.js && ls /usr/share/nginx/html/widget.*.js && test -s /usr/share/nginx/html/widget-preview.html'
+          elif [ "${{ matrix.name }}" = admin-api ]; then
+            docker run --rm --entrypoint sh yulona/admin-api:ci -c 'ls /app/dist/index.js'
           else
             docker run --rm --entrypoint sh yulona/api:ci -c 'ls /app/dist/index.js /app/dist/worker.js /app/dist/migrate.js /app/dist/create-tenant.js /app/dist/clean-env.js'
           fi
@@ -86,9 +92,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate compose files and scripts
         run: |
-          printf 'POSTGRES_PASSWORD=a\nAPP_DB_PASSWORD=b\nREDIS_PASSWORD=c\nJWT_SECRET=d\nENCRYPTION_KEY=e\nMINIO_ROOT_PASSWORD=f\n' > /tmp/ci.env
+          printf 'POSTGRES_PASSWORD=a\nAPP_DB_PASSWORD=b\nREDIS_PASSWORD=c\nJWT_SECRET=d\nENCRYPTION_KEY=e\nMINIO_ROOT_PASSWORD=f\nYULONA_API_IMAGE=yulona/api:ci\n' > /tmp/ci.env
           docker compose --env-file /tmp/ci.env -f deploy/docker-compose.yml config -q
           COMPOSE_PROFILES=minio,clamav,tools docker compose --env-file /tmp/ci.env -f deploy/docker-compose.yml config -q
+          YULONA_API_IMAGE=yulona/api:ci docker compose --env-file /tmp/ci.env -f deploy/docker-compose.backend.yml config -q
+          COMPOSE_PROFILES=admin YULONA_API_IMAGE=yulona/api:ci YULONA_ADMIN_API_IMAGE=yulona/admin-api:ci \
+            docker compose --env-file /tmp/ci.env -f deploy/docker-compose.backend.yml config -q
           docker compose -f deploy/docker-compose.dev.yml config -q
           for f in deploy/*.sh; do bash -n "$f"; done
           sudo apt-get install -y --no-install-recommends shellcheck >/dev/null

@@ -1,0 +1,41 @@
+# API-only Caddyfile for a VM that serves the backend while the tenant dashboard (and widget.js)
+# and admin web run on Vercel (or another static host). Copy over deploy/Caddyfile after the first
+# install, or bind-mount this file instead, then reload Caddy:
+#   cp deploy/Caddyfile.api deploy/Caddyfile
+#   docker compose --project-name yulona --env-file deploy/.env -f deploy/docker-compose.yml exec caddy \
+#     caddy reload --config /etc/caddy/Caddyfile
+#
+# SITE_ADDRESS should be the API host (e.g. api.example.com). Set CORS_ORIGINS and
+# PUBLIC_API_URL / WIDGET_SCRIPT_URL in deploy/.env to the dashboard origin and widget URL.
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	request_body {
+		max_size 2MB
+	}
+
+	@api path /api/* /ws /ws/* /healthz /readyz
+	handle @api {
+		reverse_proxy api:3000 {
+			health_uri /readyz
+			health_interval 2s
+			health_timeout 2s
+			health_fails 2
+		}
+	}
+
+	handle {
+		respond "Lumi API. Open the dashboard host for the app." 404
+	}
+}
+
+# Optional platform-admin host: copy deploy/admin-site/admin.caddy.example to deploy/admin-site/admin.caddy.
+# When the admin UI is on Vercel, point that host only at admin-api (see admin.caddy.example) or skip it
+# and call admin-api through a path on this host.
+import /etc/caddy/admin/*.caddy

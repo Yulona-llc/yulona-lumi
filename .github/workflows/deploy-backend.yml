@@ -1,0 +1,226 @@
+# Backend deploys to the VM, one service at a time, only when that service's code changed.
+#
+#   api + worker  (one image, ghcr.io/<owner>/<repo>/api)   -> deploy/rollout.sh        (blue/green, migrates)
+#   admin-api     (ghcr.io/<owner>/<repo>/admin-api)        -> deploy/rollout-admin-api.sh (only that container)
+#
+# Frontends are NOT deployed here: the tenant dashboard and the admin web are separate Vercel projects that
+# build themselves on pushes that touch their own folders (see apps/*/scripts/vercel-ignore.sh).
+#
+# Safety:
+# - Nothing runs until the repository VARIABLE BACKEND_DEPLOY_ENABLED is set to "true" (Settings > Secrets and
+#   variables > Actions > Variables). Set it only after the VM, the runner and /opt/yulona/deploy/.env exist.
+# - Runs only on pushes to main (never on pull requests), tests first, secrets stay in /opt/yulona/deploy/.env.
+# - The deploy jobs run on a self-hosted runner on the VM labelled `yulona-vpc` (no inbound SSH needed).
+name: deploy-backend
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/api/**"
+      - "apps/worker/**"
+      - "apps/admin-api/**"
+      - "packages/**"
+      - "bun.lock"
+      - "package.json"
+      - "tsconfig.base.json"
+      - "deploy/docker-compose.backend.yml"
+      - "deploy/rollout.sh"
+      - "deploy/rollout-admin-api.sh"
+      - "deploy/Caddyfile.api"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Which service to (re)deploy
+        type: choice
+        options: [all, api, admin-api]
+        default: all
+
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    if: ${{ vars.BACKEND_DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      api: ${{ steps.pick.outputs.api }}
+      admin_api: ${{ steps.pick.outputs.admin_api }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            api:
+              - "apps/api/**"
+              - "apps/worker/**"
+              - "packages/**"
+              - "bun.lock"
+              - "package.json"
+              - "tsconfig.base.json"
+              - "deploy/docker-compose.backend.yml"
+              - "deploy/rollout.sh"
+              - "deploy/Caddyfile.api"
+              - ".github/workflows/deploy-backend.yml"
+            admin_api:
+              - "apps/admin-api/**"
+              - "packages/ai-runtime/**"
+              - "packages/crypto/**"
+              - "packages/db/**"
+              - "packages/providers/**"
+              - "packages/shared/**"
+              - "bun.lock"
+              - "package.json"
+              - "tsconfig.base.json"
+              - "deploy/docker-compose.backend.yml"
+              - "deploy/rollout-admin-api.sh"
+              - ".github/workflows/deploy-backend.yml"
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          CHOICE: ${{ inputs.service }}
+          API: ${{ steps.filter.outputs.api }}
+          ADMIN_API: ${{ steps.filter.outputs.admin_api }}
+        run: |
+          api="$API"; admin_api="$ADMIN_API"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            api=false; admin_api=false
+            case "$CHOICE" in
+              all) api=true; admin_api=true ;;
+              api) api=true ;;
+              admin-api) admin_api=true ;;
+            esac
+          fi
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+          echo "admin_api=$admin_api" >> "$GITHUB_OUTPUT"
+          echo "api=$api admin_api=$admin_api"
+
+  ci:
+    needs: changes
+    if: ${{ needs.changes.outputs.api == 'true' || needs.changes.outputs.admin_api == 'true' }}
+    uses: ./.github/workflows/ci.yml
+
+  image-api:
+    needs: [changes, ci]
+    if: ${{ needs.changes.outputs.api == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          repo="$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner}/${repo}/api" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+            ${{ steps.meta.outputs.image }}:main
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+  image-admin-api:
+    needs: [changes, ci]
+    if: ${{ needs.changes.outputs.admin_api == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          repo="$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner}/${repo}/admin-api" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/admin-api/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+            ${{ steps.meta.outputs.image }}:main
+          cache-from: type=gha,scope=admin-api
+          cache-to: type=gha,mode=max,scope=admin-api
+
+  deploy-api:
+    needs: [changes, image-api]
+    if: ${{ needs.changes.outputs.api == 'true' }}
+    runs-on: [self-hosted, yulona-vpc]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout the deploy scripts for this commit
+        uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Roll out api + worker
+        env:
+          YULONA_ROOT: /opt/yulona
+          IMAGE: ${{ needs.image-api.outputs.image }}:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -d "$YULONA_ROOT/deploy" || { echo "missing $YULONA_ROOT/deploy; install the stack under /opt/yulona first"; exit 1; }
+          test -f "$YULONA_ROOT/deploy/.env" || { echo "missing $YULONA_ROOT/deploy/.env; run deploy/setup.sh once"; exit 1; }
+          # Refresh the rollout scripts and compose file. Never touch deploy/.env or the VM's deploy/Caddyfile.
+          install -m 0755 deploy/rollout.sh "$YULONA_ROOT/deploy/rollout.sh"
+          install -m 0755 deploy/rollout-admin-api.sh "$YULONA_ROOT/deploy/rollout-admin-api.sh"
+          install -m 0644 deploy/docker-compose.backend.yml "$YULONA_ROOT/deploy/docker-compose.backend.yml"
+          install -m 0644 deploy/Caddyfile.api "$YULONA_ROOT/deploy/Caddyfile.api"
+          cd "$YULONA_ROOT"
+          ./deploy/rollout.sh "$IMAGE"
+
+  deploy-admin-api:
+    # Runs after the api rollout when both changed (the api rollout applies database migrations the admin API
+    # may need); runs alone when only the admin API changed.
+    needs: [changes, image-admin-api, deploy-api]
+    if: ${{ !cancelled() && needs.changes.outputs.admin_api == 'true' && needs.image-admin-api.result == 'success' && (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped') }}
+    runs-on: [self-hosted, yulona-vpc]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the deploy scripts for this commit
+        uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Roll out admin-api only
+        env:
+          YULONA_ROOT: /opt/yulona
+          IMAGE: ${{ needs.image-admin-api.outputs.image }}:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -f "$YULONA_ROOT/deploy/.env" || { echo "missing $YULONA_ROOT/deploy/.env; run deploy/setup.sh once"; exit 1; }
+          install -m 0755 deploy/rollout-admin-api.sh "$YULONA_ROOT/deploy/rollout-admin-api.sh"
+          install -m 0644 deploy/docker-compose.backend.yml "$YULONA_ROOT/deploy/docker-compose.backend.yml"
+          cd "$YULONA_ROOT"
+          ./deploy/rollout-admin-api.sh "$IMAGE"

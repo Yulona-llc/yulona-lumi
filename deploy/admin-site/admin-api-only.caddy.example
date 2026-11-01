@@ -1,0 +1,36 @@
+# Admin API host for the split deployment (admin web on Vercel). To enable:
+#   cp deploy/admin-site/admin-api-only.caddy.example deploy/admin-site/admin.caddy
+#   set ADMIN_SITE_ADDRESS=admin-api.example.com in deploy/.env, COMPOSE_PROFILES=admin, then reload Caddy.
+# This site serves ONLY the admin API (no admin web here, the UI lives on Vercel). Use the other example
+# (admin.caddy.example) when you serve the admin web from this VM instead.
+{$ADMIN_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	# Optional network allow-list at the proxy (the admin API also enforces ADMIN_ALLOWED_CIDRS itself).
+	# @denied not remote_ip 203.0.113.0/24 2001:db8::/32
+	# respond @denied "Forbidden" 403
+
+	request_body {
+		max_size 1MB
+	}
+
+	@api path /api/* /healthz /readyz
+	handle @api {
+		reverse_proxy admin-api:4100 {
+			health_uri /readyz
+			health_interval 2s
+			health_timeout 2s
+			health_fails 2
+		}
+	}
+	handle {
+		respond "Not found" 404
+	}
+}

@@ -1,0 +1,151 @@
+# Backend-only services for zero-downtime rollouts (api, worker, migrate).
+# Requires the full stack networks from deploy/docker-compose.yml (project name `yulona`):
+#   yulona_edge, yulona_backend  — created once by setup / the infra compose.
+# Usage (via deploy/rollout.sh):
+#   YULONA_API_IMAGE=ghcr.io/.../api:<sha> docker compose --env-file deploy/.env \
+#     -f deploy/docker-compose.backend.yml --project-name yulona-backend-blue up -d
+# Postgres, Redis, Caddy (and optional dashboard) stay in the `yulona` project and are never
+# recreated by this file. Optional admin-api: COMPOSE_PROFILES=admin.
+name: yulona-backend
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+x-api-env: &api-env
+  NODE_ENV: production
+  PORT: "3000"
+  DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-selfhosted}
+  DATABASE_URL: postgres://yulona_app:${APP_DB_PASSWORD:?run deploy/setup.sh}@postgres:5432/yulona
+  REDIS_URL: redis://:${REDIS_PASSWORD:?run deploy/setup.sh}@redis:6379
+  JWT_SECRET: ${JWT_SECRET:?run deploy/setup.sh}
+  ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run deploy/setup.sh}
+  APP_URL: ${APP_URL:-https://${SITE_ADDRESS:-localhost}}
+  PUBLIC_API_URL: ${PUBLIC_API_URL:-}
+  WIDGET_SCRIPT_URL: ${WIDGET_SCRIPT_URL:-/widget.js}
+  CORS_ORIGINS: ${CORS_ORIGINS:-}
+  ALLOW_PUBLIC_SIGNUP: ${ALLOW_PUBLIC_SIGNUP:-false}
+  CROSS_SITE_COOKIES: ${CROSS_SITE_COOKIES:-false}
+  TRUST_PROXY: "true"
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  OPENAPI_ENABLED: ${OPENAPI_ENABLED:-false}
+  DOCS_USERNAME: ${DOCS_USERNAME:-docs}
+  DOCS_PASSWORD: ${DOCS_PASSWORD:-}
+  AI_PROVIDER: ${AI_PROVIDER:-}
+  AI_API_KEY: ${AI_API_KEY:-}
+  AI_BASE_URL: ${AI_BASE_URL:-}
+  AI_MODEL: ${AI_MODEL:-}
+  AI_AUTH_HEADER: ${AI_AUTH_HEADER:-}
+  AI_AUTH_SCHEME: ${AI_AUTH_SCHEME:-}
+  AI_EXTRA_HEADERS: ${AI_EXTRA_HEADERS:-}
+  AI_QUERY: ${AI_QUERY:-}
+  AI_CHAT_PATH: ${AI_CHAT_PATH:-}
+  COPILOT_MODEL: ${COPILOT_MODEL:-}
+  CREDITS_EXHAUSTED_MESSAGE: ${CREDITS_EXHAUSTED_MESSAGE:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  SMTP_SECURE: ${SMTP_SECURE:-}
+  EMAIL_FROM: ${EMAIL_FROM:-}
+  S3_ENDPOINT: ${S3_ENDPOINT:-}
+  S3_BUCKET: ${S3_BUCKET:-}
+  S3_REGION: ${S3_REGION:-}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+  CALENDLY_CLIENT_ID: ${CALENDLY_CLIENT_ID:-}
+  CALENDLY_CLIENT_SECRET: ${CALENDLY_CLIENT_SECRET:-}
+  CALENDLY_REDIRECT_URI: ${CALENDLY_REDIRECT_URI:-}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  CLAMAV_URL: ${CLAMAV_URL:-}
+  LICENSE_KEY: ${LICENSE_KEY:-}
+  LICENSE_PUBLIC_KEY: ${LICENSE_PUBLIC_KEY:-}
+
+services:
+  api:
+    image: ${YULONA_API_IMAGE:?set YULONA_API_IMAGE to a registry tag}
+    <<: *hardening
+    environment: *api-env
+    tmpfs: [/tmp]
+    networks:
+      edge:
+        aliases: [api]
+      backend: {}
+    deploy: { resources: { limits: { cpus: "1.0", memory: 512M } } }
+
+  worker:
+    image: ${YULONA_API_IMAGE:?set YULONA_API_IMAGE to a registry tag}
+    <<: *hardening
+    command: ["bun", "run", "--preload", "./dist/clean-env.js", "dist/worker.js"]
+    environment: *api-env
+    tmpfs: [/tmp]
+    networks:
+      edge: {}
+      backend: {}
+    healthcheck: { disable: true }
+    deploy: { resources: { limits: { cpus: "1.0", memory: 512M } } }
+
+  migrate:
+    image: ${YULONA_API_IMAGE:?set YULONA_API_IMAGE to a registry tag}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    command: ["bun", "run", "dist/migrate.js"]
+    environment:
+      NODE_ENV: production
+      MIGRATION_DATABASE_URL: postgres://yulona_owner:${POSTGRES_PASSWORD:?run deploy/setup.sh}@postgres:5432/yulona
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-}
+    tmpfs: [/tmp]
+    networks: [backend]
+    healthcheck: { disable: true }
+
+  admin-api:
+    image: ${YULONA_ADMIN_API_IMAGE:-yulona/admin-api:local}
+    profiles: [admin]
+    <<: *hardening
+    environment:
+      NODE_ENV: production
+      PORT: "4100"
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-selfhosted}
+      DATABASE_URL: postgres://yulona_app:unused@postgres:5432/yulona
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-}
+      ADMIN_WEB_ORIGIN: ${ADMIN_WEB_ORIGIN:-}
+      ADMIN_ALLOWED_CIDRS: ${ADMIN_ALLOWED_CIDRS:-}
+      ADMIN_REQUIRE_2FA: ${ADMIN_REQUIRE_2FA:-false}
+      ADMIN_CUSTOMER_APP_URL: ${ADMIN_CUSTOMER_APP_URL:-${APP_URL:-https://${SITE_ADDRESS:-localhost}}}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?run deploy/setup.sh}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?run deploy/setup.sh}@redis:6379
+      TRUST_PROXY: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    tmpfs: [/tmp]
+    networks:
+      edge:
+        aliases: [admin-api]
+      backend: {}
+    deploy: { resources: { limits: { cpus: "0.5", memory: 256M } } }
+
+networks:
+  edge:
+    external: true
+    name: yulona_edge
+  backend:
+    external: true
+    name: yulona_backend
