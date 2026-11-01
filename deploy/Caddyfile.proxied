@@ -1,0 +1,64 @@
+# Plain-HTTP Caddyfile for a VM that sits BEHIND your own reverse proxy (nginx, a load balancer, a CDN).
+# The proxy terminates TLS on 80/443 and forwards to this VM on a private address and port of your choice.
+# Caddy stays here for one reason: it switches traffic between the old and new API containers during the
+# zero-downtime rollout (deploy/rollout.sh), so the API never needs a fixed host port of its own.
+#
+# Enable in deploy/.env:
+#   CADDYFILE=Caddyfile.proxied
+#   PROXY_BIND=10.0.0.5          # the VM's PRIVATE address (default 0.0.0.0 listens on every interface)
+#   HTTP_PORT=8080               # the port your proxy forwards to
+#   HTTPS_PORT=8443              # unused in this mode, only needs to be a free port
+#   PROXY_TRUSTED_CIDRS=10.0.0.4/32   # your proxy's address(es), space separated (default: all private ranges)
+# then: docker compose --project-name yulona --env-file deploy/.env -f deploy/docker-compose.yml up -d caddy
+#
+# Routing: your proxy must send the original Host header. The API host is SITE_ADDRESS, the optional admin API
+# host is ADMIN_SITE_ADDRESS (deploy/admin-site/admin.caddy, copy admin-api-proxied.caddy.example).
+{
+	# TLS belongs to your proxy.
+	auto_https off
+	servers {
+		# Only these peers may tell us the real client address. Caddy then works it out from X-Forwarded-For.
+		trusted_proxies static {$PROXY_TRUSTED_CIDRS:private_ranges}
+		# Read X-Forwarded-For right to left and stop at the first address that is not a trusted proxy. Without this
+		# Caddy takes the LEFTMOST entry, which any visitor can forge by sending their own X-Forwarded-For.
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+	}
+}
+
+# Any Host reaches the API (the admin host, when enabled, matches first because it is more specific).
+:80 {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	request_body {
+		max_size 2MB
+	}
+
+	# WebSocket upgrades (/ws, /api/v1/realtime/ws) pass through reverse_proxy automatically.
+	@api path /api/* /ws /ws/* /healthz /readyz
+	handle @api {
+		reverse_proxy api:3000 {
+			# Short active checks so a stopped container is dropped quickly during blue/green rollouts.
+			health_uri /readyz
+			health_interval 2s
+			health_timeout 2s
+			health_fails 2
+			# The API trusts the RIGHTMOST X-Forwarded-For entry (the one address its trusted proxy saw). With two
+			# proxies in front (yours, then Caddy) that entry would be your proxy, so every visitor would share one
+			# rate limit and ADMIN_ALLOWED_CIDRS would see the wrong address. Send exactly the real client address.
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+
+	handle {
+		respond "Lumi API. Open the dashboard host for the app." 404
+	}
+}
+
+# Optional admin API host: copy deploy/admin-site/admin-api-proxied.caddy.example to deploy/admin-site/admin.caddy.
+import /etc/caddy/admin/*.caddy

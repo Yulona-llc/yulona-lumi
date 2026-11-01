@@ -1,0 +1,32 @@
+# Admin API host when the VM is behind your own reverse proxy (see deploy/Caddyfile.proxied). To enable:
+#   cp deploy/admin-site/admin-api-proxied.caddy.example deploy/admin-site/admin.caddy
+#   set ADMIN_SITE_ADDRESS=admin-api.example.com in deploy/.env, then reload Caddy.
+# Your proxy forwards the admin API host to the same private address and port as the API, with the Host header intact.
+# The admin API enforces ADMIN_ALLOWED_CIDRS itself using the client address this site passes on.
+http://{$ADMIN_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	request_body {
+		max_size 1MB
+	}
+
+	@api path /api/* /healthz /readyz
+	handle @api {
+		reverse_proxy admin-api:4100 {
+			health_uri /readyz
+			health_interval 2s
+			health_timeout 2s
+			health_fails 2
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+	handle {
+		respond "Not found" 404
+	}
+}

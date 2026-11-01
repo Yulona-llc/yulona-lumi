@@ -2,6 +2,8 @@
 # One-command install: generates secrets, writes deploy/.env (chmod 600), builds, migrates, creates the first
 # tenant + admin, starts everything and prints the URL + credentials ONCE.
 # Usage: deploy/setup.sh [domain] [--email admin@example.com] [--workspace "Acme"] [--name "Ada"]
+#        Behind your own reverse proxy (nginx, a load balancer) that terminates TLS: add
+#        --behind-proxy [--port 8080] [--bind 10.0.0.5]   (plain HTTP on that private address and port)
 #        e.g. deploy/setup.sh app.example.com --email me@example.com        (default domain: localhost)
 set -euo pipefail
 umask 077
@@ -16,16 +18,22 @@ docker compose version >/dev/null 2>&1 || die "docker compose v2 is required"
 command -v openssl >/dev/null || die "openssl is required"
 
 site="localhost"; email=""; workspace=""; admin_name="Admin"
+behind_proxy=0; proxy_port="8080"; proxy_bind="0.0.0.0"
 while [ $# -gt 0 ]; do
   case "$1" in
     --email) email="${2:?--email needs a value}"; shift 2 ;;
     --workspace) workspace="${2:?--workspace needs a value}"; shift 2 ;;
     --name) admin_name="${2:?--name needs a value}"; shift 2 ;;
+    --behind-proxy) behind_proxy=1; shift ;;
+    --port) proxy_port="${2:?--port needs a value}"; shift 2 ;;
+    --bind) proxy_bind="${2:?--bind needs a value}"; shift 2 ;;
     -*) die "unknown option: $1" ;;
     *) site="$1"; shift ;;
   esac
 done
 [[ "$site" =~ ^[A-Za-z0-9.:_-]+$ ]] || die "invalid domain: $site"
+[[ "$proxy_port" =~ ^[0-9]{2,5}$ ]] || die "invalid --port: $proxy_port"
+[[ "$proxy_bind" =~ ^[0-9A-Fa-f.:]+$ ]] || die "invalid --bind: $proxy_bind (use an IP address)"
 host="${site%%:*}"; [ -n "$host" ] || host="localhost"
 [ -n "$email" ] || email="admin@${host}"
 [ -n "$workspace" ] || workspace="My Workspace"
@@ -48,6 +56,17 @@ chmod 600 "$tmp"
 mv "$tmp" "$ENV_FILE"
 trap - EXIT
 echo "Wrote $ENV_FILE (mode 600). Back it up somewhere safe: losing it (esp. ENCRYPTION_KEY) means losing access to your data."
+if [ "$behind_proxy" = 1 ]; then
+  {
+    echo
+    echo "# Behind your own reverse proxy: Caddy serves plain HTTP only (see deploy/Caddyfile.proxied)."
+    echo "CADDYFILE=Caddyfile.proxied"
+    echo "PROXY_BIND=$proxy_bind"
+    echo "HTTP_PORT=$proxy_port"
+    echo "HTTPS_PORT=$((proxy_port + 363))"
+  } >> "$ENV_FILE"
+  echo "Behind-proxy mode: Caddy will listen on http://$proxy_bind:$proxy_port (no ports 80/443)."
+fi
 
 "${COMPOSE[@]}" build
 # Postgres creates the `yulona_app` role (password APP_DB_PASSWORD) via the initdb script on first start.
@@ -56,7 +75,9 @@ echo "Wrote $ENV_FILE (mode 600). Back it up somewhere safe: losing it (esp. ENC
 creds="$("${COMPOSE[@]}" run --rm -T create-tenant --workspace "$workspace" --email "$email" --name "$admin_name" --json)"
 "${COMPOSE[@]}" up -d --wait
 
-if [ "$site" = "localhost" ] || [ "$site" = ":80" ]; then
+if [ "$behind_proxy" = 1 ]; then
+  url="http://$proxy_bind:$proxy_port (forward $site from your reverse proxy to this address, keeping the Host header)"
+elif [ "$site" = "localhost" ] || [ "$site" = ":80" ]; then
   url="https://localhost (self-signed local CA)"; [ "$site" = ":80" ] && url="http://<this-host>"
 else
   url="https://$site"

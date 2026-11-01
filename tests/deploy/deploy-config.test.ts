@@ -240,3 +240,44 @@ describe("scripts/vercel-ignore.sh", () => {
     }
   });
 });
+
+describe("running behind your own reverse proxy", () => {
+  const proxied = read("deploy/Caddyfile.proxied");
+  const compose = read("deploy/docker-compose.yml");
+
+  test("Caddyfile.proxied is plain HTTP and never trusts a forged client address", () => {
+    expect(proxied).toContain("auto_https off");
+    expect(proxied).toMatch(/^:80 \{/m); // no host name that could trigger a certificate request
+    expect(proxied).toContain("trusted_proxies static");
+    // Right-to-left parsing: without it Caddy takes the leftmost X-Forwarded-For entry, which visitors control.
+    expect(proxied).toContain("trusted_proxies_strict");
+    // The API trusts the rightmost entry, so Caddy must hand it exactly the real client address.
+    expect(proxied).toContain("header_up X-Forwarded-For {client_ip}");
+    expect(proxied).not.toContain("Strict-Transport-Security"); // TLS and HSTS belong to the outer proxy
+  });
+
+  test("the admin API example for proxy mode is plain HTTP too and passes the real client address", () => {
+    const admin = read("deploy/admin-site/admin-api-proxied.caddy.example");
+    expect(admin).toContain("http://{$ADMIN_SITE_ADDRESS}");
+    expect(admin).toContain("header_up X-Forwarded-For {client_ip}");
+  });
+
+  test("compose lets the bind address, ports and Caddyfile be chosen, with public 80/443 as the default", () => {
+    expect(compose).toContain('"${PROXY_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"');
+    expect(compose).toContain('"${PROXY_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443"');
+    expect(compose).toContain("./${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro");
+  });
+
+  test("setup.sh --behind-proxy writes the proxy settings and no 80/443 mapping", () => {
+    const setup = read("deploy/setup.sh");
+    for (const needle of ["--behind-proxy)", "CADDYFILE=Caddyfile.proxied", 'PROXY_BIND=$proxy_bind', 'HTTP_PORT=$proxy_port']) {
+      expect(setup).toContain(needle);
+    }
+  });
+
+  test("the workflow copies the Caddy files in place so the bind mounts keep working", () => {
+    const wf = read(".github/workflows/deploy-backend.yml");
+    expect(wf).toContain('cat deploy/Caddyfile.proxied > "$YULONA_ROOT/deploy/Caddyfile.proxied"');
+    expect(wf).not.toMatch(/install[^\n]*Caddyfile/);
+  });
+});

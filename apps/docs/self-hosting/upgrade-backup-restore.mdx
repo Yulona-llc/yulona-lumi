@@ -52,7 +52,7 @@ The script:
 5. Reloads Caddy, stops the previous API and worker (including the ones from the first `setup.sh` stack), reloads Caddy again.
 6. Records the live slot in `deploy/.deploy-slot` and the previous image tag in `deploy/.deploy-previous`.
 
-Caddy’s API proxy uses a short `/readyz` health check so a stopped container is dropped quickly. For an API-only host (dashboard on Vercel), copy `deploy/Caddyfile.api` over `deploy/Caddyfile` and reload Caddy once.
+Caddy’s API proxy uses a short `/readyz` health check so a stopped container is dropped quickly. For an API-only host (dashboard on Vercel), set `CADDYFILE=Caddyfile.api` in `deploy/.env` (or copy `deploy/Caddyfile.api` over `deploy/Caddyfile`) and restart Caddy once. If your own reverse proxy terminates TLS in front of the VM, use `CADDYFILE=Caddyfile.proxied` instead and no ports 80 or 443 are needed: see [Behind your own reverse proxy](/self-hosting/requirements-and-install#behind-your-own-reverse-proxy).
 
 <Warning>
 Migrations run while the old API is still serving traffic. Ship schema changes that the old code can still read (add columns and tables; do not drop or rename in the same release as the code that stops using them).

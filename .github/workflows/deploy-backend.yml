@@ -27,6 +27,7 @@ on:
       - "deploy/rollout.sh"
       - "deploy/rollout-admin-api.sh"
       - "deploy/Caddyfile.api"
+      - "deploy/Caddyfile.proxied"
       - ".github/workflows/deploy-backend.yml"
   workflow_dispatch:
     inputs:
@@ -68,6 +69,7 @@ jobs:
               - "deploy/docker-compose.backend.yml"
               - "deploy/rollout.sh"
               - "deploy/Caddyfile.api"
+              - "deploy/Caddyfile.proxied"
               - ".github/workflows/deploy-backend.yml"
             admin_api:
               - "apps/admin-api/**"
@@ -194,7 +196,9 @@ jobs:
           install -m 0755 deploy/rollout.sh "$YULONA_ROOT/deploy/rollout.sh"
           install -m 0755 deploy/rollout-admin-api.sh "$YULONA_ROOT/deploy/rollout-admin-api.sh"
           install -m 0644 deploy/docker-compose.backend.yml "$YULONA_ROOT/deploy/docker-compose.backend.yml"
-          install -m 0644 deploy/Caddyfile.api "$YULONA_ROOT/deploy/Caddyfile.api"
+          # Caddy bind-mounts these single files: write in place (cat >) so the running container keeps seeing them.
+          cat deploy/Caddyfile.api > "$YULONA_ROOT/deploy/Caddyfile.api"
+          cat deploy/Caddyfile.proxied > "$YULONA_ROOT/deploy/Caddyfile.proxied"
           cd "$YULONA_ROOT"
           ./deploy/rollout.sh "$IMAGE"
 

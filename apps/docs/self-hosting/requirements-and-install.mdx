@@ -91,7 +91,63 @@ Caddy sends `/api/*`, `/ws`, `/healthz` and `/readyz` to the API and everything 
 
 Set `SITE_ADDRESS` to your domain and Caddy obtains and renews a Let's Encrypt certificate automatically. Ports 80 and 443 must reach the host. `localhost` uses a local certificate authority your browser will not trust by default, and `:80` disables TLS.
 
-To use your own reverse proxy instead, run with `SITE_ADDRESS=:80` behind it and forward `/` plus WebSocket upgrades (`/api/v1/realtime/ws`, `/api/v1/public/widget/ws`) to Caddy.
+To put your own reverse proxy in front instead (nginx, a load balancer), do not publish ports 80 and 443 at all: see [Behind your own reverse proxy](#behind-your-own-reverse-proxy).
+
+### Behind your own reverse proxy
+
+Use this when the VM is private and a proxy you already run terminates TLS and forwards requests to it. The VM then listens for plain HTTP on a private address and a port you choose (for example `10.0.0.5:8080`). Nothing needs ports 80 or 443.
+
+Caddy stays on the VM for one reason: it switches traffic between the old and new API during a zero-downtime rollout. In this mode it does no TLS and requests no certificates.
+
+<Steps>
+  <Step title="Install in proxy mode">
+    On a fresh VM: `deploy/setup.sh api.example.com --behind-proxy --port 8080 --bind 10.0.0.5 --email you@example.com`. On an existing install, add these to `deploy/.env` and restart Caddy:
+
+    ```bash
+    CADDYFILE=Caddyfile.proxied
+    PROXY_BIND=10.0.0.5          # the VM's private address
+    HTTP_PORT=8080               # the port your proxy forwards to
+    HTTPS_PORT=8443              # unused, only needs to be free
+    PROXY_TRUSTED_CIDRS=10.0.0.4/32   # your proxy's address
+    ```
+
+    ```bash
+    docker compose --project-name yulona --env-file deploy/.env -f deploy/docker-compose.yml up -d caddy
+    ```
+  </Step>
+  <Step title="Point your proxy at it">
+    Forward the API host to `http://10.0.0.5:8080`, keep the `Host` header, send the client address in `X-Forwarded-For`, and allow WebSocket upgrades. For nginx:
+
+    ```nginx
+    server {
+        listen 443 ssl http2;
+        server_name api.example.com admin-api.example.com;
+        # ssl_certificate ... (your certificates)
+
+        client_max_body_size 12m;          # knowledge uploads are limited to 10 MB
+
+        location / {
+            proxy_pass http://10.0.0.5:8080;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;   # map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+            proxy_read_timeout 3600s;          # long-lived WebSocket and event streams
+            proxy_buffering off;
+        }
+    }
+    ```
+  </Step>
+  <Step title="Enable the admin API host (optional)">
+    Copy `deploy/admin-site/admin-api-proxied.caddy.example` to `deploy/admin-site/admin.caddy`, set `ADMIN_SITE_ADDRESS=admin-api.example.com`, and reload Caddy. Your proxy forwards that host to the same address and port.
+  </Step>
+</Steps>
+
+Real visitor addresses matter: the API rate-limits by address, and `ADMIN_ALLOWED_CIDRS` checks it. With two proxies in front of the API, the API would otherwise see only your proxy's address. `Caddyfile.proxied` therefore reads `X-Forwarded-For` from right to left, trusting only the addresses in `PROXY_TRUSTED_CIDRS`, and passes the real client address on as the single forwarded value. Set `PROXY_TRUSTED_CIDRS` to your proxy's exact address when you can; the default trusts every private range. Visitors cannot forge their address by sending their own `X-Forwarded-For`. Keep `TRUST_PROXY=true`, which the stack sets.
+
+Check it: `curl -H 'Host: api.example.com' http://10.0.0.5:8080/readyz` from the proxy host should return `{"status":"ok"}`.
 
 ## Add another workspace or admin
 
@@ -187,4 +243,4 @@ Each page view that loads `widget.js` counts as a Vercel CDN request. After the 
   </Card>
 </CardGroup>
 
-{/* source: deploy/setup.sh, deploy/docker-compose.yml, deploy/docker-compose.backend.yml, deploy/docker-compose.dev.yml, deploy/Caddyfile, deploy/Caddyfile.api, deploy/admin-site/admin-api-only.caddy.example, deploy/.env.backend.example, deploy/rollout.sh, deploy/rollout-admin-api.sh, deploy/postgres/init-roles.sh, apps/api/scripts/create-tenant.ts, apps/dashboard/vercel.json, apps/admin-web/vercel.json, scripts/vercel-ignore.sh, .github/workflows/deploy-backend.yml, docs/self-hosting.md */}
+{/* source: deploy/setup.sh, deploy/docker-compose.yml, deploy/docker-compose.backend.yml, deploy/docker-compose.dev.yml, deploy/Caddyfile, deploy/Caddyfile.api, deploy/Caddyfile.proxied, deploy/admin-site/admin-api-only.caddy.example, deploy/admin-site/admin-api-proxied.caddy.example, deploy/.env.backend.example, deploy/rollout.sh, deploy/rollout-admin-api.sh, deploy/postgres/init-roles.sh, apps/api/scripts/create-tenant.ts, apps/dashboard/vercel.json, apps/admin-web/vercel.json, scripts/vercel-ignore.sh, .github/workflows/deploy-backend.yml, docs/self-hosting.md */}
