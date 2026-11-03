@@ -281,3 +281,13 @@ describe("running behind your own reverse proxy", () => {
     expect(wf).not.toMatch(/install[^\n]*Caddyfile/);
   });
 });
+
+describe("redis restarts", () => {
+  test("redis starts as its own user, not through the root entrypoint that fails once capabilities are dropped", () => {
+    const compose = read("deploy/docker-compose.yml");
+    const redis = compose.slice(compose.indexOf("\n  redis:\n"), compose.indexOf("\nnetworks:"));
+    expect(redis).toContain("user: redis");
+    // The root entrypoint needs CHOWN/SETUID/SETGID plus DAC_OVERRIDE to survive a second start; running as redis needs none.
+    expect(redis).not.toMatch(/cap_add/);
+  });
+});

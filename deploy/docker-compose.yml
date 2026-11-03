@@ -311,7 +311,11 @@ services:
   redis:
     image: redis:7-alpine
     <<: *hardening
-    cap_add: [SETUID, SETGID, CHOWN]
+    # Start as the redis user. The image's root entrypoint runs `find /data ... chown` first; with every capability
+    # dropped, root cannot read the 0700 appendonlydir that redis created, so the second start of the container
+    # failed with "find: ./appendonlydir: Permission denied" and exited. As `redis` the entrypoint skips that step
+    # and no extra capabilities are needed.
+    user: redis
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?run deploy/setup.sh}", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction"]
     environment:
       REDISCLI_AUTH: ${REDIS_PASSWORD}
