@@ -6,6 +6,16 @@ icon: clock-rotate-left
 
 Newest first. Each entry lists what customers, operators and platform admins can now do.
 
+## 2026-11-03
+
+Fixes from the first end-to-end test run.
+
+- **Setup wizard after sign-up.** New workspaces now land on [Set up with Lumi](/guides/workspace/setup-wizard) instead of Overview.
+- **Embed snippet loads on customer sites.** The snippet points at an absolute widget URL (`WIDGET_SCRIPT_URL`, default `APP_URL` plus `/widget.js`) and uses `window.LumiConfig`. See [Widget embed](/developers/widget-embed).
+- **Closing message for blocked visitors.** A visitor blocked for abuse still sees the transcript, including the agent's closing message, with a note that the conversation has ended.
+- **Upgrade prompt on the agent limit.** Creating an agent over the plan limit opens the upgrade dialog instead of only a toast.
+- **Needs attention** shows plain sentences for system reasons, and the Team page has a single **Invite member** button.
+
 ## 2026-11-01
 
 Zero-downtime API deploys and static frontends on Vercel.

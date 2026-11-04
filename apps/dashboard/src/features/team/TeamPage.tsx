@@ -70,7 +70,7 @@ export default function TeamPage() {
       {isAdmin && (
         <div className="mt-8">
           <h2 className="mb-3 font-display text-lg font-semibold">Invitations</h2>
-          {invs.isPending ? <Loading rows={2} /> : invs.isError ? <ErrorState error={invs.error} retry={() => void invs.refetch()} /> : invs.data.length === 0 ? <Empty icon={<MailPlus className="size-6" />} title="No invitations" body="Invite a teammate by email. Links are valid for 7 days." action={<Button onClick={() => setInvite(true)}>Invite member</Button>} /> : (
+          {invs.isPending ? <Loading rows={2} /> : invs.isError ? <ErrorState error={invs.error} retry={() => void invs.refetch()} /> : invs.data.length === 0 ? <Empty icon={<MailPlus className="size-6" />} title="No invitations" body="Invite a teammate by email. Links are valid for 7 days." /> : (
             <ul className="divide-y overflow-hidden rounded-2xl border bg-card">{invs.data.map((i) => (
               <li key={i.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0"><p className="flex flex-wrap items-center gap-2 font-medium"><span className="truncate">{i.email}</span><Badge color={i.status === "pending" ? "blue" : "gray"}>{i.status}</Badge></p><p className="text-sm text-muted-foreground">{i.role} · expires {fmtDate(i.expiresAt)}</p></div>

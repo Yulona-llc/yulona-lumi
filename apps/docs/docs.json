@@ -10,7 +10,7 @@
   "fonts": { "family": "Inter" },
   "navbar": {
     "links": [{ "label": "Website", "href": "https://yulona.co" }],
-    "primary": { "type": "button", "label": "Open dashboard", "href": "https://app.yulona.co" }
+    "primary": { "type": "button", "label": "Open dashboard", "href": "https://lumi.yulona.co" }
   },
   "navigation": {
     "tabs": [

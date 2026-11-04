@@ -100,7 +100,7 @@ export function App({ chat, startOpen, root }: { chat: Chat; startOpen?: boolean
           )}
           {s.phase === "prechat" && cfg?.preChat && <PreChat intro={cfg.preChat.intro} fields={cfg.preChat.fields} onSubmit={(v) => void chat.submitPreChat(v)} />}
           {s.phase === "verify" && cfg?.protection?.turnstile && <Verify o={cfg.protection.turnstile} onToken={(t) => void chat.submitVerification(t)} />}
-          {s.phase === "closed" && <div class="y-center" role="alert"><span>This conversation has ended.</span></div>}
+          {s.phase === "closed" && (s.messages.length ? <Conversation chat={chat} s={s} ended /> : <div class="y-center" role="alert"><span>This conversation has ended.</span></div>)}
           {cfg?.protection?.honeypot !== false && (s.phase === "prechat" || s.phase === "verify" || s.phase === "ready") && (
             <div class="y-hp" aria-hidden="true">
               <input type="text" name="website" tabIndex={-1} autoComplete="off" onInput={(e) => chat.setHoneypot(e.currentTarget.value)} />
@@ -199,7 +199,8 @@ function MessageView({ m, ix, chat }: { m: ChatMessage; ix: Interact; chat: Chat
   );
 }
 
-function Conversation({ chat, s }: { chat: Chat; s: ChatState }) {
+/** `ended`: the visitor was closed out (e.g. blocked for abuse). The transcript, including the closing message, stays readable; the composer is replaced by a notice. */
+function Conversation({ chat, s, ended }: { chat: Chat; s: ChatState; ended?: boolean }) {
   const log = useRef<HTMLDivElement>(null);
   const [text, setText] = useState("");
   const ta = useRef<HTMLTextAreaElement>(null);
@@ -241,7 +242,7 @@ function Conversation({ chat, s }: { chat: Chat; s: ChatState }) {
           </div>
         )}
       </div>
-      <form
+      {ended ? <div class="y-banner" role="alert">This conversation has ended.</div> : <form
         class="y-compose"
         onSubmit={(e) => {
           e.preventDefault();
@@ -274,7 +275,7 @@ function Conversation({ chat, s }: { chat: Chat; s: ChatState }) {
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4z" />
           </svg>
         </button>
-      </form>
+      </form>}
     </>
   );
 }

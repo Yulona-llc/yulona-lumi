@@ -77,12 +77,16 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
     await next();
   });
 
-  const needSession: MiddlewareHandler<PubEnv> = async (c, next) => {
+  /** `allowBlockedRead`: a visitor blocked for abuse (session revoked in the same step as the closing message) may still READ their own conversation for a few minutes. */
+  const sessionGuard = (allowBlockedRead: boolean): MiddlewareHandler<PubEnv> => async (c, next) => {
     const pub = c.get("pub");
     const m = /^Bearer ([A-Za-z0-9._-]+)$/.exec(c.req.header("authorization") ?? "");
     const claims = m ? await verifyWidgetSession(cfg.jwtSecret, m[1]!) : null;
     if (!claims || claims.tid !== pub.tenantId || claims.wid !== pub.widgetId) throw Errors.unauthorized("Invalid or expired session");
-    const ok = await withTenant(db, claims.tid, (tx) => new WidgetSessionsRepository(tx, claims.tid).isActive(claims.sub, claims.wid, claims.cid));
+    const ok = await withTenant(db, claims.tid, (tx) => {
+      const sessions = new WidgetSessionsRepository(tx, claims.tid);
+      return allowBlockedRead ? sessions.isReadable(claims.sub, claims.wid, claims.cid) : sessions.isActive(claims.sub, claims.wid, claims.cid);
+    });
     if (!ok) throw Errors.unauthorized("Invalid or expired session");
     // A blocked contact (abuse) keeps no access even if a session token is still valid.
     const blocked = await withTenant(db, claims.tid, async (tx) => {
@@ -92,10 +96,12 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
         WHERE ws.tenant_id = ${claims.tid} AND ws.id = ${claims.sub}`;
       return r?.b === true;
     });
-    if (blocked) throw contactBlocked();
+    if (blocked && !allowBlockedRead) throw contactBlocked();
     c.set("session", { id: claims.sub, conversationId: claims.cid, contactId: claims.ctid });
     await next();
   };
+  const needSession = sessionGuard(false);
+  const readSession = sessionGuard(true);
 
   const ipOf = (c: Context) => c.get("ip") as string;
   const state = (conv: { id: string; status: string; handler: string }) => ({ id: conv.id, status: conv.status, handler: conv.handler });
@@ -215,7 +221,7 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
   });
 
   // ---- history
-  r.get("/messages", needSession, async (c) => {
+  r.get("/messages", readSession, async (c) => {
     const pub = c.get("pub");
     const s = c.get("session");
     await enforceLimit(limiter, `pw:hist:${s.id}`, LIMITS.history);

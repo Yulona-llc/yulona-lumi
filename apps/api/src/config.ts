@@ -140,7 +140,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     refreshTokenTtlDays: e.REFRESH_TOKEN_TTL_DAYS,
     encryptionKey: e.ENCRYPTION_KEY || undefined,
     publicApiUrl: e.PUBLIC_API_URL?.replace(/\/+$/, "") || undefined,
-    widgetScriptUrl: e.WIDGET_SCRIPT_URL || "/widget.js",
+    // A relative "/widget.js" only works on the dashboard's own origin; on customers' sites the embed snippet needs an absolute URL.
+    widgetScriptUrl: e.WIDGET_SCRIPT_URL || (env.APP_URL ? `${env.APP_URL.replace(/\/+$/, "")}/widget.js` : "/widget.js"),
     widgetSessionTtlHours: e.WIDGET_SESSION_TTL_HOURS,
     copilotModel: e.COPILOT_MODEL || undefined,
     turnstileVerifyUrl: "https://challenges.cloudflare.com/turnstile/v0/siteverify",

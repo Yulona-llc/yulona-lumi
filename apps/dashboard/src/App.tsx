@@ -24,10 +24,13 @@ function RequireAuth() {
   return <Outlet />;
 }
 
-function PublicOnly() {
+export function PublicOnly() {
   const { status } = useAuth();
+  const loc = useLocation();
   if (status === "loading") return <FullPageSpinner label="Restoring your session" />;
-  if (status === "authenticated") return <Navigate to="/overview" replace />;
+  // Registering signs the user in before Register.tsx navigates, so this guard sees "authenticated" first:
+  // new workspaces go to the setup wizard (it sends finished or non-admin users on to /overview itself).
+  if (status === "authenticated") return <Navigate to={loc.pathname === "/register" ? "/onboarding" : "/overview"} replace />;
   return <Outlet />;
 }
 

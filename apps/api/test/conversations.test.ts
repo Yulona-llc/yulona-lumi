@@ -126,6 +126,7 @@ describe.skipIf(!hasDb)("conversations domain", () => {
     expect((await get(`/widgets/not-a-uuid`, A.h)).status).toBe(404);
     const embed = await (await get(`/widgets/${widget.id}/embed`, A.h)).json() as { snippet: string };
     expect(embed.snippet).toContain(widget.widgetKey);
+    expect(embed.snippet).toContain("window.LumiConfig");
     // rotate on a scratch widget
     const w2 = await (await send("POST", "/widgets", A.h, { name: "Scratch", allowedDomains: [ORIGIN] })).json() as { id: string; widgetKey: string };
     const rot = await (await send("POST", `/widgets/${w2.id}/rotate-key`, A.h)).json() as { widgetKey: string };

@@ -9,6 +9,7 @@ import { Spinner } from "../../components/ui";
 import { Stagger, StaggerItem } from "@/components/motion";
 import { Badge, Empty, ErrorState, Loading, Modal, PageHeader, TextArea, TextField, useRole } from "../common/ui";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UpgradePrompt, planLimitFrom } from "../billing/UpgradePrompt";
 import { cn } from "@/lib/utils";
 
 const statusColor = { draft: "amber", published: "green", archived: "gray" } as const;
@@ -55,7 +56,7 @@ function CreateAgent({ onClose, onDone }: { onClose: () => void; onDone: () => v
   const m = useMutation({
     mutationFn: () => ag.createAgent({ name: name.trim(), ...(description.trim() ? { description: description.trim() } : {}) }),
     onSuccess: () => { toast.success(`Created ${name.trim()}`); onDone(); },
-    onError: (e) => toast.error(errMsg(e)),
+    onError: (e) => { if (!planLimitFrom(e)) toast.error(errMsg(e)); }, // a plan limit opens the upgrade dialog instead
   });
   return (
     <Modal title="New agent" description="You can change everything later. It stays a draft until you publish." onClose={onClose}>
@@ -64,6 +65,7 @@ function CreateAgent({ onClose, onDone }: { onClose: () => void; onDone: () => v
         <TextArea label="Description" hint="Optional. Only your team sees this." rows={3} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
         <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>Cancel</Button><Button disabled={m.isPending || !name.trim()}>{m.isPending && <Spinner />}Create</Button></div>
       </form>
+      <UpgradePrompt error={m.error} />
     </Modal>
   );
 }

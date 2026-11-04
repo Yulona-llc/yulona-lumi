@@ -72,6 +72,31 @@ describe("Chat: Turnstile gate and blocked visitors", () => {
     await vi.waitFor(() => expect(chat.state.phase).toBe("closed"));
     chat.forget();
   });
+  it("keeps the closing message visible after the visitor is blocked mid-conversation", async () => {
+    let blocked = false;
+    const farewell = { id: "m2", role: "ai" as const, text: "This conversation is closed.", createdAt: new Date().toISOString() };
+    const api = fakeApi({
+      getConfig: async () => ({ ...protectedConfig, protection: { honeypot: true } }),
+      history: async () => (blocked ? [farewell] : []),
+      send: async () => {
+        throw new ApiError(blocked ? 401 : 403, "HTTP", undefined, "contact_blocked");
+      },
+      startConversation: async () => {
+        if (blocked) throw new ApiError(403, "HTTP 403", undefined, "contact_blocked");
+        return { session: { conversationId: "c1", sessionToken: "t" }, messages: [] };
+      },
+    });
+    const chat = new Chat(api, "k4", { transport: noTransport });
+    await chat.init();
+    expect(chat.state.phase).toBe("ready");
+    blocked = true;
+    await chat.sync(); // the closing message is read although the session was revoked with the block
+    expect(chat.state.messages.map((m) => m.text)).toEqual(["This conversation is closed."]);
+    await chat.reset(); // what a later 401 does; the next start is refused
+    await vi.waitFor(() => expect(chat.state.phase).toBe("closed"));
+    expect(chat.state.messages.map((m) => m.text)).toEqual(["This conversation is closed."]);
+    chat.forget();
+  });
   it("the honeypot value is forwarded; without Turnstile the chat starts immediately", async () => {
     const api = fakeApi({ getConfig: async () => ({ ...protectedConfig, protection: { honeypot: true } }) });
     const chat = new Chat(api, "k3", { transport: noTransport });

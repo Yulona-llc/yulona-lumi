@@ -16,10 +16,10 @@ curl https://YOUR_HOST/api/v1/widgets/WIDGET_ID/embed -H "Authorization: Bearer 
 
 ```json
 {
-  "snippet": "<script>\n  window.YulonaConfig = { widgetKey: \"wk_...\", apiUrl: \"https://YOUR_HOST\" };\n  (function (d, s) {\n    var e = d.createElement(\"script\");\n    e.src = \"/widget.js\"; e.async = true;\n    d.head.appendChild(e);\n  })(document);\n</script>",
+  "snippet": "<script>\n  window.LumiConfig = { widgetKey: \"wk_...\", apiUrl: \"https://YOUR_HOST\" };\n  (function (d, s) {\n    var e = d.createElement(\"script\");\n    e.src = \"https://YOUR_DASHBOARD_HOST/widget.js\"; e.async = true;\n    d.head.appendChild(e);\n  })(document);\n</script>",
   "widgetKey": "wk_...",
   "apiUrl": "https://YOUR_HOST",
-  "scriptUrl": "/widget.js"
+  "scriptUrl": "https://YOUR_DASHBOARD_HOST/widget.js"
 }
 ```
 
@@ -31,7 +31,7 @@ Paste `snippet` before `</body>`. The script mounts one widget; loading it twice
 
 ### `window.YulonaConfig` (alias `window.LumiConfig`)
 
-The widget reads `window.LumiConfig` first, then `window.YulonaConfig`; both take the same options. The snippet the API returns still uses `window.YulonaConfig`, which keeps working.
+The widget reads `window.LumiConfig` first, then `window.YulonaConfig`; both take the same options. The snippet the API returns uses `window.LumiConfig`; snippets already on your sites with `window.YulonaConfig` keep working.
 
 <ParamField body="widgetKey" type="string" required>The widget's public key, `wk_` followed by characters. It is public by design; the origin allowlist protects it. Without it the widget logs a warning and does not start.</ParamField>
 <ParamField body="apiUrl" type="string">API origin (`https://YOUR_HOST`) or a full `/api/v1` base. The widget appends `/api/v1` when missing. If omitted, it uses the origin the script was loaded from.</ParamField>

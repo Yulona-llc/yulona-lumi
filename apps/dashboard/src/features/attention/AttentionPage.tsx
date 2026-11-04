@@ -23,6 +23,13 @@ import { label, ops, type HandoffItem, type HandoffType } from "../ops-settings/
  * Three kinds of baton pass, each with its own colour, icon and rail so they read at a glance:
  * uncertain (amber question mark), lead ready (ember sparkle), system failure (red triangle).
  */
+/** Internal reason codes the AI runtime records; shown as sentences. Free-text reasons pass through unchanged. */
+const REASONS: Record<string, string> = {
+  agent_unavailable: "The agent was not live (draft, archived or missing), so the visitor got an offline message",
+  ai_credits_exhausted: "The workspace ran out of credits, so the AI could not reply",
+};
+export const reasonLabel = (r: string): string => REASONS[r] ?? r;
+
 const TYPES: Record<HandoffType, { name: string; hint: string; icon: LucideIcon; tile: string; rail: string; chip: string }> = {
   uncertainty: { name: "Uncertain", hint: "The AI could not answer from your knowledge base", icon: CircleHelp, tile: "bg-warning/14 text-warning", rail: "bg-warning", chip: "border-warning/40" },
   stage: { name: "Lead ready", hint: "A qualified lead is ready for a person", icon: Sparkles, tile: "bg-primary/18 text-accent-foreground", rail: "bg-primary", chip: "border-primary/50" },
@@ -188,7 +195,7 @@ function Item({ h, now, isAdmin, onResolve, onLeave }: { h: HandoffItem; now: nu
           </span>
         </header>
         <div>
-          <p className="text-[0.9375rem] font-medium">{h.reason}</p>
+          <p className="text-[0.9375rem] font-medium">{reasonLabel(h.reason)}</p>
           {h.summary && <p className="mt-1 text-sm text-muted-foreground">{h.summary}</p>}
         </div>
         {hasLead && <LeadCard h={h} />}
@@ -230,7 +237,7 @@ function ResolveModal({ h, onClose, onDone }: { h: HandoffItem; onClose: () => v
     onError: (e) => toast.error("Could not resolve", { description: errMsg(e) }),
   });
   return (
-    <Modal title="Resolve handoff" description={`${who(h)}: ${h.reason}`} onClose={onClose}>
+    <Modal title="Resolve handoff" description={`${who(h)}: ${reasonLabel(h.reason)}`} onClose={onClose}>
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); m.mutate(); }}>
         <TextArea label="Resolution note (optional)" rows={3} maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
         <div className="flex items-start gap-3 rounded-xl border bg-muted/50 p-3">

@@ -405,6 +405,15 @@ export class WidgetSessionsRepository extends TenantRepository {
         AND conversation_id = ${conversationId} AND revoked_at IS NULL AND expires_at > now()`;
     return !!r;
   }
+  /** Read-only variant: a session of a BLOCKED contact, revoked in the last minutes, may still READ its own conversation, so the closing message reaches the visitor. */
+  async isReadable(id: string, widgetId: string, conversationId: string, graceMinutes = 10): Promise<boolean> {
+    const [r] = await this.tx<{ id: string }[]>`
+      SELECT id FROM widget_sessions WHERE tenant_id = ${this.tenantId} AND id = ${id} AND widget_id = ${widgetId}
+        AND conversation_id = ${conversationId} AND expires_at > now()
+        AND (revoked_at IS NULL OR (revoked_at > now() - make_interval(mins => ${graceMinutes}::int)
+          AND EXISTS (SELECT 1 FROM contacts ct WHERE ct.tenant_id = widget_sessions.tenant_id AND ct.id = widget_sessions.contact_id AND ct.blocked_at IS NOT NULL)))`;
+    return !!r;
+  }
   /** Revoke every active session of a conversation (abuse block, conversation closed by the AI). */
   async revokeForConversation(conversationId: string): Promise<void> {
     await this.tx`UPDATE widget_sessions SET revoked_at = now() WHERE tenant_id = ${this.tenantId} AND conversation_id = ${conversationId} AND revoked_at IS NULL`;

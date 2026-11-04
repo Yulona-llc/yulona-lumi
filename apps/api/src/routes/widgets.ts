@@ -38,7 +38,7 @@ const esc = (s: string) => s.replace(/[\\"<>&']/g, (ch) => `\\u${ch.charCodeAt(0
 export function embedSnippet(cfg: Config, apiUrl: string, widgetKey: string): { snippet: string; scriptUrl: string } {
   const scriptUrl = cfg.widgetScriptUrl;
   const snippet = `<script>
-  window.YulonaConfig = { widgetKey: "${esc(widgetKey)}", apiUrl: "${esc(apiUrl)}" };
+  window.LumiConfig = { widgetKey: "${esc(widgetKey)}", apiUrl: "${esc(apiUrl)}" };
   (function (d, s) {
     var e = d.createElement("script");
     e.src = "${esc(scriptUrl)}"; e.async = true;

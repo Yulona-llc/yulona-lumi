@@ -156,7 +156,11 @@ export class Chat {
   }
 
   /** Session expired/revoked: drop it and start a fresh conversation (visitorId is kept). */
+  /** Messages shown before the last reset, so a closed (blocked) visitor still sees the closing message. */
+  private transcript: ChatMessage[] = [];
+
   async reset() {
+    this.transcript = this.state.messages.filter((m) => !m.id.startsWith("local-"));
     this.transport?.stop();
     clearTimeout(this.refreshTimer);
     delete this.p.session;
@@ -172,7 +176,7 @@ export class Chat {
     clearTimeout(this.retryTimer);
     this.p.outbox = [];
     this.persist();
-    this.set({ phase: "closed" });
+    this.set({ phase: "closed", messages: this.state.messages.length ? this.state.messages : this.transcript });
   }
 
   forget() {

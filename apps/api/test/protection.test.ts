@@ -197,6 +197,8 @@ describe.skipIf(!hasDb)("widget protection and abuse blocking", () => {
 
     // existing session, refreshed or not, is dead
     expect((await pub("POST", "/messages", h1, { text: "again", clientMessageId: "block-test-0002" })).status).toBe(401);
+    // ...except reading: the closing message is written with the block, so the visitor can still fetch their own transcript for a few minutes
+    expect((await pub("GET", "/messages", h1)).status).toBe(200);
     // cannot start: same visitor id, and a brand-new visitor from the same IP shortly after a block
     let r = await start(widget.widgetKey, { visitorId: v1 }, "198.51.100.51");
     expect(r.status).toBe(403);
