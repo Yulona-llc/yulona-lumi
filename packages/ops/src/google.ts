@@ -24,6 +24,16 @@ export const GOOGLE_SCOPES = [
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
+/** Google's own explanation of an error response (`reason: message`), truncated; empty when the body is not the usual JSON. Never contains tokens. */
+async function reasonOf(res: Response): Promise<string> {
+  try {
+    const j = JSON.parse(await res.text()) as { error?: { message?: string; errors?: { reason?: string }[] } };
+    const reason = j.error?.errors?.[0]?.reason;
+    const text = [reason, j.error?.message].filter(Boolean).join(": ");
+    return text ? `: ${text.slice(0, 200)}` : "";
+  } catch { return ""; }
+}
+
 /** Thin Google Calendar REST client. All calls accept an AbortSignal so callers can enforce timeouts. */
 export class GoogleCalendarClient {
   private readonly authUrl: string;
@@ -82,7 +92,7 @@ export class GoogleCalendarClient {
       headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json", ...(init.headers as Record<string, string> | undefined) },
     });
     if (res.status === 204) return null;
-    if (!res.ok) throw new ProviderError(`google calendar HTTP ${res.status}`, "google", res.status >= 500 || res.status === 429, res.status);
+    if (!res.ok) throw new ProviderError(`google calendar HTTP ${res.status}${await reasonOf(res)}`, "google", res.status >= 500 || res.status === 429, res.status);
     const text = await res.text();
     return text ? (JSON.parse(text) as T) : null;
   }

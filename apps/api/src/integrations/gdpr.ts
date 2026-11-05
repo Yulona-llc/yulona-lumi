@@ -117,7 +117,7 @@ export function gdprRoutes({ cfg, db, providers }: IntegrationsDeps) {
     const obj = await providers.storage.get(row.storageKey);
     if (!obj) throw Errors.notFound("Export file not found");
     return new Response(obj.body as unknown as BodyInit, {
-      headers: { "content-type": obj.contentType ?? "application/json", "content-disposition": `attachment; filename="yulona-export-${id}.json"`, "cache-control": "no-store", "x-content-type-options": "nosniff" },
+      headers: { "content-type": obj.contentType ?? "application/json", "content-disposition": `attachment; filename="lumi-export-${id}.json"`, "cache-control": "no-store", "x-content-type-options": "nosniff" },
     });
   });
 

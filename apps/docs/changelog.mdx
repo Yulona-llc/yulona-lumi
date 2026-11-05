@@ -6,6 +6,21 @@ icon: clock-rotate-left
 
 Newest first. Each entry lists what customers, operators and platform admins can now do.
 
+## 2026-11-05
+
+Fixes and polish from the second test run.
+
+- **Date and time pickers in Lumi's own style.** Booking start, the Calendly day, opening hours and holidays, and the audit log dates no longer open the browser's native pickers. See [Bookings](/guides/workspace/bookings).
+- **Chats start with the first message.** Opening the website chat no longer creates an empty "Anonymous visitor" conversation and contact; the conversation starts when the visitor writes. Contacts hides visitors without a name, email or phone by default (**Show anonymous visitors** lists them) and the Inbox hides website chats the visitor never wrote in. See [Website widget](/guides/channels/website-widget) and [Contacts](/guides/workspace/contacts).
+- **Live widget preview** works without adding the dashboard to your allowed domains.
+- **Telegram webhook in one click.** **Set up webhook automatically** registers the webhook and secret with Telegram. See [Telegram](/guides/channels/telegram).
+- **Tags in the Inbox and on tickets.** Add and remove tags on a conversation or ticket from its header. See [Canned responses and tags](/guides/workspace/canned-responses-and-tags).
+- **Logo from your device** in the setup wizard. See [Set up with Lumi](/guides/workspace/setup-wizard).
+- **Saved replies no longer crash the Inbox** after you visited Settings, Canned responses.
+- **Workspace export works without S3.** Export files are kept in the database when no bucket is configured, so **Export workspace** and **Download** work on a plain self-hosted install. See [Privacy and data](/guides/account/privacy-and-data).
+- **Booking errors say why.** A failed Google or Calendly booking now includes the provider's reason in the message.
+- **Test a new API key** with the ready-made command shown when you create it. See [Public API](/developers/public-api).
+
 ## 2026-11-03
 
 Fixes from the first end-to-end test run.

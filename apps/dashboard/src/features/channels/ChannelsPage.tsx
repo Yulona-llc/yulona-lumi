@@ -86,6 +86,11 @@ function ConnectSheet({ spec, onClose }: { spec: AvailableChannel; onClose: () =
     onSuccess: (r) => { setResult({ ok: r.ok, text: r.detail }); void qc.invalidateQueries({ queryKey: ["channels"] }); (r.ok ? toast.success : toast.error)(r.ok ? "Connection OK" : "Test failed"); },
     onError: (e) => { setResult({ ok: false, text: errMsg(e) }); toast.error("Test failed"); },
   });
+  const hook = useMutation({
+    mutationFn: () => channelsApi.registerWebhook(created!.id),
+    onSuccess: (r) => { setResult({ ok: r.ok, text: r.detail ?? "" }); (r.ok ? toast.success : toast.error)(r.ok ? "Webhook registered" : "Could not register the webhook"); },
+    onError: (e) => { setResult({ ok: false, text: errMsg(e) }); toast.error("Could not register the webhook"); },
+  });
   const missing = fields.some((f) => f.required && !creds[f.name]?.trim() && !SECRET_HINT.test(f.name));
   const secrets: Record<string, string> = created ? { "Webhook URL": created.webhookUrl, ...(created.generatedSecrets ?? {}) } : {};
 
@@ -132,7 +137,12 @@ function ConnectSheet({ spec, onClose }: { spec: AvailableChannel; onClose: () =
                     <div key={k}><dt className="mb-1 text-sm font-medium">{k}</dt><dd><CopyField label={k} value={v} testId={`secret-${k}`} wrap /></dd></div>
                   ))}
                 </dl>
-                <Steps items={steps.after} />
+                {spec.channel === "telegram" && (
+                  <div className="rounded-xl border bg-muted/40 p-4">
+                    <p className="mb-2 text-sm">Lumi can tell Telegram where to send messages, so you do not have to call <code>setWebhook</code> yourself.</p>
+                    <Button disabled={hook.isPending} onClick={() => hook.mutate()}>{hook.isPending && <Loader2 className="animate-spin" />}Set up webhook automatically</Button>
+                  </div>)}
+                <Steps items={spec.channel === "telegram" ? ["Click Set up webhook automatically above (or register the Webhook URL yourself with setWebhook, using the Webhook secret as the secret token).", "Send your bot a message to test it."] : steps.after} />
                 <div className="rounded-xl border bg-muted/40 p-4">
                   <div className="flex flex-wrap items-center gap-3">
                     <Button variant="outline" disabled={test.isPending} onClick={() => test.mutate()}>{test.isPending && <Loader2 className="animate-spin" />}Test connection</Button>
@@ -210,6 +220,11 @@ function ConnectionTile({ c, spec, canEdit }: { c: Connection; spec?: AvailableC
     onSuccess: (r) => { setMsg({ ok: r.ok, text: r.detail }); inv(); (r.ok ? toast.success : toast.error)(r.ok ? `${c.name}: connection OK` : `${c.name}: test failed`); },
     onError: (e) => { setMsg({ ok: false, text: errMsg(e) }); toast.error(`${c.name}: test failed`); },
   });
+  const hook = useMutation({
+    mutationFn: () => channelsApi.registerWebhook(c.id),
+    onSuccess: (r) => { setMsg({ ok: r.ok, text: r.ok ? "Webhook registered with Telegram." : (r.detail ?? "") }); (r.ok ? toast.success : toast.error)(r.ok ? `${c.name}: webhook registered` : `${c.name}: could not register the webhook`); },
+    onError: (e) => { setMsg({ ok: false, text: errMsg(e) }); toast.error(`${c.name}: could not register the webhook`); },
+  });
   const toggle = useMutation({
     mutationFn: () => channelsApi.update(c.id, { status: c.status === "disabled" ? "active" : "disabled" }),
     onSuccess: () => { inv(); toast.success(c.status === "disabled" ? `${c.name} enabled` : `${c.name} disabled`); },
@@ -246,6 +261,7 @@ function ConnectionTile({ c, spec, canEdit }: { c: Connection; spec?: AvailableC
       {canEdit && (
         <div className="flex flex-wrap gap-2 border-t pt-4">
           <Button variant="outline" size="sm" disabled={test.isPending} onClick={() => test.mutate()}>{test.isPending && <Loader2 className="animate-spin" />}Test connection<span className="sr-only"> {c.name}</span></Button>
+          {c.channel === "telegram" && <Button variant="outline" size="sm" disabled={hook.isPending} onClick={() => hook.mutate()}>{hook.isPending && <Loader2 className="animate-spin" />}Set up webhook<span className="sr-only"> {c.name}</span></Button>}
           <Button variant="ghost" size="sm" onClick={() => setEdit(true)}>Edit<span className="sr-only"> {c.name}</span></Button>
           <Button variant="ghost" size="sm" disabled={toggle.isPending} onClick={() => toggle.mutate()}>{c.status === "disabled" ? "Enable" : "Disable"}<span className="sr-only"> {c.name}</span></Button>
           <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive sm:ml-auto" onClick={() => setDel(true)}><Trash2 />Delete<span className="sr-only"> {c.name}</span></Button>

@@ -128,7 +128,7 @@ With `SMTP_HOST` empty, emails (invitations, notifications) are only written to 
 
 ## Object storage (S3 and MinIO)
 
-Storage is used only when `S3_BUCKET`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` are all set. Otherwise files are kept in memory and are lost on restart.
+Storage is used only when `S3_BUCKET`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` are all set. Otherwise privacy export files are kept in the database (table `object_store`), which is fine for small workspaces; any other file kept only in memory is lost on restart. Set the bucket for large exports.
 
 | Variable | Default | Required | Meaning | Example |
 |---|---|---|---|---|

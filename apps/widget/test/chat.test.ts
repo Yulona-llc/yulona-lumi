@@ -3,16 +3,20 @@ import { ApiError, type Api } from "../src/api";
 import { Chat } from "../src/chat";
 import type { WireMessage } from "../src/types";
 
-function fakeApi(over: Partial<Api> = {}): Api & { sent: string[] } {
+function fakeApi(over: Partial<Api> = {}): Api & { sent: string[]; starts: number } {
   const sent: string[] = [];
   let n = 0;
-  return {
+  const api = {
     sent,
-    getConfig: async () => ({ title: "T", primaryColor: "#4f46e5", position: "right", theme: "light" }),
-    startConversation: async () => ({
-      session: { conversationId: "c1", sessionToken: "t" },
-      messages: [{ id: "w1", role: "ai", text: "hello", createdAt: "2020-01-01T00:00:00Z" }],
-    }),
+    starts: 0,
+    getConfig: async () => ({ title: "T", primaryColor: "#4f46e5", position: "right", theme: "light", welcome: "hello" }),
+    startConversation: async () => (
+      api.starts++,
+      {
+        session: { conversationId: "c1", sessionToken: "t" },
+        messages: [{ id: "w1", role: "ai", text: "hello", createdAt: "2020-01-01T00:00:00Z" }],
+      }
+    ),
     refresh: async (s) => s,
     typing: async () => {},
     uiEvent: async (_s, e) => ({ id: "u1", role: "user", text: e.kind, createdAt: new Date().toISOString() }),
@@ -24,7 +28,8 @@ function fakeApi(over: Partial<Api> = {}): Api & { sent: string[] } {
     wsUrl: () => "ws://x",
     streamUrl: () => "http://x",
     ...over,
-  };
+  } as Api & { sent: string[]; starts: number };
+  return api;
 }
 const noTransport = () => ({ stop() {} });
 
@@ -35,12 +40,15 @@ describe("Chat", () => {
     const api = fakeApi();
     const chat = new Chat(api, "k", { transport: noTransport });
     await chat.init();
-    expect(chat.state.messages[0]?.text).toBe("hello"); // welcome message from POST /conversations
+    expect(chat.state.messages.map((m) => m.text)).toEqual(["hello"]); // welcome text from the config; no conversation exists yet
+    expect(api.starts).toBe(0);
     chat.send("  hi  ");
     expect(chat.state.messages.at(-1)?.state).toBe("sending");
     await vi.waitFor(() => expect(api.sent).toEqual(["hi"]));
     await vi.waitFor(() => expect(chat.state.messages.at(-1)?.state).toBe("sent"));
     expect(chat.state.messages.filter((m) => m.role === "user")).toHaveLength(1);
+    expect(api.starts).toBe(1); // the conversation starts with the first message...
+    expect(chat.state.messages.filter((m) => m.text === "hello")).toHaveLength(1); // ...and the stored welcome replaces the local one
     chat.forget();
   });
 

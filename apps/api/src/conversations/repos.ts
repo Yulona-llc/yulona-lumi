@@ -32,6 +32,8 @@ export class ConversationsRepository extends TenantRepository {
       FROM conversations c
       JOIN contacts ct ON ct.tenant_id = c.tenant_id AND ct.id = c.contact_id
       WHERE c.tenant_id = ${this.tenantId}
+        -- a website chat the visitor never wrote in (opened, greeted, left) is not a conversation worth the team's attention
+        AND (c.channel <> 'widget' OR EXISTS (SELECT 1 FROM messages m WHERE m.tenant_id = c.tenant_id AND m.conversation_id = c.id AND m.sender_type = 'contact'))
         ${f.status ? tx`AND c.status = ${f.status}` : tx``}
         ${f.handler ? tx`AND c.handler = ${f.handler}` : tx``}
         ${f.channel ? tx`AND c.channel = ${f.channel}` : tx``}
@@ -164,13 +166,14 @@ export interface TimelineRow {
 }
 
 export class ContactsRepository extends TenantRepository {
-  async list(o: { q?: string; cursor?: { ts: string; id: string } | null; limit: number }): Promise<(ContactRow & { cursorTs: string })[]> {
+  async list(o: { q?: string; includeAnonymous?: boolean; cursor?: { ts: string; id: string } | null; limit: number }): Promise<(ContactRow & { cursorTs: string })[]> {
     const tx = this.tx;
     const q = o.q ? `%${likeEscape(o.q)}%` : null;
     return tx`
       SELECT ${contactSelect(tx)}, to_char(ct.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_ts
       FROM contacts ct
       WHERE ct.tenant_id = ${this.tenantId} AND ct.merged_into IS NULL
+        ${o.includeAnonymous ? tx`` : tx`AND (coalesce(ct.name, '') <> '' OR coalesce(ct.email, '') <> '' OR coalesce(ct.phone, '') <> '')`}
         ${q ? tx`AND (ct.name ILIKE ${q} ESCAPE '\\' OR ct.email ILIKE ${q} ESCAPE '\\' OR ct.phone ILIKE ${q} ESCAPE '\\')` : tx``}
         ${o.cursor ? tx`AND (ct.created_at, ct.id) < (${o.cursor.ts}::timestamptz, ${o.cursor.id}::uuid)` : tx``}
       ORDER BY ct.created_at DESC, ct.id DESC

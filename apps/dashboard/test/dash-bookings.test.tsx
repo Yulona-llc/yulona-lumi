@@ -107,7 +107,9 @@ describe("bookings: calendar status strip and New booking", () => {
     await userEvent.click(await newBtn());
     const dlg = await screen.findByRole("dialog");
     expect(within(dlg).getByLabelText("Duration")).toBeInTheDocument();
-    fireEvent.change(within(dlg).getByLabelText("Start"), { target: { value: "2030-03-01T10:00" } });
+    await userEvent.click(within(dlg).getByRole("button", { name: "Start date" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Today" })); // the platform picker, not the native one; the time defaults to 09:00
+    expect(within(dlg).getByRole("button", { name: "Start time" })).toHaveTextContent(/9:00/);
     await userEvent.click(within(dlg).getByRole("button", { name: "Create booking" }));
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.url === "/bookings")).toBe(true));
     expect(JSON.parse(calls.find((c) => c.method === "POST" && c.url === "/bookings")!.body!)).toMatchObject({ provider: "google", durationMinutes: 30 });

@@ -21,6 +21,7 @@ import { CHANNEL_LABEL } from "./format";
 import { ChannelGlyph, ContactAvatar } from "./parts";
 import Thread from "./Thread";
 import Composer from "./Composer";
+import TagPicker from "../ops-settings/TagPicker";
 import ContactPanel, { stageLabel } from "./ContactPanel";
 import { useTyping } from "../realtime/hooks";
 
@@ -147,6 +148,7 @@ export default function ConversationView() {
             </div>
             <Button variant="ghost" size="icon" className="@6xl:hidden" aria-label="Contact details" aria-expanded={panel} onClick={() => setPanel(true)}><PanelRight /></Button>
           </div>
+          <div className="px-3 pb-2 sm:px-4"><TagPicker resource="conversations" id={id} /></div>
 
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 px-3 pb-3 pt-1.5 sm:px-4">
             <div className="flex min-w-0 items-center gap-3">

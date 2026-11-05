@@ -22,7 +22,7 @@ export interface ContactPatch {
 }
 
 export const contactsApi = {
-  list: (q: string | undefined, cursor?: string) => request(`/contacts${qs({ q, limit: 30, cursor })}`, { auth: true, schema: contactPage }),
+  list: (q: string | undefined, cursor?: string, includeAnonymous?: boolean) => request(`/contacts${qs({ q, limit: 30, cursor, includeAnonymous: includeAnonymous ? "true" : undefined })}`, { auth: true, schema: contactPage }),
   get: (id: string) => request(`/contacts/${id}`, { auth: true, schema: contactSchema }),
   create: (b: { name?: string; email?: string; phone?: string }) => request("/contacts", { method: "POST", auth: true, body: b, schema: contactSchema }),
   patch: (id: string, b: ContactPatch) => request(`/contacts/${id}`, { method: "PATCH", auth: true, body: b, schema: contactSchema }),

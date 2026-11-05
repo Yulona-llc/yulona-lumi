@@ -5,6 +5,7 @@ import { ag } from "../common/api";
 import { AuditExport } from "../integrations-ui/AuditExport";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { DatePicker, DateTimePicker, TimePickerInline } from "@/components/ui/date-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "../../components/ui";
 import { Stagger, StaggerItem } from "@/components/motion";
@@ -19,8 +20,8 @@ function FilterFields({ f, setF, onApply, onClear, compact }: { f: Filters; setF
     <form className={compact ? "grid gap-3" : "grid gap-3 sm:grid-cols-2 lg:grid-cols-4"} onSubmit={(e) => { e.preventDefault(); onApply(); }}>
       <TextField label="Action" placeholder="agent.published" value={f.action} onChange={(e) => setF({ ...f, action: e.target.value })} />
       <TextField label="Resource type" placeholder="agent" value={f.resourceType} onChange={(e) => setF({ ...f, resourceType: e.target.value })} />
-      <TextField label="From" type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} />
-      <TextField label="To" type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} />
+      <DatePicker label="From" value={f.from} onChange={(v) => setF({ ...f, from: v })} />
+      <DatePicker label="To" value={f.to} onChange={(v) => setF({ ...f, to: v })} />
       <div className="flex gap-2 sm:col-span-full sm:justify-end"><Button className="flex-1 sm:flex-none">Apply</Button><Button type="button" variant="outline" className="flex-1 sm:flex-none" onClick={onClear}>Clear</Button></div>
     </form>
   );

@@ -110,6 +110,7 @@ export function createApi(base: string, widgetKey: string, f: Fetch = (...a) => 
         prechat?: { enabled?: boolean; intro?: string; fields?: { name: PreChatField["name"]; label: string; required?: boolean }[] };
         schemaVersion?: number;
         unavailable?: boolean;
+        welcome?: string | null;
       }>("/config");
       const c = (r.config ?? {}) as Record<string, string | undefined>;
       const prot = ((r.config ?? {}).protection ?? {}) as {
@@ -134,6 +135,7 @@ export function createApi(base: string, widgetKey: string, f: Fetch = (...a) => 
         launcherLabel: c.launcherLabel,
         schemaVersion: r.schemaVersion,
         unavailable: r.unavailable === true,
+        welcome: typeof r.welcome === "string" && r.welcome ? r.welcome : undefined,
         protection: {
           honeypot: prot.honeypot !== false,
           turnstile: ts?.enabled && ts.siteKey

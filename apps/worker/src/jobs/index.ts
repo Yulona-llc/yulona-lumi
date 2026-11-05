@@ -20,7 +20,7 @@ export function buildJobHandlers(db: Db): JobHandlers {
   return {
     ...(Object.fromEntries(Object.entries(ai).map(([name, h]) => [name, (payload: unknown) => h(payload)])) as JobHandlers),
     ...buildChannelJobHandlers(db),
-    ...buildIntegrationJobHandlers(),
+    ...buildIntegrationJobHandlers(db),
     ...(createHubSpotJobHandlers({ db, encryptionKey: process.env.ENCRYPTION_KEY, appUrl: process.env.APP_URL }) as JobHandlers),
   };
 }

@@ -32,7 +32,9 @@ Only **admins and owners** can connect channels. The bot talks to people in **pr
     The panel says "Shown only once" and shows the **Webhook URL** and the **Webhook secret token**. Copy both.
   </Step>
   <Step title="Tell Telegram where to send messages">
-    Telegram needs to be told your Webhook URL once. Open this address in your browser, after replacing the three parts in capitals with your own values, and look for `"ok":true` in the reply:
+    Telegram needs to be told your Webhook URL once. In the same panel click **Set up webhook automatically**. Lumi registers the URL and the secret token with Telegram for you and shows "Webhook registered" when Telegram accepts it. The button is also on the connection card as **Set up webhook**, in case you change the address of your server later. Telegram only accepts `https` addresses, so on a self-hosted server `PUBLIC_API_URL` must be your `https` API address.
+
+    To do it by hand instead, open this address in your browser after replacing the three parts in capitals with your own values, and look for `"ok":true` in the reply:
 
     `https://api.telegram.org/botYOUR_BOT_TOKEN/setWebhook?url=YOUR_WEBHOOK_URL&secret_token=YOUR_WEBHOOK_SECRET`
 

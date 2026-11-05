@@ -12,6 +12,12 @@ The public API lets your backend sync contacts with a CRM, start conversations, 
 2. Send it as `Authorization: Bearer YOUR_API_KEY` on every request.
 3. All paths below are under `https://YOUR_HOST/api/v1/public-api`.
 
+To check a new key straight away, run the command the dashboard shows when you create it (or this one). A reply listing the key's scopes means it works, and `401` means the key was copied wrongly:
+
+```bash
+curl -H "Authorization: Bearer YOUR_API_KEY" https://YOUR_HOST/api/v1/key-info
+```
+
 Every request is tenant-scoped by the key. Another workspace's ids return `404 not_found`. Writes are audit-logged with `actorUserId: null` and `metadata.via = "public_api"` plus the `apiKeyId`.
 
 ## Scopes

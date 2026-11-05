@@ -133,6 +133,8 @@ export const ops = {
   createTag: (b: { name: string; color?: string }) => request<Tag>("/tags", j("POST", b)),
   patchTag: (id: string, b: { name?: string; color?: string }) => request<Tag>(`/tags/${id}`, j("PATCH", b)),
   deleteTag: (id: string) => request<void>(`/tags/${id}`, j("DELETE")),
+  resourceTags: (resource: string, id: string) => request<{ items: Tag[] }>(`/${resource}/${id}/tags`, A).then((r) => r.items),
+  setResourceTags: (resource: string, id: string, tagIds: string[]) => request<{ items: Tag[] }>(`/${resource}/${id}/tags`, j("PUT", { tagIds })),
   setTicketTags: (id: string, tagIds: string[]) => request<{ items: Tag[] }>(`/tickets/${id}/tags`, j("PUT", { tagIds })),
 
   // notifications

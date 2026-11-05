@@ -142,6 +142,10 @@ describe.skipIf(!hasDb)("conversations domain", () => {
   test("origin allowlist, key validation, preflight, disabled widget", async () => {
     expect((await pub("GET", "/config", pubH(widget.widgetKey, {}, null))).status).toBe(403); // no Origin
     expect((await pub("GET", "/config", pubH(widget.widgetKey, {}, "https://evil.test"))).status).toBe(403);
+    // the dashboard itself (live preview) is always allowed, without being listed in the widget's domains
+    expect((await pub("GET", "/config", pubH(widget.widgetKey, {}, "http://localhost:5173"))).status).toBe(200); // APP_URL of the test config
+    const welcomeCfg = await (await pub("GET", "/config", pubH(widget.widgetKey))).json() as { welcome: string | null };
+    expect("welcome" in welcomeCfg).toBe(true); // shown by the widget before a conversation exists
     expect((await pub("GET", "/config", pubH("wk_doesnotexistdoesnotexist"))).status).toBe(403);
     expect((await pub("GET", "/config", { origin: ORIGIN })).status).toBe(403); // no key
     const ok = await pub("GET", "/config", pubH(widget.widgetKey));
@@ -305,6 +309,10 @@ describe.skipIf(!hasDb)("conversations domain", () => {
     const s = await startConv();
     const id = s.conversation.id;
     await pub("POST", "/messages", sess(s.sessionToken), { text: "needle-xyz please", clientMessageId: "client-msg-0002" });
+    // a widget conversation the visitor never wrote in is hidden from the list; the others must have a visitor message to appear
+    const quiet = await startConv();
+    expect(((await (await get("/conversations?limit=50", A.h)).json()) as { items: { id: string }[] }).items.some((x) => x.id === quiet.conversation.id)).toBe(false);
+    for (const n of [3, 4]) { const o = await startConv(); await pub("POST", "/messages", sess(o.sessionToken), { text: `hello ${n}`, clientMessageId: `client-msg-000${n}` }); }
 
     const all = await (await get("/conversations?limit=2", A.h)).json() as { items: { id: string }[]; nextCursor: string | null };
     expect(all.items.length).toBe(2);

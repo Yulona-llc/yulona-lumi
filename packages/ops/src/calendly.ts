@@ -34,6 +34,15 @@ export const pkceChallenge = (verifier: string) => createHash("sha256").update(v
 export const uuidOf = (uri: string) => uri.replace(/\/+$/, "").split("/").pop() ?? uri;
 
 /** Token endpoint failure carrying Calendly's OAuth `error` / `error_description` (never the request, so no secrets). */
+/** Calendly's own explanation (`title: message`), truncated; empty when the body is not the usual JSON. */
+async function calendlyReason(res: Response): Promise<string> {
+  try {
+    const j = JSON.parse(await res.text()) as { title?: string; message?: string };
+    const text = [j.title, j.message].filter(Boolean).join(": ");
+    return text ? `: ${text.slice(0, 200)}` : "";
+  } catch { return ""; }
+}
+
 export class CalendlyOAuthError extends ProviderError {
   constructor(message: string, status: number, readonly oauthError?: string, readonly oauthDescription?: string) {
     super(message, "calendly", status >= 500 || status === 429, status);
@@ -136,7 +145,7 @@ export class CalendlyClient {
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: opts.signal,
     });
-    if (!res.ok) throw new ProviderError(`calendly HTTP ${res.status}`, "calendly", res.status >= 500 || res.status === 429, res.status);
+    if (!res.ok) throw new ProviderError(`calendly HTTP ${res.status}${await calendlyReason(res)}`, "calendly", res.status >= 500 || res.status === 429, res.status);
     const text = await res.text();
     return (text ? JSON.parse(text) : {}) as T;
   }

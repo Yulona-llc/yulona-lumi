@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { SKIP_MESSAGE, seedTenantWithUser, setupTestDb } from "@yulona/db/testing";
-import { AUTO_DISABLE_AFTER, createIntegrationJobHandlers, openSecret, runRetention, verifyWebhookSignature } from "@yulona/integrations";
-import { createMockProviders } from "@yulona/providers";
+import { AUTO_DISABLE_AFTER, createIntegrationJobHandlers, exportKey, openSecret, runRetention, storageOrDatabase, verifyWebhookSignature } from "@yulona/integrations";
+import { withTenant } from "@yulona/db";
+import { createMockProviders, MemoryStorageProvider, type StorageProvider } from "@yulona/providers";
 import { startWorker } from "@yulona/queue";
 import { createLogger } from "@yulona/shared";
 import { createApp } from "../src/app";
@@ -653,6 +654,28 @@ describe.skipIf(!hasDb)("integrations", () => {
       expect([table, (await db.unsafe(`SELECT 1 FROM ${table}`)).length]).toEqual([table, 0]); // no tenant context => nothing
     }
     await expect(withTenant(db, U.tenantId, (tx) => tx`INSERT INTO webhooks (tenant_id, name, url, secret_encrypted, events) VALUES (${T.tenantId}, 'x', 'https://x.test', 'x', ARRAY['*'])`)).rejects.toThrow();
+  });
+
+  test("without a bucket, export files live in Postgres (shared by the API and the worker), per tenant", async () => {
+    const T = await mkTenant("dbstoreA");
+    const U = await mkTenant("dbstoreB");
+    const store = storageOrDatabase(new MemoryStorageProvider(), db); // the in-memory default is replaced by the database
+    expect(store.name).toBe("database");
+    const k = exportKey(T.tenantId, crypto.randomUUID());
+    await store.put(k, '{"ok":true}', { contentType: "application/json" });
+    expect(await store.exists(k)).toBe(true);
+    const got = await store.get(k);
+    expect(new TextDecoder().decode(got!.body)).toBe('{"ok":true}');
+    expect(got!.contentType).toBe("application/json");
+    expect(await store.signedUrl(k)).toBeNull();
+    // another workspace cannot see it, even through a key that names the first one (row-level security)
+    expect(await withTenant(db, U.tenantId, (tx) => tx`SELECT 1 FROM object_store WHERE key = ${k}`)).toHaveLength(0);
+    await expect(store.put("gdpr/not-a-tenant/x.json", "x")).rejects.toThrow();
+    await store.delete(k);
+    expect(await store.get(k)).toBeNull();
+    expect(storageOrDatabase(new MemoryStorageProvider(), db) === store).toBe(false);
+    const bucket = { ...new MemoryStorageProvider(), name: "s3" } as unknown as StorageProvider;
+    expect(storageOrDatabase(bucket, db)).toBe(bucket); // a configured bucket is used as is
   });
 
   test("the 30-day tenant hard-delete purge also clears webhook, GDPR and retention rows", async () => {

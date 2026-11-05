@@ -189,6 +189,29 @@ export function channelRoutes({ cfg, db, limiter, registry }: ChannelRouteDeps) 
     return c.json({ ok: result.ok, detail: result.detail ?? null, checkedAt: new Date().toISOString() });
   });
 
+  /** Register our webhook URL with the provider using the stored credentials (Telegram: `setWebhook`), so nobody has to call it by hand. */
+  r.post("/channels/connections/:id/register-webhook", admin, async (c) => {
+    const { tenantId } = c.get("auth");
+    const id = idParam(c);
+    await enforceLimit(limiter, `ch:webhook:${tenantId}`, { limit: 10, windowMs: 60_000 });
+    const row = await withTenant(db, tenantId, (tx) => new ConnectionsRepository(tx, tenantId).get(id));
+    if (!row) throw Errors.notFound("Connection not found");
+    const adapter = adapterFor(row.channel);
+    if (!adapter.registerWebhook) throw Errors.validation([{ path: "channel", message: "This channel is set up in the provider's own console" }]);
+    const webhookUrl = webhookUrlFor(cfg, new URL(c.req.url).origin, row.channel, id);
+    let result: { ok: boolean; detail?: string };
+    if (!webhookUrl.startsWith("https://")) result = { ok: false, detail: "Telegram only accepts https webhook URLs. Set PUBLIC_API_URL to your https API address and try again." };
+    else {
+      try {
+        result = await adapter.registerWebhook(decryptCredentials(key(), row.credentialsEncrypted, credentialAad(tenantId, id)), webhookUrl);
+      } catch (e) {
+        result = { ok: false, detail: e instanceof AppError ? e.message : "credentials cannot be decrypted" };
+      }
+    }
+    await withTenant(db, tenantId, (tx) => audit(c, tx, "channel_connection.register_webhook", id, { ok: result.ok }));
+    return c.json({ ok: result.ok, detail: result.detail ?? null, webhookUrl });
+  });
+
   // ---- cross-channel identity: merge suggestions (confirm via POST /contacts/:id/merge)
   r.get("/channels/merge-suggestions", async (c) => {
     const { tenantId } = c.get("auth");

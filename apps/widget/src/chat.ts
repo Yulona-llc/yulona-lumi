@@ -65,7 +65,12 @@ export class Chat {
       const config = await this.api.getConfig();
       const needsPreChat = !!config.preChat?.enabled && !this.p.session && !this.p.preChatDone;
       this.set({ config, phase: needsPreChat ? "prechat" : "ready" });
-      if (!needsPreChat) await this.gate();
+      if (needsPreChat) return;
+      if (this.p.session) return await this.gate(); // resume the visitor's conversation
+      // No conversation yet: show the welcome text locally. The conversation (and its contact) is created when the visitor writes,
+      // so opening the chat never leaves an empty anonymous conversation behind.
+      this.set({ messages: [...(config.welcome ? [{ id: "local-welcome", role: "ai" as const, text: config.welcome, createdAt: new Date().toISOString() }] : []), ...this.restorePending()] });
+      if (this.p.outbox.length) await this.gate(); // a message was queued before a reload: start now
     } catch {
       this.set({ phase: "error" });
     }
@@ -125,8 +130,20 @@ export class Chat {
     this.p.visitorId = session.visitorId ?? this.p.visitorId;
     this.persist();
     this.scheduleRefresh();
+    this.set({ messages: this.state.messages.filter((m) => m.id !== "local-welcome") });
     messages.forEach((m) => this.receive(m)); // includes the configured welcome message
     return session;
+  }
+
+  /** Open the live channel (SSE or WebSocket) for the conversation. */
+  private listen(s: Session) {
+    this.transport?.stop();
+    this.transport = (this.opts.transport ?? startTransport)(this.api, s, this.widgetKey, {
+      onEvent: (e) => (e.type === "message" ? this.receive(e.message) : e.from !== "contact" && this.setTyping(e.on)),
+      onSync: () => void this.sync(),
+      onStatus: (conn) => this.set({ conn }),
+      onAuthError: () => void this.reset(),
+    });
   }
 
   private async connect(visitor?: Record<string, string>) {
@@ -134,13 +151,7 @@ export class Chat {
     try {
       const s = await this.ensureSession(visitor);
       await this.sync();
-      this.transport?.stop();
-      this.transport = (this.opts.transport ?? startTransport)(this.api, s, this.widgetKey, {
-        onEvent: (e) => (e.type === "message" ? this.receive(e.message) : e.from !== "contact" && this.setTyping(e.on)),
-        onSync: () => void this.sync(),
-        onStatus: (conn) => this.set({ conn }),
-        onAuthError: () => void this.reset(),
-      });
+      this.listen(s);
       this.scheduleRefresh();
       void this.flush();
     } catch (e) {
@@ -287,7 +298,9 @@ export class Chat {
       while (this.p.outbox.length) {
         const item = this.p.outbox[0]!;
         try {
+          if (this.state.config?.protection?.turnstile && !this.p.session && !this.tsToken) return void this.set({ phase: "verify" }); // challenge first; the queued message is sent afterwards
           const s = await this.ensureSession();
+          if (!this.transport) this.listen(s); // the conversation was just created by this message
           // Idempotent per clientMessageId, so retrying after an ambiguous failure never duplicates.
           const m = await this.api.send(s, item.text, item.clientId, this.hp);
           this.p.outbox.shift();

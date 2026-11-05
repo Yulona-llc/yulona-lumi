@@ -8,9 +8,10 @@ import { toast } from "@/components/ui/sonner";
 import { LogoMark } from "../../components/Logo";
 import { useAuth } from "../../auth/AuthProvider";
 import { FullPageSpinner, Spinner } from "../../components/ui";
-import { errMsg } from "../common/api";
+import { ag, errMsg } from "../common/api";
 import { ErrorState, Loading, useRole } from "../common/ui";
 import { onboardingApi } from "./api";
+import { takePickedLogo } from "./logo";
 import { STEP_COMPONENTS, answerReady } from "./steps";
 
 /** Full-screen, resumable setup wizard. Steps come from the server's typed schema; only whitelisted components render. */
@@ -42,7 +43,13 @@ export default function OnboardingPage() {
   });
   const finish = useMutation({
     mutationFn: onboardingApi.finish,
-    onSuccess: () => { void qc.invalidateQueries(); toast.success("Your starter setup is ready. Try it, then publish."); nav("/overview", { replace: true }); },
+    onSuccess: async (r) => {
+      const logo = takePickedLogo();
+      if (logo) await ag.uploadAvatar(r.widgetId, logo).catch(() => toast.error("Your setup is ready, but the logo could not be uploaded. Add it under Website widget."));
+      void qc.invalidateQueries();
+      toast.success("Your starter setup is ready. Try it, then publish.");
+      nav("/overview", { replace: true });
+    },
     onError: (e) => setErr(errMsg(e)),
   });
 

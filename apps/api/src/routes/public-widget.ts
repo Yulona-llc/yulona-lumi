@@ -46,7 +46,14 @@ const LIMITS = {
 };
 const contactBlocked = () => new AppError(403, "contact_blocked", "This conversation has ended and can't be continued.");
 
+/** The dashboard itself may always load the widget (the live preview in the widget settings) without being added to "allowed domains". */
+function originCheck(cfg: ConvDeps["cfg"]) {
+  const dashboardOrigin = (() => { try { return new URL(cfg.appUrl).origin; } catch { return null; } })();
+  return (origin: string | undefined | null, allowed: readonly string[]) => (!!dashboardOrigin && origin === dashboardOrigin) || originAllowed(origin, allowed, cfg.isProd);
+}
+
 export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
+  const originOk = originCheck(cfg);
   const r = new Hono<PubEnv>();
   const ttlSeconds = cfg.widgetSessionTtlHours * 3600;
 
@@ -69,7 +76,7 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
     if (!WIDGET_KEY_RE.test(key)) throw Errors.forbidden("Invalid widget key");
     const w = await resolveWidget(db, key);
     if (!w || !w.enabled || w.tenantStatus !== "active") throw Errors.forbidden("Widget unavailable");
-    if (!originAllowed(origin, w.allowedDomains, cfg.isProd)) throw Errors.forbidden("Origin not allowed");
+    if (!originOk(origin, w.allowedDomains)) throw Errors.forbidden("Origin not allowed");
     c.set("pub", { ...w, origin: origin! });
     c.header("Access-Control-Allow-Origin", origin!);
     c.header("Access-Control-Expose-Headers", "Retry-After, X-Request-Id");
@@ -112,16 +119,21 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
     await enforceLimit(limiter, `pw:cfg:${pub.widgetId}:${ipOf(c)}`, LIMITS.config);
     c.header("Cache-Control", "private, max-age=60");
     // The widget's agent is not live (never published, archived or unassigned): the widget shows an offline notice.
-    const { live, avatar } = await withTenant(db, pub.tenantId, async (tx) => ({
-      live: await isAgentLive(tx, pub.tenantId, pub.agentId),
-      avatar: await new WidgetsRepository(tx, pub.tenantId).avatarEtag(pub.widgetId),
-    }));
+    const { live, avatar, welcome } = await withTenant(db, pub.tenantId, async (tx) => {
+      const live = await isAgentLive(tx, pub.tenantId, pub.agentId);
+      return {
+        live,
+        avatar: await new WidgetsRepository(tx, pub.tenantId).avatarEtag(pub.widgetId),
+        // Shown by the widget before any conversation exists (same text the conversation start stores as the first message).
+        welcome: pub.config?.welcomeMessage || (live ? (await loadAgent(tx, pub.tenantId, pub.agentId))?.greeting : undefined) || null,
+      };
+    });
     // An uploaded avatar wins over the optional image link; it is served by `/public/widgets/:key/avatar`.
     const config = avatar
       ? { ...pub.config, avatarUrl: `${cfg.publicApiUrl ?? new URL(c.req.url).origin}/api/v1/public/widgets/${c.req.header("x-widget-key") ?? c.req.query("key")}/avatar?v=${avatar}` }
       : pub.config;
     return c.json({
-      widgetId: pub.widgetId, name: pub.name, config, prechat: pub.prechat, unavailable: !live,
+      widgetId: pub.widgetId, name: pub.name, config, prechat: pub.prechat, unavailable: !live, welcome,
       schemaVersion: WIDGET_UI_SCHEMA_VERSION, features: { sse: true, ws: true },
     });
   });
@@ -388,6 +400,7 @@ export function publicWidgetRoutes({ cfg, db, limiter, realtime }: ConvDeps) {
  * widget's allowed domains; with neither (privacy settings, direct visit) the public brand image is still served. Only enabled widgets.
  */
 export function publicWidgetAvatarRoutes({ cfg, db, limiter }: ConvDeps) {
+  const originOk = originCheck(cfg);
   const r = new Hono<AppEnv>();
   r.get("/:key/avatar", async (c) => {
     const key = c.req.param("key");
@@ -397,7 +410,7 @@ export function publicWidgetAvatarRoutes({ cfg, db, limiter }: ConvDeps) {
     const w = await resolveWidget(db, key);
     if (!w || !w.enabled || w.tenantStatus !== "active") return notFound();
     const origin = c.req.header("origin") ?? (() => { try { return new URL(c.req.header("referer") ?? "").origin; } catch { return undefined; } })();
-    if (origin && !originAllowed(origin, w.allowedDomains, cfg.isProd)) return c.body(null, 403, { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+    if (origin && !originOk(origin, w.allowedDomains)) return c.body(null, 403, { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
     const a = await withTenant(db, w.tenantId, (tx) => new WidgetsRepository(tx, w.tenantId).getAvatar(w.widgetId));
     if (!a) return notFound();
     const headers = {

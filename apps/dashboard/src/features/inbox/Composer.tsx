@@ -15,7 +15,7 @@ export default function Composer({ conversationId, handler, disabled, onSend }: 
   const [kind, setKind] = useState<"reply" | "note">("reply");
   const ta = useRef<HTMLTextAreaElement>(null);
   const lastTyping = useRef(0);
-  const canned = useQuery({ queryKey: ["canned"], queryFn: inboxApi.canned, staleTime: 5 * 60_000, retry: false });
+  const canned = useQuery({ queryKey: ["canned", "composer"], queryFn: inboxApi.canned, staleTime: 5 * 60_000, retry: false });
   const list = canned.data?.length ? canned.data : FALLBACK_CANNED;
 
   // "/shortcut" opens the canned-response picker.
@@ -31,7 +31,7 @@ export default function Composer({ conversationId, handler, disabled, onSend }: 
     onSend(t, kind);
     setText("");
   };
-  const pick = (body: string) => { setText(body); ta.current?.focus(); };
+  const pick = (body: string | undefined) => { setText(body ?? ""); ta.current?.focus(); };
   const note = kind === "note";
 
   return (

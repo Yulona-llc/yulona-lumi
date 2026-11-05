@@ -73,6 +73,8 @@ export interface ChannelAdapter {
   respondToPost?(req: WebhookRequest): WebhookResponse | null;
   /** Cheap call that proves the stored credentials work. */
   checkHealth?(credentials: ChannelCredentials): Promise<HealthResult>;
+  /** Point the provider at our webhook URL with the stored credentials (Telegram `setWebhook`). Channels configured in the provider console omit it. */
+  registerWebhook?(credentials: ChannelCredentials, webhookUrl: string): Promise<HealthResult>;
   verifyWebhook(req: WebhookRequest, credentials?: ChannelCredentials): boolean | Promise<boolean>;
   parseInbound(req: WebhookRequest): InboundMessage[];
   send(msg: OutboundMessage, credentials?: ChannelCredentials): Promise<SendResult>;

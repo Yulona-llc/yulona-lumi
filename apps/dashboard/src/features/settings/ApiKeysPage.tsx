@@ -11,6 +11,7 @@ import { toast } from "@/components/ui/sonner";
 import { Spinner } from "../../components/ui";
 import { Badge, Check, ConfirmModal, Empty, ErrorState, fmtDate, Loading, Modal, PageHeader, RoleNotice, TextField, useRole } from "../common/ui";
 import { CopyButton } from "./parts";
+import { apiBase } from "../../config";
 
 const SCOPES = API_KEY_SCOPES;
 const COLS = "lg:grid-cols-[minmax(0,1.1fr)_7rem_minmax(0,1.4fr)_5.5rem_8rem_5.5rem]";
@@ -56,6 +57,12 @@ export default function ApiKeysPage() {
         <Modal title="Copy your new key" description="Store it in a secret manager now." onClose={() => setSecret(null)}>
           <Alert variant="warning" className="mb-3"><ShieldAlert /><AlertTitle>This is the only time the full key is shown</AlertTitle><AlertDescription>After you close this, only the prefix is visible.</AlertDescription></Alert>
           <code className="block break-all rounded-xl border bg-muted p-3 font-mono text-sm" data-testid="new-key">{secret.key}</code>
+          <div className="mt-4">
+            <p className="text-sm font-medium">Test it now</p>
+            <p className="mb-1.5 text-sm text-muted-foreground">Run this in a terminal. A reply with your key's scopes means it works; a 401 means it was copied wrongly.</p>
+            <code className="block break-all rounded-xl border bg-muted p-3 font-mono text-xs" data-testid="key-test-command">{`curl -H "Authorization: Bearer ${secret.key}" ${apiBase()}/key-info`}</code>
+            <div className="mt-2"><CopyButton text={`curl -H "Authorization: Bearer ${secret.key}" ${apiBase()}/key-info`} what="Command copied" size="default" /></div>
+          </div>
           <div className="mt-5 flex justify-end gap-2"><CopyButton text={secret.key ?? ""} what="Key copied" size="default" /><Button onClick={() => setSecret(null)}>Done</Button></div>
         </Modal>)}
       {revoke && <ConfirmModal danger title="Revoke this key?" body={<>Anything using "{revoke.name}" stops working immediately.</>} confirm="Revoke" busy={rv.isPending} onConfirm={() => rv.mutate(revoke)} onClose={() => setRevoke(null)} />}

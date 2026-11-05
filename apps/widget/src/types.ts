@@ -34,6 +34,8 @@ export interface WidgetRuntimeConfig {
   theme: "light" | "dark" | "auto";
   placeholder?: string;
   launcherLabel?: string;
+  /** First message shown before a conversation exists (the conversation is only created when the visitor writes). */
+  welcome?: string;
   preChat?: { enabled: boolean; intro?: string; fields: PreChatField[] };
   /** The widget's agent is not live (draft-only, archived, unassigned): show an offline notice; a team member replies. */
   unavailable?: boolean;

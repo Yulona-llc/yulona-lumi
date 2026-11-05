@@ -88,7 +88,7 @@ export function bookingRoutes(deps: OpsDeps) {
         attendeeEmail: b.attendeeEmail, timezone: b.timezone, notes: b.notes, createdBy: userId, source: "human",
       });
       if (!res.ok && res.reason === "conflict") throw Errors.conflict("This time overlaps an existing booking");
-      if (!res.ok) throw new AppError(503, "service_unavailable", "Calendar is unavailable; the booking was not created", { bookingId: res.booking.id });
+      if (!res.ok) throw new AppError(503, "service_unavailable", `Calendar is unavailable; the booking was not created (${res.error.replace(/^calendar unavailable: /, "")})`, { bookingId: res.booking.id });
       const full = await withTenant(db, tenantId, async (tx) => {
         await audit(tx, c, "booking.create", "booking", res.booking.id, { provider: res.booking.provider });
         return (await tx<(BookingRow & { contactName: string | null })[]>`SELECT ${select(tx)} WHERE b.tenant_id = ${tenantId} AND b.id = ${res.booking.id}`)[0]!;

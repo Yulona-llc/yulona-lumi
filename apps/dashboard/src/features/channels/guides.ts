@@ -17,7 +17,7 @@ export const CHANNEL_STEPS: Record<ChannelKey, { before: string[]; after: string
   },
   telegram: {
     before: ["Open @BotFather in Telegram and send /newbot.", "Copy the bot token it gives you.", "Paste it below and connect."],
-    after: ["Register the Webhook URL with Telegram (setWebhook) and use the Webhook secret as the secret token.", "Send your bot a message to test it."],
+    after: ["Click Set up webhook automatically (or register the Webhook URL with Telegram setWebhook and use the Webhook secret as the secret token).", "Send your bot a message to test it."],
   },
   slack: {
     before: ["Create a Slack app and add the chat:write and im:history scopes.", "Install it to your workspace, then copy the bot token and the signing secret.", "Paste them below and connect."],

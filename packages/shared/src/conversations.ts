@@ -147,6 +147,8 @@ export const updateContactSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: "No changes supplied" });
 export const listContactsQuerySchema = z.strictObject({
   q: z.string().trim().min(1).max(100).optional(),
+  /** Visitors who never gave a name, email or phone are hidden unless this is "true". */
+  includeAnonymous: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
   limit: limitParam,
   cursor: cursorParam,
 });

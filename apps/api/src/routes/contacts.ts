@@ -22,7 +22,7 @@ export function contactRoutes({ cfg, db }: ConvDeps) {
     const { tenantId } = c.get("auth");
     const q = parseQuery(c, listContactsQuerySchema);
     const cursor = cursorOf(q.cursor);
-    const rows = await withTenant(db, tenantId, (tx) => new ContactsRepository(tx, tenantId).list({ q: q.q, cursor, limit: q.limit }));
+    const rows = await withTenant(db, tenantId, (tx) => new ContactsRepository(tx, tenantId).list({ q: q.q, includeAnonymous: q.includeAnonymous, cursor, limit: q.limit }));
     const page = rows.slice(0, q.limit);
     const last = page[page.length - 1];
     return c.json({ items: page.map(toContactDto), nextCursor: rows.length > q.limit && last ? encodeCursor(last.cursorTs, last.id) : null });

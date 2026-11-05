@@ -1,9 +1,13 @@
-import { useState, type ReactNode } from "react";
-import { Check } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import { Check, ImagePlus, Trash2 } from "lucide-react";
 import type { OnboardingStep } from "@yulona/shared";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker, DateTimePicker, TimePickerInline } from "@/components/ui/date-picker";
 import { cn } from "@/lib/utils";
 import { isHex, readableOn, SOLID_SWATCHES } from "../widget-config/brand";
+import { AVATAR_TYPES } from "../widget-config/crop";
+import { clearPickedLogo, pickedLogoUrl, pickLogo } from "./logo";
 
 /** Props every step component receives. `value` is the draft answer; `onChange` updates it. */
 export interface StepProps { step: OnboardingStep; value: unknown; onChange: (v: unknown) => void; error?: string | null }
@@ -71,6 +75,33 @@ function Labeled({ step, error, children }: { step: OnboardingStep; error?: stri
 }
 
 /** Brand colour and optional logo. Adapter over the widget settings colour swatches; an uploaded logo is added later in Website widget settings. */
+/** Pick a logo from the device: it is cropped to a square here and uploaded to the chat window when the setup is created. */
+function LogoPicker() {
+  const ref = useRef<HTMLInputElement>(null);
+  const [url, setUrl] = useState<string | null>(pickedLogoUrl());
+  const [err, setErr] = useState<string | null>(null);
+  const choose = async (f: File | undefined) => {
+    if (!f) return;
+    setErr(null);
+    try { setUrl(await pickLogo(f)); } catch (e) { setErr((e as Error).message); }
+  };
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium" id="logo-l">Logo (optional)</p>
+      <div className="flex flex-wrap items-center gap-3" aria-labelledby="logo-l">
+        <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-full border bg-muted text-muted-foreground">
+          {url ? <img src={url} alt="Your logo" className="size-full object-cover" /> : <ImagePlus className="size-6" aria-hidden="true" />}
+        </span>
+        <Button type="button" variant="outline" onClick={() => ref.current?.click()}><ImagePlus />{url ? "Change picture" : "Choose a picture"}</Button>
+        {url && <Button type="button" variant="ghost" onClick={() => { clearPickedLogo(); setUrl(null); }}><Trash2 />Remove</Button>}
+        <input ref={ref} type="file" accept={AVATAR_TYPES.join(",")} className="sr-only" aria-label="Choose a logo from your device" tabIndex={-1} onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
+      </div>
+      <p className="text-sm text-muted-foreground">PNG, JPEG or WebP from your device. It is cropped to a square and shown in the chat header; you can adjust it later under Website widget.</p>
+      {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
+    </div>
+  );
+}
+
 export function BrandStep({ value, onChange, error }: StepProps) {
   const v = (value && typeof value === "object" ? value : {}) as { color?: string; logoUrl?: string };
   const color = v.color ?? "";
@@ -92,10 +123,13 @@ export function BrandStep({ value, onChange, error }: StepProps) {
       <label className="block text-sm font-medium">Or type a colour
         <Input value={color} onChange={(e) => set({ color: e.target.value })} placeholder="#2563EB" className="mt-1.5 h-11 max-w-48 font-mono" aria-invalid={color !== "" && !isHex(color)} />
       </label>
-      <label className="block text-sm font-medium">Logo link (optional)
-        <Input type="url" value={v.logoUrl ?? ""} onChange={(e) => set({ logoUrl: e.target.value })} placeholder="https://example.com/logo.png" className="mt-1.5 h-11" />
-        <span className="mt-1 block text-sm font-normal text-muted-foreground">You can upload and crop an image later under Website widget.</span>
-      </label>
+      <LogoPicker />
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted-foreground">Or use a link to your logo</summary>
+        <label className="mt-2 block font-medium">Logo link (optional)
+          <Input type="url" value={v.logoUrl ?? ""} onChange={(e) => set({ logoUrl: e.target.value })} placeholder="https://example.com/logo.png" className="mt-1.5 h-11" />
+        </label>
+      </details>
       {color && isHex(color) && (
         <div className="flex items-center gap-3 rounded-2xl border bg-card p-3" aria-label="Preview">
           <span className="grid size-10 place-items-center rounded-full text-sm font-semibold" style={{ background: color, color: readableOn(color) }}>Aa</span>
@@ -147,9 +181,9 @@ export function HoursStep({ value, onChange, error }: StepProps) {
                 </label>
                 {d ? (
                   <span className="flex items-center gap-2 text-sm">
-                    <input aria-label={`${DAYS[wd]} opens`} type="time" value={d.start} onChange={(e) => setDay(wd, { start: e.target.value })} className="h-10 rounded-lg border bg-background px-2" />
+                    <TimePickerInline aria-label={`${DAYS[wd]} opens`} value={d.start} onChange={(v) => setDay(wd, { start: v })} className="w-32" />
                     to
-                    <input aria-label={`${DAYS[wd]} closes`} type="time" value={d.end} onChange={(e) => setDay(wd, { end: e.target.value })} className="h-10 rounded-lg border bg-background px-2" />
+                    <TimePickerInline aria-label={`${DAYS[wd]} closes`} value={d.end} onChange={(v) => setDay(wd, { end: v })} className="w-32" />
                   </span>
                 ) : <span className="text-sm text-muted-foreground">Closed</span>}
               </li>

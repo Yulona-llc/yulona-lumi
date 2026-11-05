@@ -12,6 +12,8 @@ import { contactsApi } from "./api";
 import { CHANNEL_LABEL, contactLabel, timeAgo } from "../inbox/format";
 import { ChannelGlyph, ContactAvatar, useMediaQuery } from "../inbox/parts";
 import NewContact from "./NewContact";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const channelsOf = (c: { identities: Array<{ channel: string }> }) => [...new Set(c.identities.map((i) => i.channel))];
 
@@ -29,11 +31,12 @@ export default function ContactList() {
   const [q, setQ] = useState("");
   const [term, setTerm] = useState<string | undefined>();
   const [adding, setAdding] = useState(false);
+  const [anon, setAnon] = useState(false); // visitors who never shared a name, email or phone
   const wide = useMediaQuery("(min-width: 768px)");
   useEffect(() => { const t = setTimeout(() => setTerm(q.trim() || undefined), 300); return () => clearTimeout(t); }, [q]);
   const list = useInfiniteQuery({
-    queryKey: ["contacts", term],
-    queryFn: ({ pageParam }) => contactsApi.list(term, pageParam),
+    queryKey: ["contacts", term, anon],
+    queryFn: ({ pageParam }) => contactsApi.list(term, pageParam, anon),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (p) => p.nextCursor ?? undefined,
   });
@@ -49,6 +52,7 @@ export default function ContactList() {
         <label htmlFor="cs" className="sr-only">Search contacts</label>
         <Input id="cs" type="search" className="pl-9" placeholder="Search name, email or phone" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
+      <div className="mt-3 flex items-center gap-2"><Switch id="anon" checked={anon} onCheckedChange={setAnon} /><Label htmlFor="anon" className="text-sm font-normal text-muted-foreground">Show anonymous visitors (no name, email or phone)</Label></div>
       {adding && <NewContact onClose={() => setAdding(false)} />}
 
       <div className="mt-4" aria-busy={list.isFetching}>

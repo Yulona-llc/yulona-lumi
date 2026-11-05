@@ -22,6 +22,7 @@ export const channelsApi = {
   update: (id: string, b: { name?: string; agentId?: string | null; status?: "active" | "disabled"; credentials?: Record<string, string> }) =>
     req<Connection>(`/channels/connections/${id}`, send("PATCH", b)),
   remove: (id: string) => req<unknown>(`/channels/connections/${id}`, send("DELETE")),
+  registerWebhook: (id: string) => req<{ ok: boolean; detail: string | null; webhookUrl: string }>(`/channels/connections/${id}/register-webhook`, send("POST", {})),
   test: (id: string) => req<{ ok: boolean; detail: string; checkedAt: string }>(`/channels/connections/${id}/test`, send("POST", {})),
   suggestions: () => req<{ items: MergeSuggestion[] }>("/channels/merge-suggestions").then((r) => r.items),
   dismiss: (id: string) => req<unknown>(`/channels/merge-suggestions/${id}/dismiss`, send("POST", {})),

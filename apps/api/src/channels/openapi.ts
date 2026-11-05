@@ -31,6 +31,7 @@ export function channelPaths(): Record<string, unknown> {
       patch: dash("Update name/agent/status or rotate credentials (owner/admin)", { parameters: [idParam], requestBody: body(updateConnectionSchema), responses: { 200: resp("Connection", connectionSchema), ...e } }),
       delete: dash("Delete a connection (owner/admin); conversations keep their history but can no longer send", { parameters: [idParam], responses: { 200: resp("OK", okSchema), ...e } }),
     },
+    "/api/v1/channels/connections/{id}/register-webhook": { post: dash("Register the webhook URL with the provider using the stored credentials (Telegram setWebhook; owner/admin)", { parameters: [idParam], responses: { 200: resp("Result", healthResultSchema), 429: err("Rate limited"), ...e } }) },
     "/api/v1/channels/connections/{id}/test": { post: dash("Health check with the stored credentials (owner/admin)", { parameters: [idParam], responses: { 200: resp("Result", healthResultSchema), 429: err("Rate limited"), ...e } }) },
     "/api/v1/channels/merge-suggestions": { get: dash("Pending cross-channel contact merge suggestions", { responses: { 200: resp("Suggestions", z.object({ items: z.array(mergeSuggestionSchema) })), ...e } }) },
     "/api/v1/channels/merge-suggestions/{id}/dismiss": { post: dash("Dismiss a suggestion", { parameters: [idParam], responses: { 200: resp("OK", okSchema), ...e } }) },

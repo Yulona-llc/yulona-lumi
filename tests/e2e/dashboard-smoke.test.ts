@@ -55,7 +55,9 @@ describe.skipIf(!ready)("playwright smoke: login + inbox", () => {
     expect(reg.status).toBe(201);
     const { tenant } = await jsonOf<{ tenant: { id: string } }>(reg);
     const [c] = await b.owner<{ id: string }[]>`INSERT INTO contacts (tenant_id, name) VALUES (${tenant.id}, 'Smoke Visitor') RETURNING id`;
-    await b.owner`INSERT INTO conversations (tenant_id, contact_id, last_message_preview, last_message_at) VALUES (${tenant.id}, ${c!.id}, 'Hello from the smoke test', now())`;
+    const [cv] = await b.owner<{ id: string }[]>`INSERT INTO conversations (tenant_id, contact_id, last_message_preview, last_message_at) VALUES (${tenant.id}, ${c!.id}, 'Hello from the smoke test', now()) RETURNING id`;
+    // the Inbox lists website chats the visitor actually wrote in
+    await b.owner`INSERT INTO messages (tenant_id, conversation_id, sender_type, content) VALUES (${tenant.id}, ${cv!.id}, 'contact', 'Hello from the smoke test')`;
 
     const { chromium } = await import("playwright-core");
     const browser = await chromium.launch({ executablePath: chrome!, headless: true });

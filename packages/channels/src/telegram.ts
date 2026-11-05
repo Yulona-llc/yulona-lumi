@@ -47,6 +47,17 @@ export function createTelegramAdapter(o: AdapterOptions & { apiBase?: string } =
       if (d && d.ok === false) throw new ChannelSendError("telegram send: rejected", "rejected", false);
       return { delivered: "channel", externalMessageId: d?.result?.message_id !== undefined ? String(d.result.message_id) : undefined };
     },
+    async registerWebhook(c, webhookUrl) {
+      if (!c.botToken) return { ok: false, detail: "missing bot token" };
+      try {
+        const d = await callApi(o, url(c.botToken, "setWebhook"), {
+          body: { url: webhookUrl, allowed_updates: ["message"], ...(c.webhookSecret ? { secret_token: c.webhookSecret } : {}) },
+        }, "telegram setWebhook");
+        return d?.ok ? { ok: true, detail: "Webhook registered with Telegram" } : { ok: false, detail: typeof d?.description === "string" ? d.description.slice(0, 200) : "Telegram rejected the webhook" };
+      } catch (e) {
+        return { ok: false, detail: (e as Error).message };
+      }
+    },
     async checkHealth(c) {
       if (!c.botToken) return { ok: false, detail: "missing credentials" };
       try {

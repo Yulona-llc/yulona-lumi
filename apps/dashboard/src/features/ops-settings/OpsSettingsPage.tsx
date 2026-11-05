@@ -6,6 +6,7 @@ import { toast } from "@/components/ui/sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DatePicker, DateTimePicker, TimePickerInline } from "@/components/ui/date-picker";
 import { Card } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -150,9 +151,9 @@ function HoursCard({ canEdit }: { canEdit: boolean }) {
                     <AnimatePresence initial={false}>
                       {ws.map(({ w, i }) => (
                         <motion.div key={i} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="flex flex-wrap items-center gap-2 overflow-hidden">
-                          <label className="sr-only" htmlFor={`s${i}`}>{d} start</label><Input id={`s${i}`} type="time" className="w-32" value={w.start} onChange={(e) => setWin(s.businessHours.map((x, j) => (j === i ? { ...x, start: e.target.value } : x)))} />
+                          <TimePickerInline aria-label={`${d} start`} className="w-32" value={w.start} onChange={(v) => setWin(s.businessHours.map((x, j) => (j === i ? { ...x, start: v } : x)))} />
                           <span aria-hidden="true" className="text-muted-foreground">to</span>
-                          <label className="sr-only" htmlFor={`e${i}`}>{d} end</label><Input id={`e${i}`} type="time" className="w-32" aria-invalid={w.start >= w.end || undefined} value={w.end} onChange={(e) => setWin(s.businessHours.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)))} />
+                          <TimePickerInline aria-label={`${d} end`} className="w-32" error={w.start >= w.end} value={w.end} onChange={(v) => setWin(s.businessHours.map((x, j) => (j === i ? { ...x, end: v } : x)))} />
                           <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${d} window ${w.start}`} onClick={() => setWin(s.businessHours.filter((_, j) => j !== i))}><Trash2 /></Button>
                         </motion.div>))}
                     </AnimatePresence>
@@ -195,7 +196,7 @@ function HoursCard({ canEdit }: { canEdit: boolean }) {
 
         <div>
           <h3 className="mb-2 font-display text-base font-semibold">Holidays</h3>
-          <div className="flex max-w-sm items-end gap-2"><div className="flex-1"><TextField label="Add a date" type="date" value={holiday} onChange={(e) => setHoliday(e.target.value)} /></div><Button type="button" variant="outline" disabled={!holiday || s.holidays.includes(holiday)} onClick={() => { setS({ ...s, holidays: [...s.holidays, holiday].sort() }); setHoliday(""); }}><Plus />Add</Button></div>
+          <div className="flex max-w-sm items-end gap-2"><div className="flex-1"><DatePicker label="Add a date" value={holiday} onChange={setHoliday} /></div><Button type="button" variant="outline" disabled={!holiday || s.holidays.includes(holiday)} onClick={() => { setS({ ...s, holidays: [...s.holidays, holiday].sort() }); setHoliday(""); }}><Plus />Add</Button></div>
           {s.holidays.length === 0 ? <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground"><CalendarOff className="size-4" />No holidays set. Closed days you add here override the weekly windows.</p> : (
             <ul className="mt-3 flex flex-wrap gap-2">{s.holidays.map((h) => (
               <li key={h}><Badge variant="secondary" className="gap-1.5 py-1 pl-3 pr-1.5 text-sm">{new Date(`${h}T00:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}

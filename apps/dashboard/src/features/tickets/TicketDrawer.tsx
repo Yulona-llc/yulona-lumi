@@ -10,6 +10,7 @@ import { ag, errMsg } from "../common/api";
 import { ConfirmModal, ErrorState, fmtDate, Loading, Modal, Select, TextArea, TextField, useRole } from "../common/ui";
 import { label, ops, relTime, TICKET_PRIORITIES, TICKET_STATUSES, type Ticket, type TicketEvent, type TicketPriority, type TicketStatus } from "../ops-settings/opsApi";
 import { PriorityBadge, SlaBadge, StatusDot } from "./parts";
+import TagPicker from "../ops-settings/TagPicker";
 
 function describe(e: TicketEvent): string {
   const d = (e.data ?? {}) as Record<string, unknown>;
@@ -50,7 +51,8 @@ export function TicketDrawer({ id, onClose }: { id: string; onClose: () => void 
         <SheetHeader className="border-b pb-3">
           <SheetTitle className="pr-2 leading-snug">{tk ? <><span className="mr-1.5 font-mono text-sm font-normal text-muted-foreground">#{tk.number}</span>{tk.title}</> : "Ticket"}</SheetTitle>
           <SheetDescription className="sr-only">Ticket details and activity</SheetDescription>
-          {tk && <div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant="outline"><StatusDot s={tk.status} />{label(tk.status)}</Badge><PriorityBadge p={tk.priority} /><SlaBadge t={tk} />{(tk.tags ?? []).map((g) => <Badge key={g.id} variant="secondary"><span aria-hidden="true" className="size-2 rounded-full" style={{ background: g.color }} />{g.name}</Badge>)}</div>}
+          {tk && <TagPicker resource="tickets" id={tk.id} className="mt-1" />}
+          {tk && <div className="mt-1 flex flex-wrap items-center gap-1.5"><Badge variant="outline"><StatusDot s={tk.status} />{label(tk.status)}</Badge><PriorityBadge p={tk.priority} /><SlaBadge t={tk} /></div>}
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           {t.isPending ? <Loading /> : t.isError ? <ErrorState error={t.error} retry={() => void t.refetch()} /> : tk && (

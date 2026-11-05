@@ -49,7 +49,9 @@ describe("Chat: Turnstile gate and blocked visitors", () => {
     const api = fakeApi();
     const chat = new Chat(api, "k", { transport: noTransport });
     await chat.init();
-    expect(chat.state.phase).toBe("verify");
+    expect(chat.state.phase).toBe("ready"); // opening the chat starts nothing, so no challenge yet
+    chat.send("hello");
+    await vi.waitFor(() => expect(chat.state.phase).toBe("verify")); // the challenge comes with the first message
     expect(api.starts).toHaveLength(0);
     await chat.submitVerification("tok-1");
     expect(api.starts).toEqual([{ hp: "", turnstileToken: "tok-1" }]);
@@ -65,6 +67,8 @@ describe("Chat: Turnstile gate and blocked visitors", () => {
     });
     const chat = new Chat(api, "k2", { transport: noTransport });
     await chat.init();
+    chat.send("hello");
+    await vi.waitFor(() => expect(chat.state.phase).toBe("verify"));
     await chat.submitVerification("expired");
     await vi.waitFor(() => expect(chat.state.phase).toBe("verify"));
     mode = "blocked";
@@ -88,13 +92,15 @@ describe("Chat: Turnstile gate and blocked visitors", () => {
     });
     const chat = new Chat(api, "k4", { transport: noTransport });
     await chat.init();
-    expect(chat.state.phase).toBe("ready");
+    chat.send("hello"); // the conversation starts with the first message
+    await vi.waitFor(() => expect(chat.state.conn).not.toBe("offline"));
+    await vi.waitFor(() => expect(JSON.parse(localStorage.getItem("yulona:k4")!).session).toBeTruthy());
     blocked = true;
     await chat.sync(); // the closing message is read although the session was revoked with the block
-    expect(chat.state.messages.map((m) => m.text)).toEqual(["This conversation is closed."]);
+    expect(chat.state.messages.map((m) => m.text)).toContain("This conversation is closed.");
     await chat.reset(); // what a later 401 does; the next start is refused
     await vi.waitFor(() => expect(chat.state.phase).toBe("closed"));
-    expect(chat.state.messages.map((m) => m.text)).toEqual(["This conversation is closed."]);
+    expect(chat.state.messages.map((m) => m.text)).toContain("This conversation is closed.");
     chat.forget();
   });
   it("the honeypot value is forwarded; without Turnstile the chat starts immediately", async () => {
@@ -102,7 +108,9 @@ describe("Chat: Turnstile gate and blocked visitors", () => {
     const chat = new Chat(api, "k3", { transport: noTransport });
     chat.setHoneypot("http://spam");
     await chat.init();
-    expect(api.starts).toEqual([{ hp: "http://spam", turnstileToken: undefined }]);
+    expect(api.starts).toHaveLength(0);
+    chat.send("hi");
+    await vi.waitFor(() => expect(api.starts).toEqual([{ hp: "http://spam", turnstileToken: undefined }]));
     chat.forget();
   });
 });

@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link2 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
+import { DatePicker, DateTimePicker, TimePickerInline } from "@/components/ui/date-picker";
 import { cn } from "@/lib/utils";
 import { errMsg } from "../common/api";
 import { ErrorState, Loading, Modal, Select, TextArea, TextField } from "../common/ui";
@@ -60,7 +61,7 @@ function GoogleForm({ provider, onClose, onCreated }: { provider: CalendarProvid
       {provider === "google" && <p className="text-sm text-muted-foreground">Pick any time that is free on your Google calendar.</p>}
       <TextField label="Title" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <TextField label="Start" type="datetime-local" required value={f.start} onChange={(e) => setF({ ...f, start: e.target.value })} />
+        <DateTimePicker label="Start" value={f.start} min={`${ymd(new Date())}T00:00`} onChange={(v) => setF({ ...f, start: v })} />
         <Select label="Duration" value={f.duration} onChange={(e) => setF({ ...f, duration: e.target.value })}>{[15, 30, 45, 60, 90].map((d) => <option key={d} value={d}>{d} minutes</option>)}</Select>
       </div>
       <TextField label="Attendee email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
@@ -95,7 +96,7 @@ function CalendlyForm({ onClose, onCreated, onOffered }: { onClose: () => void; 
   return (
     <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ready) m.mutate(); }}>
       <p className="text-sm text-muted-foreground">Choose one of the open times from your Calendly event type. Calendly sets the length of the meeting.</p>
-      <TextField label="Show times from" type="date" value={day} min={ymd(new Date())} onChange={(e) => { if (e.target.value) { setDay(e.target.value); setSlot(null); } }} />
+      <DatePicker label="Show times from" value={day} min={ymd(new Date())} onChange={(v) => { if (v) { setDay(v); setSlot(null); } }} />
       <div aria-label="Available times" className="max-h-56 space-y-3 overflow-y-auto rounded-xl border p-3">
         {q.isPending ? <Loading label="Loading open times" /> : q.isError ? <ErrorState error={q.error} retry={() => void q.refetch()} /> : byDay.length === 0 ? <p className="text-sm text-muted-foreground">No open times in these 7 days. Try a later date.</p> : byDay.map(([k, slots]) => (
           <div key={k}>

@@ -37,6 +37,8 @@ Secrets are protected: passwords are stored hashed, API keys are stored hashed, 
   </Step>
 </Steps>
 
+On a self-hosted server without an S3 or MinIO bucket, export files are kept in the database, so downloads work without extra setup. Set `S3_BUCKET` for large workspaces. See [Configuration](/self-hosting/configuration#object-storage-s3-and-minio).
+
 A contact export contains the contact, channel identities, all conversations with every message including internal notes, handoffs, the AI's lead data, chat sessions, and any tickets and bookings that reference them. A workspace export adds users, agents, widgets, knowledge source details, webhooks, API key details and the audit log, but never passwords or secrets.
 
 Exports expire after 7 days. Up to five requests can be in progress at once.
